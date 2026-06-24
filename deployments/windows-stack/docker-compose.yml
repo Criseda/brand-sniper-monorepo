@@ -1,0 +1,80 @@
+services:
+  # ---------------------------------------------------------------------------
+  # DATA LAYER: Main Application Database & Fast Cache
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: sniper_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: brand_sniper
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sniper_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sniper_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - sniper_network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
+  # ---------------------------------------------------------------------------
+  prefect-server:
+    image: prefecthq/prefect:3-python3.12
+    container_name: sniper_prefect_server
+    command: prefect server start --host 0.0.0.0
+    environment:
+      - PREFECT_API_URL=http://localhost:4200/api
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+    ports:
+      - "4200:4200"
+    volumes:
+      - prefect_data:/root/.prefect
+    networks:
+      - sniper_network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # MLOPS LAYER: MLflow Metric Tracking & Model Registry
+  # ---------------------------------------------------------------------------
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:v2.14.1
+    container_name: sniper_mlflow_server
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root /mlruns
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlruns
+    networks:
+      - sniper_network
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# PERSISTENT STORAGE BOUNDARIES
+# ---------------------------------------------------------------------------
+volumes:
+  postgres_data:
+  prefect_data:
+  mlflow_data:
+
+networks:
+  sniper_network:
+    driver: bridge
