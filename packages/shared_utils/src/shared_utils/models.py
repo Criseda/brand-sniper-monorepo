@@ -56,3 +56,27 @@ class HistoricalPrice(SQLModel, table=True):
     __table_args__ = (
         Index("ix_historical_prices_item_date", "item_id", "sale_date"),
     )
+
+
+class ItemMacroBaseline(SQLModel, table=True):
+    """
+    Persisted results of the long-term macro trend pipeline, allowing FastAPI 
+    and the AI reasoning agents to perform dynamic, safety-weighted pricing checks.
+    """
+    __tablename__: str = "item_macro_baselines"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE", unique=True, index=True)
+    
+    latest_price_cents: int = Field(nullable=False)
+    rolling_30d_avg_cents: int = Field(nullable=False)
+    rolling_90d_avg_cents: int = Field(nullable=False)
+    drift_percent: float = Field(nullable=False)
+    volatility_cents: int = Field(nullable=False)
+    avg_volume_30d: float = Field(nullable=False)
+    support_floor_cents: int = Field(nullable=False)
+    
+    updated_at: datetime = Field(
+        sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
+        index=True
+    )

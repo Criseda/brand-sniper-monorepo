@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "shared-utils",
     "pandas>=2.2.0",
+    "prefect>=3.0.0",
 ]
 
 [tool.uv.sources]

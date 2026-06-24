@@ -11,8 +11,7 @@ from alembic import context
 # CORE MONOREPO IMPORTS
 # ---------------------------------------------------------------------------
 from sqlmodel import SQLModel
-# Importing your models forces Python to register them onto the SQLModel metadata
-from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice
+from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice, ItemMacroBaseline
 
 # This is the Alembic Config object, which provides access to the values within the .ini file.
 config = context.config
