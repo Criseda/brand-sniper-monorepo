@@ -1,9 +1,15 @@
 import sys
 import uvicorn
-from fastapi import FastAPI, status
+from fastapi import FastAPI, status, BackgroundTasks
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
 from sqlmodel import select, SQLModel
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Dynamically resolve and load the backend's explicit environment file
+backend_env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=backend_env_path)
 
 # Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -11,8 +17,10 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+from agent import run_verification_loop
 from schemas import AnomalyAlertPayload, BulkIngestionPayload
 from database import AsyncSessionLocal, engine
+from shared_utils import parse_item_meta
 from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice
 
 app = FastAPI(
@@ -24,34 +32,12 @@ app = FastAPI(
 # Global in-memory cache mapping market_hash_name to item_id
 item_cache = {}
 
-def deduce_item_type(name: str) -> str:
-    """Helper to classify items when creating new market item entries."""
-    if "★" in name:
-        if any(w in name for w in ["Gloves", "Wraps"]):
-            return "Glove"
-        return "Knife"
-    if "Sticker |" in name or name.startswith("Sticker"):
-        return "Sticker"
-    if "Music Kit |" in name:
-        return "Music Kit"
-    if "Patch |" in name:
-        return "Patch"
-    factions = ["NSWC SEAL", "Guerrilla Warfare", "Sabre", "TACP", "Professionals", "FBI", "SWAT", "Gendarmerie", "KSK"]
-    if any(f in name for f in factions) or "Agent" in name:
-        return "Agent"
-    wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
-    if not any(w in name for w in wears):
-        if any(c in name for c in ["Case", "Capsule", "Package", "Pin"]):
-            return "Container/Collectible"
-        return "Agent"
-    return "Weapon Skin"
-
 async def get_or_create_item_id(session, name: str) -> int:
     """Resolves item_id using fast in-memory cache, falling back to DB insert if missing."""
     if name in item_cache:
         return item_cache[name]
     
-    item_type = deduce_item_type(name)
+    _, item_type = parse_item_meta(name)
     stmt = insert(MarketItem).values(
         market_hash_name=name,
         item_type=item_type
@@ -83,8 +69,9 @@ async def startup_event():
     print(f"[CORE COMPUTE] Pre-cached {len(item_cache)} market items in memory.")
 
 @app.post("/api/v1/alerts/anomaly", status_code=status.HTTP_202_ACCEPTED)
-async def process_edge_anomaly(payload: AnomalyAlertPayload):
+async def process_edge_anomaly(payload: AnomalyAlertPayload, background_tasks: BackgroundTasks):
     print(f"\n[CORE COMPUTE] Anomaly Intercepted: {payload.market_hash_name} dropped to ${payload.price_usd:.2f} (Z={payload.z_score})")
+    background_tasks.add_task(run_verification_loop, payload)
     return {"status": "QUEUED"}
 
 @app.post("/api/v1/ingest/bulk", status_code=status.HTTP_201_CREATED)

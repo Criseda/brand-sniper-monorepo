@@ -12,42 +12,21 @@ import urllib.parse
 import pandas as pd
 from sqlmodel import select, text
 
+# Force standard streams to use UTF-8 to support Unicode characters on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 # Dynamic path alignment to ensure the script can find the shared-utils package
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from shared_utils.db_connection import async_engine
 from shared_utils.models import MarketItem
+from shared_utils import parse_item_meta
 
 # Path pointing to where your Kaggle files live: /data/items/
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
-
-def parse_item_meta(filename: str) -> tuple[str, str]:
-    """Advanced metadata decoding to correctly separate weapons, stickers, and agents."""
-    clean_name = urllib.parse.unquote(filename.replace(".csv", ""))
-    
-    if "★" in clean_name:
-        if any(w in clean_name for w in ["Gloves", "Wraps"]):
-            return clean_name, "Glove"
-        return clean_name, "Knife"
-    
-    if "Sticker |" in clean_name or clean_name.startswith("Sticker"):
-        return clean_name, "Sticker"
-    if "Music Kit |" in clean_name:
-        return clean_name, "Music Kit"
-    if "Patch |" in clean_name:
-        return clean_name, "Patch"
-        
-    factions = ["NSWC SEAL", "Guerrilla Warfare", "Sabre", "TACP", "Professionals", "FBI", "SWAT", "Gendarmerie", "KSK"]
-    if any(f in clean_name for f in factions) or "Agent" in clean_name:
-        return clean_name, "Agent"
-        
-    wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
-    if not any(w in clean_name for w in wears):
-        if any(c in clean_name for c in ["Case", "Capsule", "Package", "Pin"]):
-            return clean_name, "Container/Collectible"
-        return clean_name, "Agent"
-        
-    return clean_name, "Weapon Skin"
 
 async def seed_historical_data(truncate: bool = False):
     if not DATA_DIR.exists():

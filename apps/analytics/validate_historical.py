@@ -8,39 +8,18 @@ from pathlib import Path
 import urllib.parse
 import pandas as pd
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
+# Force standard streams to use UTF-8 to support Unicode characters on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
-def parse_item_meta(filename: str) -> tuple[str, str]:
-    """Advanced metadata decoding to correctly separate weapons, stickers, and agents."""
-    clean_name = urllib.parse.unquote(filename.replace(".csv", ""))
-    
-    # Check for Knives and Gloves
-    if "★" in clean_name:
-        if any(w in clean_name for w in ["Gloves", "Wraps"]):
-            return clean_name, "Glove"
-        return clean_name, "Knife"
-    
-    # Catch distinct utility/cosmetic categories
-    if "Sticker |" in clean_name or clean_name.startswith("Sticker"):
-        return clean_name, "Sticker"
-    if "Music Kit |" in clean_name:
-        return clean_name, "Music Kit"
-    if "Patch |" in clean_name:
-        return clean_name, "Patch"
-        
-    # Catch Agents via known faction markers
-    factions = ["NSWC SEAL", "Guerrilla Warfare", "Sabre", "TACP", "Professionals", "FBI", "SWAT", "Gendarmerie", "KSK"]
-    if any(f in clean_name for f in factions) or "Agent" in clean_name:
-        return clean_name, "Agent"
-        
-    # Catch Agents or Collectibles by looking for the absolute absence of an exterior wear group
-    wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
-    if not any(w in clean_name for w in wears):
-        if any(c in clean_name for c in ["Case", "Capsule", "Package", "Pin"]):
-            return clean_name, "Container/Collectible"
-        return clean_name, "Agent"  # Catch-all fallback for standalone character names
-        
-    return clean_name, "Weapon Skin"
+# Dynamic path alignment to ensure the script can find the shared-utils package
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+from shared_utils import parse_item_meta
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
 
 def run_dry_run_validation():
     if not DATA_DIR.exists():

@@ -8,6 +8,9 @@ dependencies = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.28.0",
     "shared-utils",
+    "google-genai>=2.10.0",
+    "langfuse>=4.11.0",
+    "fastmcp>=3.4.2",
 ]
 
 [tool.uv.sources]
