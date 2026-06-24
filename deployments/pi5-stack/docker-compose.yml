@@ -1,0 +1,23 @@
+services:
+  # ---------------------------------------------------------------------------
+  # EDGE CACHE LAYER: Volatile Sliding-Window Memory
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sniper_redis
+    # CRITICAL PI 5 OPTIMIZATION: Disables both RDB snapshots and AOF logs.
+    # Data stays entirely in RAM, preventing flash/SD-card wear and maximizing IOPS.
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6379:6379"
+    networks:
+      - sniper_edge_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1gb
+
+networks:
+  sniper_edge_network:
+    driver: bridge

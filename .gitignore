@@ -20,3 +20,8 @@ data/
 .vscode/
 .idea/
 .DS_Store
+
+# Environments
+.env
+.env.*
+!.env.example
