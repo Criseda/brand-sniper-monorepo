@@ -1,0 +1,13 @@
+[project]
+name = "analytics"
+version = "0.1.0"
+description = "Macro Analytics, Forecasting, and Ingestion Engine"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "shared-utils",
+    "pandas>=2.2.0",
+]
+
+[tool.uv.sources]
+shared-utils = { workspace = true }
