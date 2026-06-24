@@ -1,5 +1,6 @@
 import sys
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, status, BackgroundTasks
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
@@ -23,10 +24,29 @@ from database import AsyncSessionLocal, engine
 from shared_utils import parse_item_meta
 from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Guarantees the database schemas exist and seeds the local memory cache."""
+    # Ensure tables are created
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+    print("[CORE COMPUTE] Database schemas verified and mapped successfully.")
+    
+    # Load all existing market items into RAM cache
+    async with AsyncSessionLocal() as session:
+        stmt = select(MarketItem.market_hash_name, MarketItem.id)
+        result = await session.execute(stmt)
+        for name, item_id in result:
+            item_cache[name] = item_id
+            
+    print(f"[CORE COMPUTE] Pre-cached {len(item_cache)} market items in memory.")
+    yield
+
 app = FastAPI(
     title="Algorithmic Market Sniper Engine",
     description="Core Compute REST API Node",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Global in-memory cache mapping market_hash_name to item_id
@@ -51,22 +71,6 @@ async def get_or_create_item_id(session, name: str) -> int:
     item_cache[name] = item_id
     return item_id
 
-@app.on_event("startup")
-async def startup_event():
-    """Guarantees the database schemas exist and seeds the local memory cache."""
-    # Ensure tables are created
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
-    print("[CORE COMPUTE] Database schemas verified and mapped successfully.")
-    
-    # Load all existing market items into RAM cache
-    async with AsyncSessionLocal() as session:
-        stmt = select(MarketItem.market_hash_name, MarketItem.id)
-        result = await session.execute(stmt)
-        for name, item_id in result:
-            item_cache[name] = item_id
-            
-    print(f"[CORE COMPUTE] Pre-cached {len(item_cache)} market items in memory.")
 
 @app.post("/api/v1/alerts/anomaly", status_code=status.HTTP_202_ACCEPTED)
 async def process_edge_anomaly(payload: AnomalyAlertPayload, background_tasks: BackgroundTasks):

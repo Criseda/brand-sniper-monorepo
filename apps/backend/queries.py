@@ -1,8 +1,14 @@
 import aiohttp
+import time
 from sqlalchemy import select, func
 from database import AsyncSessionLocal
 from shared_utils.models import MarketItem, HistoricalPrice, LiveMarketTick, ItemMacroBaseline
 from shared_utils import parse_version_from_name
+
+# Global in-memory cache to prevent sales history API rate limit exhaustion
+# Map: (market_hash_name, version) -> (inserted_timestamp, entry_dict)
+sales_history_cache = {}
+CACHE_TTL_SECONDS = 600  # 10 minutes cache
 
 async def fetch_skinport_sales_history(market_hash_name: str, version: str | None = None) -> dict:
     """
@@ -11,6 +17,14 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
     Filters the returned list by the version string if provided, returning the matching dict.
     Returns the first item dictionary from the response list, or an empty dict on failure.
     """
+    now = time.time()
+    cache_key = (market_hash_name, version)
+    if cache_key in sales_history_cache:
+        ts, cached_entry = sales_history_cache[cache_key]
+        if now - ts < CACHE_TTL_SECONDS:
+            print(f"[SKINPORT API] Returning cached sales history for '{market_hash_name}' (version: {version})")
+            return cached_entry
+
     url = "https://api.skinport.com/v1/sales/history"
     params = {
         "app_id": 730,
@@ -26,11 +40,16 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
                 if response.status == 200:
                     data = await response.json()
                     if isinstance(data, list) and len(data) > 0:
+                        resolved_entry = data[0]
                         if version:
                             for entry in data:
                                 if entry.get("version") == version:
-                                    return entry
-                        return data[0]
+                                    resolved_entry = entry
+                                    break
+                        
+                        # Store in cache with current timestamp
+                        sales_history_cache[cache_key] = (now, resolved_entry)
+                        return resolved_entry
                 else:
                     print(f"[SKINPORT API] Non-200 status fetching history for '{market_hash_name}': {response.status}")
     except Exception as e:

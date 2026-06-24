@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import time
 from typing import AsyncGenerator
 import aiohttp
 from scrapers.base import BaseScraper
@@ -17,6 +18,11 @@ class SkinportScraper(BaseScraper):
         # Pull secure platform credentials out of environment variables
         self.client_id = os.getenv("SKINPORT_CLIENT_ID")
         self.client_secret = os.getenv("SKINPORT_CLIENT_SECRET")
+        
+        # Local cache for sales history to prevent API rate limit exhaustion
+        # Map: (base_name, version) -> (inserted_timestamp, entry_dict)
+        self.history_cache = {}
+        self.cache_ttl = 600  # 10 minutes cache TTL
         
     def _build_auth_header(self) -> str:
         """Constructs a compliant HTTP Basic Authentication header string using Base64 encoding."""
@@ -42,6 +48,7 @@ class SkinportScraper(BaseScraper):
             headers["Authorization"] = auth_string
             print("[SKINPORT] Basic Authentication token successfully compiled and injected.")
         
+        backoff_seconds = 305
         while True:
             try:
                 async with aiohttp.ClientSession(headers=headers) as session:
@@ -55,6 +62,7 @@ class SkinportScraper(BaseScraper):
                             # aiohttp automatically uses the loaded 'brotli' library to transparently unpack the data
                             raw_items = await response.json()
                             print(f"[SKINPORT] Successfully decompressed {len(raw_items)} market entries.")
+                            backoff_seconds = 305  # Reset on success
                             
                             for item in raw_items:
                                 # We track 'min_price' as our entry signal parameter
@@ -77,18 +85,21 @@ class SkinportScraper(BaseScraper):
                                     
                         elif response.status == 401:
                             print("[SKINPORT] API Rejected Credentials! Check your client ID and secret variables inside your .env file.")
+                            backoff_seconds = 305
                         elif response.status == 429:
-                            print("[SKINPORT] High-velocity rate limits encountered. Backing off production loop...")
+                            backoff_seconds = min(1200, backoff_seconds * 2)
+                            print(f"[SKINPORT] High-velocity rate limits encountered. Backing off production loop... Retrying in {backoff_seconds} seconds.")
                         else:
                             print(f"[SKINPORT] Marketplace responded with unexpected HTTP status code: {response.status}")
+                            backoff_seconds = 305
                             
             except Exception as e:
                 print(f"[SKINPORT] Telemetry connection dropout encountered: {e}")
+                backoff_seconds = 305
                 
-            # Respect the 5-minute cache instruction documented by Skinport
-            # 305 seconds ensures we sit just outside the cache expiration boundary to maximize optimization
-            print("[SKINPORT] Entering calculated cooldown cycle until next cache window refresh...")
-            await asyncio.sleep(305)
+            # Respect the 5-minute cache instruction or back off if rate limited
+            print(f"[SKINPORT] Entering calculated cooldown cycle for {backoff_seconds} seconds...")
+            await asyncio.sleep(backoff_seconds)
 
     async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
         """
@@ -96,95 +107,114 @@ class SkinportScraper(BaseScraper):
         and determines if the price represents a genuine discount (e.g. <= 15% discount)
         adjusted for active downtrends to prevent alerting on structural market shifts.
         """
-        base_name, version = parse_version_from_name(market_hash_name)
-        url = "https://api.skinport.com/v1/sales/history"
-        params = {
-            "app_id": 730,
-            "currency": "USD",
-            "market_hash_name": base_name
-        }
-        headers = {
-            "Accept-Encoding": "br",
-            "User-Agent": "BrandSniperEdgeTelemetry/1.0"
-        }
-        auth_string = self._build_auth_header()
-        if auth_string:
-            headers["Authorization"] = auth_string
-
         try:
-            # Create a localized session for verification
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(url, params=params, timeout=5.0) as response:
-                    if response.status != 200:
-                        print(f"[SKINPORT HISTORY] Non-200 status fetching history for '{base_name}': {response.status}")
-                        return True  # Fallback to True to let backend double check
-                    
-                    data = await response.json()
-                    if not isinstance(data, list) or len(data) == 0:
-                        return True
-                    
-                    # Find entry matching our specific version
-                    target_entry = None
-                    for entry in data:
-                        if entry.get("version") == version:
-                            target_entry = entry
-                            break
-                    
-                    if not target_entry:
-                        target_entry = data[0]
-                    
-                    h24 = target_entry.get("last_24_hours", {})
-                    h7 = target_entry.get("last_7_days", {})
-                    h30 = target_entry.get("last_30_days", {})
-                    h90 = target_entry.get("last_90_days", {})
-                    
-                    m24 = h24.get("median")
-                    m7 = h7.get("median")
-                    m30 = h30.get("median")
-                    m90 = h90.get("median")
-                    
-                    recent_median = None
-                    if m24 and h24.get("volume", 0) > 0:
-                        recent_median = m24
-                    elif m7 and h7.get("volume", 0) > 0:
-                        recent_median = m7
-                    elif m30 and h30.get("volume", 0) > 0:
-                        recent_median = m30
-                    else:
-                        recent_median = m90
+            base_name, version = parse_version_from_name(market_hash_name)
+            
+            now = time.time()
+            cache_key = (base_name, version)
+            target_entry = None
+            
+            # Check cache
+            if cache_key in self.history_cache:
+                ts, cached_entry = self.history_cache[cache_key]
+                if now - ts < self.cache_ttl:
+                    print(f"[SKINPORT HISTORY] Using cached sales history for '{base_name}' (version: {version})")
+                    target_entry = cached_entry
+
+            if not target_entry:
+                url = "https://api.skinport.com/v1/sales/history"
+                params = {
+                    "app_id": 730,
+                    "currency": "USD",
+                    "market_hash_name": base_name
+                }
+                headers = {
+                    "Accept-Encoding": "br",
+                    "User-Agent": "BrandSniperEdgeTelemetry/1.0"
+                }
+                auth_string = self._build_auth_header()
+                if auth_string:
+                    headers["Authorization"] = auth_string
+
+                # Create a localized session for verification
+                async with aiohttp.ClientSession(headers=headers) as session:
+                    async with session.get(url, params=params, timeout=5.0) as response:
+                        if response.status != 200:
+                            print(f"[SKINPORT HISTORY] Non-200 status fetching history for '{base_name}': {response.status}")
+                            return True  # Fallback to True to let backend double check
                         
-                    if recent_median is None:
-                        return True
+                        data = await response.json()
+                        if not isinstance(data, list) or len(data) == 0:
+                            return True
                         
-                    # Calculate active downtrend to apply discount buffer
-                    downtrend_detected = False
-                    downtrend_severity = 0.0
-                    ref_recent = m7 if m7 else m24
-                    ref_older = m30 if m30 else m90
-                    
-                    if ref_recent and ref_older and ref_recent < ref_older:
-                        downtrend_detected = True
-                        downtrend_severity += (ref_older - ref_recent) / ref_older
+                        # Find entry matching our specific version
+                        for entry in data:
+                            if entry.get("version") == version:
+                                target_entry = entry
+                                break
                         
-                    if m24 and m7 and m24 < m7:
-                        downtrend_detected = True
-                        downtrend_severity += (m7 - m24) / m7
-                        
-                    base_discount = 0.85
-                    if downtrend_detected:
-                        penalty = min(0.15, downtrend_severity)
-                        applied_discount = base_discount - penalty
-                    else:
-                        applied_discount = base_discount
-                        
-                    threshold = recent_median * applied_discount
-                    
-                    if price_usd <= threshold:
-                        print(f"[SKINPORT HISTORY] Verified! Price ${price_usd:.2f} <= Snipe Threshold ${threshold:.2f} (Recent Median: ${recent_median:.2f})")
-                        return True
-                    else:
-                        print(f"[SKINPORT HISTORY] Filtered out! Price ${price_usd:.2f} > Snipe Threshold ${threshold:.2f} (Recent Median: ${recent_median:.2f})")
-                        return False
+                        if not target_entry:
+                            target_entry = data[0]
+                            
+                        # Save in cache
+                        self.history_cache[cache_key] = (now, target_entry)
+
+            if not target_entry:
+                return True
+                
+            # Run evaluation on target_entry
+            h24 = target_entry.get("last_24_hours", {})
+            h7 = target_entry.get("last_7_days", {})
+            h30 = target_entry.get("last_30_days", {})
+            h90 = target_entry.get("last_90_days", {})
+            
+            m24 = h24.get("median")
+            m7 = h7.get("median")
+            m30 = h30.get("median")
+            m90 = h90.get("median")
+            
+            recent_median = None
+            if m24 and h24.get("volume", 0) > 0:
+                recent_median = m24
+            elif m7 and h7.get("volume", 0) > 0:
+                recent_median = m7
+            elif m30 and h30.get("volume", 0) > 0:
+                recent_median = m30
+            else:
+                recent_median = m90
+                
+            if recent_median is None:
+                return True
+                
+            # Calculate active downtrend to apply discount buffer
+            downtrend_detected = False
+            downtrend_severity = 0.0
+            ref_recent = m7 if m7 else m24
+            ref_older = m30 if m30 else m90
+            
+            if ref_recent and ref_older and ref_recent < ref_older:
+                downtrend_detected = True
+                downtrend_severity += (ref_older - ref_recent) / ref_older
+                
+            if m24 and m7 and m24 < m7:
+                downtrend_detected = True
+                downtrend_severity += (m7 - m24) / m7
+                
+            base_discount = 0.85
+            if downtrend_detected:
+                penalty = min(0.15, downtrend_severity)
+                applied_discount = base_discount - penalty
+            else:
+                applied_discount = base_discount
+                
+            threshold = recent_median * applied_discount
+            
+            if price_usd <= threshold:
+                print(f"[SKINPORT HISTORY] Verified! Price ${price_usd:.2f} <= Snipe Threshold ${threshold:.2f} (Recent Median: ${recent_median:.2f})")
+                return True
+            else:
+                print(f"[SKINPORT HISTORY] Filtered out! Price ${price_usd:.2f} > Snipe Threshold ${threshold:.2f} (Recent Median: ${recent_median:.2f})")
+                return False
         except Exception as e:
             print(f"[SKINPORT HISTORY] Error verifying anomaly for '{market_hash_name}': {e}")
             return True
