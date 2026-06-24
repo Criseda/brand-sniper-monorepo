@@ -1,3 +1,4 @@
+import os
 import uvicorn
 from fastapi import FastAPI, status
 from schemas import AnomalyAlertPayload, BulkIngestionPayload
@@ -19,7 +20,7 @@ async def process_edge_anomaly(payload: AnomalyAlertPayload):
     Acknowledges receipt instantly with a 202 status code, handing off
     the payload to the async AI Multi-Agent validation queue.
     """
-    print("\n📥 [CORE COMPUTE] Inbound Edge Alert Intercepted Successfully!")
+    print("\n[CORE COMPUTE] Inbound Edge Alert Intercepted Successfully!")
     print(f"   ↳ Asset Verified : {payload.market_hash_name}")
     print(f"   ↳ Sniping Price  : ${payload.price_usd:.2f} ({payload.price_cents} cents)")
     print(f"   ↳ Metric Weight  : Z-Score = {payload.z_score}")
@@ -40,7 +41,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
     Validates data structures and schedules a high-speed database transaction.
     """
     total_ticks = len(payload.ticks)
-    print(f"\n📥 [CORE COMPUTE] Bulk Transaction Intercepted! ({total_ticks} elements from '{payload.source}')")
+    print(f"\n[CORE COMPUTE] Bulk Transaction Intercepted! ({total_ticks} elements from '{payload.source}')")
     
     if total_ticks > 0:
         print(f"   ↳ Sample Head : {payload.ticks[0].market_hash_name} -> {payload.ticks[0].price_cents}¢")
@@ -52,5 +53,6 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
     return {"status": "SUCCESS", "records_processed": total_ticks}
 
 if __name__ == "__main__":
-    # Booting explicitly on port 8080 to match our custom edge topology mapping
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8080"))
+    uvicorn.run("main:app", host=host, port=port, reload=True)

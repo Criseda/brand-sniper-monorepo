@@ -1,5 +1,6 @@
 import asyncio
 import math
+import os
 from datetime import datetime, timezone
 from typing import List
 import aiohttp
@@ -8,10 +9,13 @@ from redis.asyncio import Redis
 from scrapers.factory import ScraperFactory
 from models import MarketTick
 
-# Core Endpoints Mapping
-COMPUTE_NODE_IP = "localhost"  # Update to your machine's local IP when separated
-ANOMALY_URL = f"http://{COMPUTE_NODE_IP}:8080/api/v1/alerts/anomaly"
-BULK_INGEST_URL = f"http://{COMPUTE_NODE_IP}:8080/api/v1/ingest/bulk"
+# DYNAMIC NETWORK INFRASTRUCTURE CONFIGURATION
+# Pulls target node location from RAM environment, falling back to local loopback
+COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")
+COMPUTE_PORT = os.getenv("COMPUTE_NODE_PORT", "8080")
+
+ANOMALY_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/alerts/anomaly"
+BULK_INGEST_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/ingest/bulk"
 
 async def dispatch_anomaly_to_core(tick: MarketTick, z_score: float):
     """Pipes an isolated flash-crash alert directly to the backend processing queue."""
@@ -26,9 +30,9 @@ async def dispatch_anomaly_to_core(tick: MarketTick, z_score: float):
         async with aiohttp.ClientSession() as session:
             async with session.post(ANOMALY_URL, json=payload, timeout=2.0) as resp:
                 if resp.status == 202:
-                    print(f"📡 [LAN] Single alert dispatched for {tick.market_hash_name}")
+                    print(f"[LAN] Single alert dispatched for {tick.market_hash_name}")
     except Exception:
-        pass # Protect edge loops from network drops
+        pass # Protect edge loops from network dropouts
 
 async def flush_batch_chunk_to_postgres(source: str, chunk: List[dict]):
     """Fires a non-blocking network transmission containing structured bulk arrays."""
@@ -37,15 +41,16 @@ async def flush_batch_chunk_to_postgres(source: str, chunk: List[dict]):
         async with aiohttp.ClientSession() as session:
             async with session.post(BULK_INGEST_URL, json=payload, timeout=10.0) as resp:
                 if resp.status == 201:
-                    print(f"⚡ [BATCH FLUSH] Successfully committed {len(chunk)} items to Compute Node.")
+                    print(f"[BATCH FLUSH] Successfully committed {len(chunk)} items to Compute Node.")
                 else:
-                    print(f"⚠️  [BATCH FLUSH] Backend rejected batch with status: {resp.status}")
+                    print(f"[BATCH FLUSH] Backend rejected batch with status: {resp.status}")
     except Exception as e:
-        print(f"❌ [BATCH FLUSH] Failed to reach Compute Node database router: {e}")
+        print(f"[BATCH FLUSH] Failed to reach Compute Node database router: {e}")
 
 async def process_live_telemetry_stream(platform_target: str):
     print("======================================================================")
-    print(f"🚀 Initializing Extensible Stream Engine: {platform_target.upper()}")
+    print(f"Initializing Extensible Stream Engine: {platform_target.upper()}")
+    print(f"Target Routing Node Core             : {COMPUTE_NODE_IP}:{COMPUTE_PORT}")
     print("======================================================================")
     
     cache = Redis(host="localhost", port=6379, decode_responses=True)
@@ -86,7 +91,7 @@ async def process_live_telemetry_stream(platform_target: str):
             z_score = (current_tick_price - mean_cents) / std_dev if std_dev > 0 else 0.0
             
             if z_score < -2.5:
-                print(f"🚨 [ANOMALY] Outlier spotted! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}")
+                print(f"[ANOMALY] Outlier spotted! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}")
                 asyncio.create_task(dispatch_anomaly_to_core(tick, z_score))
 
         # 3. When buffer matches target density constraints, dispatch non-blocking task
