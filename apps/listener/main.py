@@ -93,8 +93,22 @@ async def process_live_telemetry_stream(platform_target: str):
             z_score = (current_tick_price - mean_cents) / std_dev if std_dev > 0 else 0.0
             
             if z_score < -2.5:
-                print(f"[ANOMALY] Outlier spotted! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}")
-                asyncio.create_task(dispatch_anomaly_to_core(tick, z_score))
+                # Perform historical verification on the edge node before dispatching
+                print(f"[ANOMALY] Outlier potential detected: {tick.market_hash_name} at ${tick.price_usd:.2f} (Z={z_score:.2f}). Running edge history verification...")
+                
+                async def verify_and_dispatch():
+                    try:
+                        is_valid = await scraper.verify_anomaly_with_history(tick.market_hash_name, tick.price_usd)
+                        if is_valid:
+                            print(f"[ANOMALY] Confirmed true outlier! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}. Dispatching to core compute...")
+                            await dispatch_anomaly_to_core(tick, z_score)
+                        else:
+                            print(f"[ANOMALY] False outlier filtered: {tick.market_hash_name} at ${tick.price_usd:.2f} is within acceptable historical bounds.")
+                    except Exception as ve:
+                        print(f"[ANOMALY] Error during edge history verification: {ve}. Dispatching to core as fallback.")
+                        await dispatch_anomaly_to_core(tick, z_score)
+                
+                asyncio.create_task(verify_and_dispatch())
 
         # 3. When buffer matches target density constraints, dispatch non-blocking task
         if len(batch_buffer) >= CHUNK_LIMIT:

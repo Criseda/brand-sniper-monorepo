@@ -1,4 +1,5 @@
 import urllib.parse
+import re
 
 def parse_item_meta(name_or_filename: str) -> tuple[str, str]:
     """
@@ -31,3 +32,25 @@ def parse_item_meta(name_or_filename: str) -> tuple[str, str]:
             item_type = "Weapon Skin"
             
     return clean_name, item_type
+
+def parse_version_from_name(name: str) -> tuple[str, str | None]:
+    """
+    Parses a version/phase (e.g., Phase 3, Ruby, Sapphire) from a structured name.
+    Example:
+      "★ Butterfly Knife | Doppler (Phase 3) (Factory New)"
+      returns: ("★ Butterfly Knife | Doppler (Factory New)", "Phase 3")
+    """
+    wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
+    for wear in wears:
+        if name.endswith(wear):
+            rest = name[:-len(wear)].strip()
+            # Match parentheses at the end of the rest string, e.g. "(Phase 3)"
+            match = re.search(r"\(([^)]+)\)$", rest)
+            if match:
+                version = match.group(1)
+                base_name_without_wear = rest[:-len(match.group(0))].strip()
+                base_name = f"{base_name_without_wear} {wear}"
+                return base_name, version
+            break
+    return name, None
+

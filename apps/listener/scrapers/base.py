@@ -15,3 +15,10 @@ class BaseScraper(ABC):
         and yields verified, normalized MarketTick objects.
         """
         pass
+
+    async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
+        """
+        Secondary verification using the platform's historical data API.
+        Default implementation returns True.
+        """
+        return True
