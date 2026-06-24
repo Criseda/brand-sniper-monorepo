@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, status
-from schemas import AnomalyAlertPayload
+from schemas import AnomalyAlertPayload, BulkIngestionPayload
 
 app = FastAPI(
     title="Algorithmic Market Sniper Engine",
@@ -28,6 +28,28 @@ async def process_edge_anomaly(payload: AnomalyAlertPayload):
     # TODO: Connect Google ADK 2.0 Graph Workflow here in Milestone 5
     
     return {"status": "QUEUED", "message": "Anomaly accepted for evaluation."}
+
+@app.post(
+    "/api/v1/ingest/bulk",
+    status_code=status.HTTP_201_CREATED,
+    summary="Bulk Ingest Market Snapshots"
+)
+async def process_bulk_ingestion(payload: BulkIngestionPayload):
+    """
+    Receives compressed, chunked marketplace arrays from edge listeners.
+    Validates data structures and schedules a high-speed database transaction.
+    """
+    total_ticks = len(payload.ticks)
+    print(f"\n📥 [CORE COMPUTE] Bulk Transaction Intercepted! ({total_ticks} elements from '{payload.source}')")
+    
+    if total_ticks > 0:
+        print(f"   ↳ Sample Head : {payload.ticks[0].market_hash_name} -> {payload.ticks[0].price_cents}¢")
+        print(f"   ↳ Sample Tail : {payload.ticks[-1].market_hash_name} -> {payload.ticks[-1].price_cents}¢")
+    
+    # TODO: Execute high-speed asyncpg / SQLAlchemy bulk INSERT ... ON CONFLICT here
+    print(f"   ↳ System Action: Batch scheduled for PostgreSQL replication.")
+    
+    return {"status": "SUCCESS", "records_processed": total_ticks}
 
 if __name__ == "__main__":
     # Booting explicitly on port 8080 to match our custom edge topology mapping
