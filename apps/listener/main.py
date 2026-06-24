@@ -31,8 +31,10 @@ async def dispatch_anomaly_to_core(tick: MarketTick, z_score: float):
             async with session.post(ANOMALY_URL, json=payload, timeout=2.0) as resp:
                 if resp.status == 202:
                     print(f"[LAN] Single alert dispatched for {tick.market_hash_name}")
-    except Exception:
-        pass # Protect edge loops from network dropouts
+                else:
+                    print(f"[LAN] Warning: Backend rejected anomaly payload with status {resp.status}")
+    except Exception as e:
+        print(f"[LAN] Telemetry transmission warning (Compute node offline?): {e}")
 
 async def flush_batch_chunk_to_postgres(source: str, chunk: List[dict]):
     """Fires a non-blocking network transmission containing structured bulk arrays."""

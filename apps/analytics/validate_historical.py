@@ -44,13 +44,13 @@ def parse_item_meta(filename: str) -> tuple[str, str]:
 
 def run_dry_run_validation():
     if not DATA_DIR.exists():
-        print(f"❌ Error: Data directory not found at: {DATA_DIR}")
+        print(f"Error: Data directory not found at: {DATA_DIR}")
         return
 
-    print("🔍 Initializing Pre-Flight Data Validation Sweep...")
+    print("Initializing Pre-Flight Data Validation Sweep...")
     csv_files = list(DATA_DIR.glob("*.csv"))
     total_files = len(csv_files)
-    print(f"📋 Total files found for validation: {total_files}\n")
+    print(f"Total files found for validation: {total_files}\n")
 
     total_rows = 0
     corrupt_rows_dropped = 0
@@ -99,21 +99,21 @@ def run_dry_run_validation():
     print("\n" + "=" * 70)
     print("                      DATA SANITY REPORT                      ")
     print("=" * 70)
-    print(f"✅ Total Operational Files   : {total_files}")
-    print(f"🛠️  Files Requiring Row Drops : {salvaged_files_count} (Corrupted text lines auto-purged)")
-    print(f"🗑️  Total Corrupt Rows Dropped: {corrupt_rows_dropped:,}")
-    print(f"📈 Total Clean Rows Preserved : {total_rows:,}")
+    print(f"Total Operational Files   : {total_files}")
+    print(f"Files Requiring Row Drops : {salvaged_files_count} (Corrupted text lines auto-purged)")
+    print(f"Total Corrupt Rows Dropped: {corrupt_rows_dropped:,}")
+    print(f"Total Clean Rows Preserved : {total_rows:,}")
     print("-" * 70)
     
-    print("\n📦 REFINED ITEM TYPE DISTRIBUTION:")
+    print("\nREFINED ITEM TYPE DISTRIBUTION:")
     for k, v in type_distribution.items():
         if v > 0:
             print(f" - {k:<22}: {v} files mapped")
         
-    print("\n🔍 VERIFIED STRINGS SAMPLES:")
+    print("\nVERIFIED STRINGS SAMPLES:")
     for raw, clean, itype in sample_decodes[:6]:
-        print(f" 📥 Raw   : {raw}")
-        print(f" 📤 Clean : {clean} ---> Type: {itype}")
+        print(f" Raw   : {raw}")
+        print(f" Clean : {clean} ---> Type: {itype}")
         print("-" * 50)
     print("=" * 70)
 

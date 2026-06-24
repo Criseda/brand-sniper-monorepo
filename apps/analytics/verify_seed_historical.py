@@ -70,7 +70,7 @@ async def run_verification():
         print(f"  Date range bounds   : {min_date} to {max_date}")
         
         if total_rows == 0:
-            print("❌ Failure: No records found in 'historical_prices'. Seeding failed.")
+            print("Failure: No records found in 'historical_prices'. Seeding failed.")
             return
 
         # 3. MarketItems mapping check (Optimized with EXISTS instead of COUNT DISTINCT)
