@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Algorithmic Market Sniping & Macro Arbitrage Engine"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "alembic>=1.18.4",
+]
 
 [tool.uv.workspace]
 members = [
