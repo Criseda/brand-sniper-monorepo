@@ -201,11 +201,8 @@ class SkinportScraper(BaseScraper):
                 downtrend_severity += (m7 - m24) / m7
                 
             base_discount = 0.95
-            if downtrend_detected:
-                penalty = min(0.15, downtrend_severity)
-                applied_discount = base_discount - penalty
-            else:
-                applied_discount = base_discount
+            # Edge pre-filter does not apply downtrend penalties to avoid filtering moderate discounts (e.g. 8-12%)
+            applied_discount = base_discount
                 
             threshold = recent_median * applied_discount
             

@@ -91,7 +91,7 @@ async def process_live_telemetry_stream(platform_target: str):
         raw_elements = await cache.zrange(redis_key, 0, -1)
         prices = [int(element.split(":")[1]) for element in raw_elements]
         
-        if len(prices) >= 3:
+        if len(prices) >= 4:
             current_tick_price = prices[-1]
             historical_prices = prices[:-1]
             n = len(historical_prices)
