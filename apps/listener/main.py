@@ -2,14 +2,20 @@ import asyncio
 import math
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List
 import aiohttp
+from dotenv import load_dotenv
 from redis.asyncio import Redis
 
 from scrapers.factory import ScraperFactory
 from models import MarketTick
 
 # DYNAMIC NETWORK INFRASTRUCTURE CONFIGURATION
+# Load environment configuration from .env file
+listener_env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=listener_env_path)
+
 # Pulls target node location from RAM environment, falling back to local loopback
 COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")
 COMPUTE_PORT = os.getenv("COMPUTE_NODE_PORT", "8080")
