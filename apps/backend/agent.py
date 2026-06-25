@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(r"c:\Users\ilaur\git\brand-sniper-monorepo")
 sys.path.append(str(PROJECT_ROOT))
 sys.path.append(str(PROJECT_ROOT / "apps" / "backend"))
 
-from tools import get_market_context, verify_float_value, simulate_checkout_payload
+from tools import get_market_context, verify_float_value, confirm_alert_approval
 from schemas import AnomalyAlertPayload
 from telemetry import run_telemetry
 
@@ -27,7 +27,7 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
     
     # Initialize Google GenAI client
     client = genai.Client()
-    tools_list = [get_market_context, verify_float_value, simulate_checkout_payload]
+    tools_list = [get_market_context, verify_float_value, confirm_alert_approval]
     
     # Build the GenAI Analyst prompt
     prompt = f"""
@@ -38,23 +38,22 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
     - Edge Z-Score: {payload.z_score}
     
     Verify this opportunity using the available tools:
-    1. Call 'get_market_context' to retrieve database baselines and target snipe thresholds.
+    1. Call 'get_market_context' to retrieve database baselines, target snipe thresholds, and the marketplace pages.
     2. Check if the alert price is less than or equal to the calculated 'snipe_threshold_cents'.
     3. Evaluate the float wear if available (Alert float value: {float_val if float_val is not None else 'None'}) using 'verify_float_value'.
-    4. If and ONLY IF the alert price is verified to be a genuine deep discount (less than or equal to the threshold), trigger 'simulate_checkout_payload' to secure the asset.
-    5. Formulate a final summary response detailing your reasoning, baseline values, target threshold, wear premium checks, and the purchase status.
+    4. If and ONLY IF the alert price is verified to be a genuine deep discount (less than or equal to the threshold), call 'confirm_alert_approval' to approve the alert and register the direct purchase link ('item_page').
+    5. Formulate a final summary response detailing your reasoning, baseline values, target threshold, wear premium checks, the verification status (APPROVED or REJECTED), and include the direct purchase link ('item_page') prominently so the user can click it to buy it manually.
     """
     
     # Initialize the local ContextVar tracking state for this run
     token = run_telemetry.set({
-        "checkout_triggered": False,
+        "alert_approved": False,
         "float_value": float_val,
         "market_hash_name": payload.market_hash_name,
         "alert_price_cents": payload.price_cents,
         "alert_price_usd": payload.price_usd,
         "edge_z_score": payload.z_score,
-        "transaction_id": None,
-        "checkout_price_cents": None,
+        "item_page": None,
     })
     
     start_time = time.time()
@@ -118,15 +117,14 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
             if t_data.get("downtrend_severity") is not None:
                 mlflow.log_metric("downtrend_severity", t_data.get("downtrend_severity"))
                 
-            checkout_success = 1 if t_data.get("checkout_triggered") else 0
-            mlflow.log_metric("checkout_executed", checkout_success)
+            alert_approved = 1 if t_data.get("alert_approved") else 0
+            mlflow.log_metric("alert_approved", alert_approved)
             
-            if checkout_success:
-                mlflow.log_metric("purchase_price_cents", t_data.get("checkout_price_cents"))
-                mlflow.set_tag("transaction_id", t_data.get("transaction_id"))
+            if t_data.get("item_page"):
+                mlflow.log_param("item_page", t_data.get("item_page"))
                 
             # Log tracking tags
-            mlflow.set_tag("status", "APPROVED" if checkout_success else "REJECTED")
+            mlflow.set_tag("status", "APPROVED" if alert_approved else "REJECTED")
             mlflow.set_tag("market_hash_name", payload.market_hash_name)
             
             # Save prompt and final reasoning as text artifacts

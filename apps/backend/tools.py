@@ -32,6 +32,8 @@ async def get_market_context(market_hash_name: str) -> dict:
                 "downtrend_detected": context.get("downtrend_detected"),
                 "downtrend_severity": context.get("downtrend_severity"),
                 "regime_shift_detected": context.get("regime_shift_detected"),
+                "item_page": context.get("item_page"),
+                "market_page": context.get("market_page"),
             })
     except LookupError:
         pass
@@ -60,29 +62,26 @@ def verify_float_value(market_hash_name: str, float_value: float) -> str:
     return f"Standard float ({float_value:.4f}) - falls in standard wear corridor, no extra wear premium."
 
 @mcp.tool()
-def simulate_checkout_payload(market_hash_name: str, price_cents: int) -> dict:
+def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
     """
-    Dispatches a checkout execution payload to purchase the asset. 
-    Call this ONLY after confirming a true arbitrage opportunity.
+    Flags the anomaly alert as a verified, genuine deep discount and registers the direct marketplace purchase link.
+    Call this ONLY after verifying a true arbitrage opportunity.
     """
-    price_usd = price_cents / 100.0
-    print(f"\n🚀 [CHECKOUT TRIGGERED] Executing purchase authorization for: {market_hash_name} at ${price_usd:.2f}!")
+    print(f"\n📢 [ALERT APPROVED] Snipe opportunity verified for {market_hash_name}!")
+    print(f"   Direct Purchase Link: {item_page}")
     
     res = {
         "status": "APPROVED",
-        "transaction_id": f"txn_{int(datetime.now().timestamp())}",
-        "execution_status": "COMMITTED",
         "asset": market_hash_name,
-        "amount_usd": price_usd,
+        "item_page": item_page,
         "timestamp": int(datetime.now().timestamp())
     }
     
     try:
         t_dict = run_telemetry.get()
         if t_dict is not None:
-            t_dict["checkout_triggered"] = True
-            t_dict["checkout_price_cents"] = price_cents
-            t_dict["transaction_id"] = res["transaction_id"]
+            t_dict["alert_approved"] = True
+            t_dict["item_page"] = item_page
     except LookupError:
         pass
         

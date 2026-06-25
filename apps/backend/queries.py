@@ -248,5 +248,7 @@ async def get_item_market_context(market_hash_name: str) -> dict:
             "support_floor_cents": macro_baseline.support_floor_cents if macro_baseline else None,
             "regime_shift_detected": regime_shift_detected,
             "downtrend_detected": downtrend_detected,
-            "downtrend_severity": downtrend_severity
+            "downtrend_severity": downtrend_severity,
+            "item_page": skinport_history.get("item_page") if skinport_history else None,
+            "market_page": skinport_history.get("market_page") if skinport_history else None,
         }
