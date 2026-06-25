@@ -200,7 +200,7 @@ class SkinportScraper(BaseScraper):
                 downtrend_detected = True
                 downtrend_severity += (m7 - m24) / m7
                 
-            base_discount = 0.85
+            base_discount = 0.95
             if downtrend_detected:
                 penalty = min(0.15, downtrend_severity)
                 applied_discount = base_discount - penalty

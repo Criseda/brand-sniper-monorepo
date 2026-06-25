@@ -81,7 +81,11 @@ async def process_live_telemetry_stream(platform_target: str):
         # 1. Update Volatile Sliding Cache Layer
         value_string = f"{tick.timestamp}:{tick.price_cents}"
         await cache.zadd(redis_key, {value_string: tick.timestamp})
-        await cache.zremrangebyscore(redis_key, "-inf", current_time - 300)
+        
+        # Keep only the last 30 ticks to resolve the illiquidity Z-score trap
+        card = await cache.zcard(redis_key)
+        if card > 30:
+            await cache.zremrangebyrank(redis_key, 0, card - 31)
         
         # 2. Check Z-Score boundary constraints if enough local window history exists
         raw_elements = await cache.zrange(redis_key, 0, -1)
