@@ -23,7 +23,7 @@ mlflow.set_experiment("sniper-verifier")
 
 @observe()
 async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float = None):
-    print(f"\n🧠 [AGENT] Starting AI Verification Loop for: {payload.market_hash_name}")
+    print(f"\n[AGENT] Starting AI Verification Loop for: {payload.market_hash_name}")
     
     # Initialize Google GenAI client
     client = genai.Client()
@@ -134,7 +134,7 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
             return response.text
             
     except Exception as e:
-        print(f"❌ [AGENT] Failed during verification loop execution: {e}")
+        print(f"[AGENT] Failed during verification loop execution: {e}")
         try:
             mlflow.set_tag("status", "FAILED")
             mlflow.log_text(str(e), "error.txt")

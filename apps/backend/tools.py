@@ -67,7 +67,7 @@ def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
     Flags the anomaly alert as a verified, genuine deep discount and registers the direct marketplace purchase link.
     Call this ONLY after verifying a true arbitrage opportunity.
     """
-    print(f"\n📢 [ALERT APPROVED] Snipe opportunity verified for {market_hash_name}!")
+    print(f"\n[ALERT APPROVED] Snipe opportunity verified for {market_hash_name}!")
     print(f"   Direct Purchase Link: {item_page}")
     
     res = {
