@@ -2,11 +2,13 @@ import os
 import sys
 import asyncio
 import time
+import tempfile
 import mlflow
 from pathlib import Path
 from google import genai
 from google.genai import types
 from langfuse import observe, propagate_attributes
+from mlflow.client import MlflowClient
 
 # Add project root and apps/backend to sys.path
 PROJECT_ROOT = Path(r"c:\Users\ilaur\git\brand-sniper-monorepo")
@@ -17,9 +19,20 @@ from tools import get_market_context, verify_float_value, confirm_alert_approval
 from schemas import AnomalyAlertPayload
 from telemetry import run_telemetry
 
-# Configure local MLflow server target and experiment
-mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
-mlflow.set_experiment("sniper-verifier")
+# Configure local MLflow server target and experiment client
+tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+mlflow.set_tracking_uri(tracking_uri)
+client_mlflow = MlflowClient(tracking_uri=tracking_uri)
+
+# Retrieve or create experiment ID
+try:
+    exp = client_mlflow.get_experiment_by_name("sniper-verifier")
+    if exp:
+        experiment_id = exp.experiment_id
+    else:
+        experiment_id = client_mlflow.create_experiment("sniper-verifier")
+except Exception:
+    experiment_id = "1"
 
 @observe()
 async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float = None):
@@ -58,86 +71,106 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
     
     start_time = time.time()
     
+    # Create a unique stateless run
+    run = client_mlflow.create_run(
+        experiment_id=experiment_id,
+        run_name=f"verify_{payload.market_hash_name}"
+    )
+    run_id = run.info.run_id
+    
     try:
-        # Open the MLflow run scope
-        with mlflow.start_run(run_name=f"verify_{payload.market_hash_name}"):
-            # Log initial alert parameters
-            mlflow.log_params({
+        # Log initial alert parameters
+        client_mlflow.log_param(run_id, "market_hash_name", payload.market_hash_name)
+        client_mlflow.log_param(run_id, "alert_price_cents", str(payload.price_cents))
+        client_mlflow.log_param(run_id, "alert_price_usd", str(payload.price_usd))
+        client_mlflow.log_param(run_id, "edge_z_score", str(payload.z_score))
+        client_mlflow.log_param(run_id, "alert_float_value", str(float_val) if float_val is not None else "None")
+        
+        # Wrap the tool calling block inside the propagate_attributes context manager to attach metadata
+        with propagate_attributes(
+            metadata={
                 "market_hash_name": payload.market_hash_name,
-                "alert_price_cents": payload.price_cents,
-                "alert_price_usd": payload.price_usd,
-                "edge_z_score": payload.z_score,
-                "alert_float_value": float_val if float_val is not None else "None"
-            })
-            
-            # Wrap the tool calling block inside the propagate_attributes context manager to attach metadata
-            with propagate_attributes(
-                metadata={
-                    "market_hash_name": payload.market_hash_name,
-                    "price_cents": payload.price_cents,
-                    "z_score": payload.z_score,
-                    "triggered_at": payload.triggered_at
-                },
-                tags=["anomaly-check"]
-            ):
-                print("   [AGENT] Executing Gemini 3.1 generative reasoning and tool calling...")
-                response = await client.aio.models.generate_content(
-                    model='gemini-3.1-flash-lite',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        tools=tools_list,
-                        temperature=0.0
-                    )
+                "price_cents": payload.price_cents,
+                "z_score": payload.z_score,
+                "triggered_at": payload.triggered_at
+            },
+            tags=["anomaly-check"]
+        ):
+            print("   [AGENT] Executing Gemini 3.1 generative reasoning and tool calling...")
+            response = await client.aio.models.generate_content(
+                model='gemini-3.1-flash-lite',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    tools=tools_list,
+                    temperature=0.0
                 )
+            )
+        
+        latency = time.time() - start_time
+        print(f"   [AGENT] Inference completed in {latency:.3f}s.")
+        
+        print("\n=== VERIFICATION DECISION SUMMARY ===")
+        print(response.text)
+        print("======================================\n")
+        
+        # Extract accumulated telemetry data from ContextVar
+        t_data = run_telemetry.get()
+        
+        # Log resolved parameters
+        resolved_params = {
+            "historical_steam_avg_cents": t_data.get("historical_steam_avg_cents"),
+            "historical_skinport_avg_cents": t_data.get("historical_skinport_avg_cents"),
+            "cash_equivalent_avg_cents": t_data.get("cash_equivalent_avg_cents"),
+            "snipe_threshold_cents": t_data.get("snipe_threshold_cents"),
+            "is_liquid": t_data.get("is_liquid"),
+            "regime_shift_detected": t_data.get("regime_shift_detected"),
+            "downtrend_detected": t_data.get("downtrend_detected"),
+        }
+        for k, v in resolved_params.items():
+            client_mlflow.log_param(run_id, k, str(v) if v is not None else "None")
             
-            latency = time.time() - start_time
-            print(f"   [AGENT] Inference completed in {latency:.3f}s.")
+        # Log metrics
+        client_mlflow.log_metric(run_id, "gemini_latency_seconds", latency)
+        
+        if t_data.get("downtrend_severity") is not None:
+            client_mlflow.log_metric(run_id, "downtrend_severity", float(t_data.get("downtrend_severity")))
             
-            print("\n=== VERIFICATION DECISION SUMMARY ===")
-            print(response.text)
-            print("======================================\n")
+        alert_approved = 1 if t_data.get("alert_approved") else 0
+        client_mlflow.log_metric(run_id, "alert_approved", alert_approved)
+        
+        if t_data.get("item_page"):
+            client_mlflow.log_param(run_id, "item_page", t_data.get("item_page"))
             
-            # Extract accumulated telemetry data from ContextVar
-            t_data = run_telemetry.get()
+        # Log tracking tags
+        client_mlflow.set_tag(run_id, "status", "APPROVED" if alert_approved else "REJECTED")
+        client_mlflow.set_tag(run_id, "market_hash_name", payload.market_hash_name)
+        
+        # Save prompt and final reasoning as text artifacts
+        with tempfile.TemporaryDirectory() as tmpdir:
+            prompt_path = Path(tmpdir) / "prompt.txt"
+            prompt_path.write_text(prompt, encoding="utf-8")
+            client_mlflow.log_artifact(run_id, str(prompt_path))
             
-            # Log resolved parameters and metrics
-            mlflow.log_params({
-                "historical_steam_avg_cents": t_data.get("historical_steam_avg_cents"),
-                "historical_skinport_avg_cents": t_data.get("historical_skinport_avg_cents"),
-                "cash_equivalent_avg_cents": t_data.get("cash_equivalent_avg_cents"),
-                "snipe_threshold_cents": t_data.get("snipe_threshold_cents"),
-                "is_liquid": t_data.get("is_liquid"),
-                "regime_shift_detected": t_data.get("regime_shift_detected"),
-                "downtrend_detected": t_data.get("downtrend_detected"),
-            })
+            reasoning_path = Path(tmpdir) / "reasoning.txt"
+            reasoning_path.write_text(response.text, encoding="utf-8")
+            client_mlflow.log_artifact(run_id, str(reasoning_path))
             
-            # Log metrics
-            mlflow.log_metric("gemini_latency_seconds", latency)
-            
-            if t_data.get("downtrend_severity") is not None:
-                mlflow.log_metric("downtrend_severity", t_data.get("downtrend_severity"))
-                
-            alert_approved = 1 if t_data.get("alert_approved") else 0
-            mlflow.log_metric("alert_approved", alert_approved)
-            
-            if t_data.get("item_page"):
-                mlflow.log_param("item_page", t_data.get("item_page"))
-                
-            # Log tracking tags
-            mlflow.set_tag("status", "APPROVED" if alert_approved else "REJECTED")
-            mlflow.set_tag("market_hash_name", payload.market_hash_name)
-            
-            # Save prompt and final reasoning as text artifacts
-            mlflow.log_text(prompt, "prompt.txt")
-            mlflow.log_text(response.text, "reasoning.txt")
-            
-            return response.text
+        client_mlflow.set_terminated(run_id, status="FINISHED")
+        
+        print(f" View run verify_{payload.market_hash_name} at: http://localhost:5000/#/experiments/{experiment_id}/runs/{run_id}")
+        print(f" View experiment at: http://localhost:5000/#/experiments/{experiment_id}")
+        
+        return response.text
             
     except Exception as e:
         print(f"[AGENT] Failed during verification loop execution: {e}")
         try:
-            mlflow.set_tag("status", "FAILED")
-            mlflow.log_text(str(e), "error.txt")
+            client_mlflow.set_tag(run_id, "status", "FAILED")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                err_path = Path(tmpdir) / "error.txt"
+                err_path.write_text(str(e), encoding="utf-8")
+                client_mlflow.log_artifact(run_id, str(err_path))
+            client_mlflow.set_terminated(run_id, status="FAILED")
         except Exception:
             pass
         raise e
