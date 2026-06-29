@@ -11,7 +11,7 @@ from langfuse import observe, propagate_attributes
 from mlflow.client import MlflowClient
 
 # Add project root and apps/backend to sys.path
-PROJECT_ROOT = Path(r"c:\Users\ilaur\git\brand-sniper-monorepo")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
 sys.path.append(str(PROJECT_ROOT / "apps" / "backend"))
 

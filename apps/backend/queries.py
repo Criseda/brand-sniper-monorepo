@@ -3,7 +3,21 @@ import time
 from sqlalchemy import select, func
 from database import AsyncSessionLocal
 from shared_utils.models import MarketItem, HistoricalPrice, LiveMarketTick, ItemMacroBaseline
-from shared_utils import parse_version_from_name
+from shared_utils import parse_version_from_name, to_cents, resolve_recent_median, detect_downtrend
+
+# Shared aiohttp session for backend API requests
+_backend_session: aiohttp.ClientSession | None = None
+
+
+async def _get_session() -> aiohttp.ClientSession:
+    """Returns a shared aiohttp session for backend API calls."""
+    global _backend_session
+    if _backend_session is None or _backend_session.closed:
+        _backend_session = aiohttp.ClientSession(
+            headers={"Accept-Encoding": "br"},
+            timeout=aiohttp.ClientTimeout(total=10, connect=3)
+        )
+    return _backend_session
 
 # Global in-memory cache to prevent sales history API rate limit exhaustion
 # Map: (market_hash_name, version) -> (inserted_timestamp, entry_dict)
@@ -35,23 +49,23 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
         "Accept-Encoding": "br"
     }
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, params=params, headers=headers, timeout=5.0) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if isinstance(data, list) and len(data) > 0:
-                        resolved_entry = data[0]
-                        if version:
-                            for entry in data:
-                                if entry.get("version") == version:
-                                    resolved_entry = entry
-                                    break
-                        
-                        # Store in cache with current timestamp
-                        sales_history_cache[cache_key] = (now, resolved_entry)
-                        return resolved_entry
-                else:
-                    print(f"[SKINPORT API] Non-200 status fetching history for '{market_hash_name}': {response.status}")
+        session = await _get_session()
+        async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5, connect=2)) as response:
+            if response.status == 200:
+                data = await response.json()
+                if isinstance(data, list) and len(data) > 0:
+                    resolved_entry = data[0]
+                    if version:
+                        for entry in data:
+                            if entry.get("version") == version:
+                                resolved_entry = entry
+                                break
+                    
+                    # Store in cache with current timestamp
+                    sales_history_cache[cache_key] = (now, resolved_entry)
+                    return resolved_entry
+            else:
+                print(f"[SKINPORT API] Non-200 status fetching history for '{market_hash_name}': {response.status}")
     except Exception as e:
         print(f"[SKINPORT API] Error fetching sales history for '{market_hash_name}': {e}")
     return {}
@@ -66,28 +80,9 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
     # 1. Try to fetch from live Skinport history API (automatically caches)
     history = await fetch_skinport_sales_history(sticker_name)
     if history:
-        h24 = history.get("last_24_hours", {})
-        h7 = history.get("last_7_days", {})
-        h30 = history.get("last_30_days", {})
-        h90 = history.get("last_90_days", {})
-        
-        def to_cents(val):
-            return round(float(val) * 100) if val is not None else None
-            
-        m24 = to_cents(h24.get("median"))
-        m7 = to_cents(h7.get("median"))
-        m30 = to_cents(h30.get("median"))
-        m90 = to_cents(h90.get("median"))
-        
-        # Check median in order of recency with active volume
-        if m24 and h24.get("volume", 0) > 0:
-            return m24
-        elif m7 and h7.get("volume", 0) > 0:
-            return m7
-        elif m30 and h30.get("volume", 0) > 0:
-            return m30
-        elif m90:
-            return m90
+        median_usd = resolve_recent_median(history)
+        if median_usd is not None:
+            return to_cents(median_usd)
 
     # 2. Database Fallback (if API is rate-limited or offline)
     print(f"[SKINPORT API] Fallback to database lookup for sticker '{sticker_name}'")
@@ -203,41 +198,11 @@ async def get_item_market_context(market_hash_name: str) -> dict:
         downtrend_severity = 0.0
         
         if skinport_history:
-            h24 = skinport_history.get("last_24_hours", {})
-            h7 = skinport_history.get("last_7_days", {})
-            h30 = skinport_history.get("last_30_days", {})
-            h90 = skinport_history.get("last_90_days", {})
-            
-            def to_cents(val):
-                return round(float(val) * 100) if val is not None else None
-                
-            m24 = to_cents(h24.get("median"))
-            m7 = to_cents(h7.get("median"))
-            m30 = to_cents(h30.get("median"))
-            m90 = to_cents(h90.get("median"))
-            
-            # Resolve recent median (with active volume)
-            if m24 and h24.get("volume", 0) > 0:
-                real_time_median_cents = m24
-            elif m7 and h7.get("volume", 0) > 0:
-                real_time_median_cents = m7
-            elif m30 and h30.get("volume", 0) > 0:
-                real_time_median_cents = m30
-            else:
-                real_time_median_cents = m90
-                
-            # Downtrend check (compare 7-day median vs 30-day, and check 24h vs 7d for short-term panic)
-            ref_recent = m7 if m7 else m24
-            ref_older = m30 if m30 else m90
-            
-            if ref_recent and ref_older and ref_recent < ref_older:
-                downtrend_detected = True
-                downtrend_severity += (ref_older - ref_recent) / ref_older
-                
-            # Short-term panic check (24h median lower than 7-day average)
-            if m24 and m7 and m24 < m7:
-                downtrend_detected = True
-                downtrend_severity += (m7 - m24) / m7
+            median_usd = resolve_recent_median(skinport_history)
+            if median_usd is not None:
+                real_time_median_cents = to_cents(median_usd)
+
+            downtrend_detected, downtrend_severity = detect_downtrend(skinport_history)
         
         # 7. Apply market-specific cash discount corridors (relative to Steam list price)
         if item_type in ["Knife", "Glove"]:
