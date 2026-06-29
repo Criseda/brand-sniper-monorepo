@@ -102,7 +102,6 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str):
                 last_ts, last_price = dedup_cache.get(tick.market_hash_name, (0, 0))
                 # If price is unchanged and less than 5 minutes have elapsed, skip
                 if tick.price_cents == last_price and (tick.timestamp - last_ts) < 300:
-                    queue.task_done()
                     continue
                 
                 # Update deduplication state
@@ -137,7 +136,11 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str):
                     variance = sum((x - mean_cents) ** 2 for x in historical_prices) / n
                     std_dev = math.sqrt(variance)
                     
-                    z_score = (current_tick_price - mean_cents) / std_dev if std_dev > 0 else 0.0
+                    # Regularize standard deviation to prevent hyper-sensitivity on low-variance histories
+                    # Minimum standard deviation is 4% of the historical mean
+                    min_std_dev = mean_cents * 0.04
+                    effective_std_dev = max(std_dev, min_std_dev)
+                    z_score = (current_tick_price - mean_cents) / effective_std_dev
                     
                     # Relaxed trigger threshold if item has applied stickers
                     sticker_count = len(tick.stickers)
@@ -172,6 +175,46 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str):
     finally:
         await cache.aclose()
 
+async def start_sidecar_process():
+    """Spawns the Node.js WebSocket scraper sidecar as an async subprocess and handles its lifetime."""
+    sidecar_path = Path(__file__).parent / "scrapers" / "skinport_websocket" / "sidecar.js"
+    if not sidecar_path.exists():
+        print(f"[AGENT] Warning: Sidecar script not found at {sidecar_path}")
+        return
+
+    print(f"[AGENT] Spawning Node.js sidecar: {sidecar_path}")
+    proc = None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "node",
+            str(sidecar_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        async def log_stream(stream, prefix):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                print(f"{prefix}{line.decode('utf-8').strip()}")
+                
+        asyncio.create_task(log_stream(proc.stdout, ""))
+        asyncio.create_task(log_stream(proc.stderr, "[SKINPORT WS ERR] "))
+        
+        await proc.wait()
+        print(f"[AGENT] Node.js sidecar process exited with code {proc.returncode}")
+    except Exception as e:
+        print(f"[AGENT] Error running Node.js sidecar: {e}")
+    finally:
+        if proc and proc.returncode is None:
+            print("[AGENT] Terminating Node.js sidecar process...")
+            try:
+                proc.terminate()
+                await proc.wait()
+            except Exception:
+                pass
+
 async def process_live_telemetry_stream(platform_target: str):
     print("======================================================================")
     print(f"Initializing Extensible Stream Engine: {platform_target.upper()}")
@@ -186,8 +229,15 @@ async def process_live_telemetry_stream(platform_target: str):
         asyncio.create_task(rest_poll_producer(scraper, queue)),
         asyncio.create_task(websocket_subscriber_producer(scraper, queue))
     ]
+    
+    if platform_target == "skinport":
+        tasks.append(asyncio.create_task(start_sidecar_process()))
         
-    await asyncio.gather(*tasks)
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        # Extra fallback cleanup to ensure sidecar task cancellation is handled
+        pass
 
 if __name__ == "__main__":
     asyncio.run(process_live_telemetry_stream("skinport"))

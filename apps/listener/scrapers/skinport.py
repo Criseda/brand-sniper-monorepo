@@ -25,6 +25,7 @@ class SkinportScraper(BaseScraper):
         # Map: (base_name, version) -> (inserted_timestamp, entry_dict)
         self.history_cache = {}
         self.cache_ttl = 600  # 10 minutes cache TTL
+        self.history_api_cooldown_until = 0.0
         
     def _build_auth_header(self) -> str:
         """Constructs a compliant HTTP Basic Authentication header string using Base64 encoding."""
@@ -109,10 +110,13 @@ class SkinportScraper(BaseScraper):
         and determines if the price represents a genuine discount (e.g. <= 15% discount)
         adjusted for active downtrends to prevent alerting on structural market shifts.
         """
+        now = time.time()
+        if now < self.history_api_cooldown_until:
+            return True
+            
         try:
             base_name, version = parse_version_from_name(market_hash_name)
             
-            now = time.time()
             cache_key = (base_name, version)
             target_entry = None
             
@@ -143,6 +147,9 @@ class SkinportScraper(BaseScraper):
                     async with session.get(url, params=params, timeout=5.0) as response:
                         if response.status != 200:
                             print(f"[SKINPORT HISTORY] Non-200 status fetching history for '{base_name}': {response.status}")
+                            if response.status == 429:
+                                print(f"[SKINPORT HISTORY] Rate limit hit (429) fetching history for '{base_name}'. Cooldown active for 60 seconds.")
+                                self.history_api_cooldown_until = now + 60.0
                             return True  # Fallback to True to let backend double check
                         
                         data = await response.json()
@@ -165,10 +172,10 @@ class SkinportScraper(BaseScraper):
                 return True
                 
             # Run evaluation on target_entry
-            h24 = target_entry.get("last_24_hours", {})
-            h7 = target_entry.get("last_7_days", {})
-            h30 = target_entry.get("last_30_days", {})
-            h90 = target_entry.get("last_90_days", {})
+            h24 = target_entry.get("last_24_hours") or {}
+            h7 = target_entry.get("last_7_days") or {}
+            h30 = target_entry.get("last_30_days") or {}
+            h90 = target_entry.get("last_90_days") or {}
             
             m24 = h24.get("median")
             m7 = h7.get("median")

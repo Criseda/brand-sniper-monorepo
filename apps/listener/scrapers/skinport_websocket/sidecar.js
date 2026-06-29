@@ -44,12 +44,14 @@ async function main() {
         });
     });
 
-    socket.onAny((eventName, ...args) => {
-        console.log(`[SKINPORT WS ANY] Event: ${eventName}, Args length: ${args.length}`);
-        if (eventName === 'saleFeed' && args.length > 0) {
-            console.log(`[SKINPORT WS ANY] saleFeed payload:`, JSON.stringify(args[0]).slice(0, 500));
-        }
-    });
+    if (process.env.DEBUG_TELEMETRY === 'true') {
+        socket.onAny((eventName, ...args) => {
+            console.log(`[SKINPORT WS ANY] Event: ${eventName}, Args length: ${args.length}`);
+            if (eventName === 'saleFeed' && args.length > 0) {
+                console.log(`[SKINPORT WS ANY] saleFeed payload:`, JSON.stringify(args[0]).slice(0, 500));
+            }
+        });
+    }
 
     socket.on('disconnect', (reason) => {
         console.log(`[SKINPORT WS] WebSocket disconnected. Reason: ${reason}`);
