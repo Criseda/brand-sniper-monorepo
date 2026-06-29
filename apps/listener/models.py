@@ -9,6 +9,8 @@ class MarketTick(BaseModel):
         default_factory=lambda: int(datetime.now(timezone.utc).timestamp()),
         description="Unix timestamp of when the tick was parsed"
     )
+    float_value: float | None = Field(default=None, description="Asset wear float value if available")
+    stickers: list[dict] = Field(default_factory=list, description="List of applied stickers on the asset")
 
     @property
     def price_cents(self) -> int:

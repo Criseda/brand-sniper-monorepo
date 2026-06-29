@@ -8,6 +8,8 @@ class AnomalyAlertPayload(BaseModel):
     price_cents: int = Field(..., gt=0)
     z_score: float = Field(..., description="The edge-computed volatility metric")
     triggered_at: int = Field(..., description="Unix timestamp of the edge trigger event")
+    float_value: float | None = Field(default=None, description="Asset wear float value if available")
+    stickers: List[dict] = Field(default_factory=list, description="List of applied stickers on the asset")
 
 class BulkPriceTick(BaseModel):
     """Schema for an individual item vector within a bulk operation snapshot."""

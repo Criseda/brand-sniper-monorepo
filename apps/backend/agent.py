@@ -18,6 +18,7 @@ sys.path.append(str(PROJECT_ROOT / "apps" / "backend"))
 from tools import get_market_context, verify_float_value, confirm_alert_approval
 from schemas import AnomalyAlertPayload
 from telemetry import run_telemetry
+from queries import get_sticker_price_cents
 
 # Configure local MLflow server target and experiment client
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -42,26 +43,53 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
     client = genai.Client()
     tools_list = [get_market_context, verify_float_value, confirm_alert_approval]
     
+    # Resolve wear from payload if available, falling back to float_val argument
+    resolved_wear = payload.float_value if payload.float_value is not None else float_val
+    
+    # Resolve and format sticker context if available
+    stickers_info = ""
+    total_sticker_value_cents = 0
+    if hasattr(payload, "stickers") and payload.stickers:
+        stickers_context = []
+        for s in payload.stickers:
+            name = s.get("name")
+            wear = s.get("wear")
+            if name:
+                price = await get_sticker_price_cents(name)
+                if price is not None:
+                    stickers_context.append(f"- {name} (Wear: {wear if wear is not None else 0.0:.4f}, Standalone Market Price: ${price/100:.2f})")
+                    total_sticker_value_cents += price
+                else:
+                    stickers_context.append(f"- {name} (Wear: {wear if wear is not None else 0.0:.4f}, Standalone Market Price: Unknown)")
+        if stickers_context:
+            stickers_info = "\nApplied Stickers Details:\n" + "\n".join(stickers_context) + f"\nTotal Standalone Sticker Value: ${total_sticker_value_cents/100:.2f}\n"
+
     # Build the GenAI Analyst prompt
     prompt = f"""
     You are a Lead Sniping Analyst for a digital asset arbitrage system.
     We have intercepted a potential pricing anomaly:
     - Asset Name: {payload.market_hash_name}
     - Alert Price: ${payload.price_usd:.2f} ({payload.price_cents} cents)
-    - Edge Z-Score: {payload.z_score}
+    - Edge Z-Score: {payload.z_score}{stickers_info}
     
     Verify this opportunity using the available tools:
     1. Call 'get_market_context' to retrieve database baselines, target snipe thresholds, and the marketplace pages.
     2. Check if the alert price is less than or equal to the calculated 'snipe_threshold_cents'.
-    3. Evaluate the float wear if available (Alert float value: {float_val if float_val is not None else 'None'}) using 'verify_float_value'.
-    4. If and ONLY IF the alert price is verified to be a genuine deep discount (less than or equal to the threshold), call 'confirm_alert_approval' to approve the alert and register the direct purchase link ('item_page').
-    5. Formulate a final summary response detailing your reasoning, baseline values, target threshold, wear premium checks, the verification status (APPROVED or REJECTED), and include the direct purchase link ('item_page') prominently so the user can click it to buy it manually.
+    3. Evaluate the float wear if available (Alert float value: {resolved_wear if resolved_wear is not None else 'None'}) using 'verify_float_value'.
+    4. Evaluate sticker sniping premium if stickers are present:
+       - In CS2, applied stickers do not transfer 100% value. However, highly valuable stickers (total value > $100) add a 'sticker premium' (typically 2% to 10% of their standalone price) to the item.
+       - Calculate the Implied Sticker Percentage (SP%):
+         SP% = ((Alert Price Cents - Base Skin Value Cents) / Total Sticker Value Cents) * 100
+       - If the item is listed at or below its normal base skin value (implied SP% is 0% or negative), it is an automatic verification approval.
+       - If the item's price is slightly above the base skin threshold, but SP% is extremely low (e.g. less than 3%), this is still a high-priority snipe and should be approved.
+    5. If and ONLY IF the alert price is verified to be a genuine deep discount or represents an insane sticker sniping bargain, call 'confirm_alert_approval' to approve the alert and register the direct purchase link ('item_page').
+    6. Formulate a final summary response detailing your reasoning, baseline values, target threshold, wear premium checks, applied sticker calculations (including SP% if stickers are present), the verification status (APPROVED or REJECTED), and include the direct purchase link ('item_page') prominently so the user can click it to buy it manually.
     """
     
     # Initialize the local ContextVar tracking state for this run
     token = run_telemetry.set({
         "alert_approved": False,
-        "float_value": float_val,
+        "float_value": resolved_wear,
         "market_hash_name": payload.market_hash_name,
         "alert_price_cents": payload.price_cents,
         "alert_price_usd": payload.price_usd,
@@ -84,7 +112,9 @@ async def run_verification_loop(payload: AnomalyAlertPayload, float_val: float =
         client_mlflow.log_param(run_id, "alert_price_cents", str(payload.price_cents))
         client_mlflow.log_param(run_id, "alert_price_usd", str(payload.price_usd))
         client_mlflow.log_param(run_id, "edge_z_score", str(payload.z_score))
-        client_mlflow.log_param(run_id, "alert_float_value", str(float_val) if float_val is not None else "None")
+        client_mlflow.log_param(run_id, "alert_float_value", str(resolved_wear) if resolved_wear is not None else "None")
+        if total_sticker_value_cents > 0:
+            client_mlflow.log_param(run_id, "total_sticker_value_cents", str(total_sticker_value_cents))
         
         # Wrap the tool calling block inside the propagate_attributes context manager to attach metadata
         with propagate_attributes(

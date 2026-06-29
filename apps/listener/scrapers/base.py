@@ -21,4 +21,12 @@ class BaseScraper(ABC):
         Secondary verification using the platform's historical data API.
         Default implementation returns True.
         """
-        return True
+        return True
+
+    async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
+        """
+        Optional non-blocking generator that subscribes to the platform's 
+        WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects.
+        """
+        if False:
+            yield None

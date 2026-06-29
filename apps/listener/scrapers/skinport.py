@@ -1,9 +1,11 @@
 import asyncio
 import base64
+import json
 import os
 import time
 from typing import AsyncGenerator
 import aiohttp
+from redis.asyncio import Redis
 from scrapers.base import BaseScraper
 from models import MarketTick
 from shared_utils import parse_version_from_name
@@ -215,3 +217,58 @@ class SkinportScraper(BaseScraper):
         except Exception as e:
             print(f"[SKINPORT HISTORY] Error verifying anomaly for '{market_hash_name}': {e}")
             return True
+
+    async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
+        """
+        Subscribes to the local Redis Pub/Sub channel 'skinport:live_listings' 
+        to ingest real-time listings relayed by the Node.js WebSocket sidecar.
+        """
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = int(os.getenv("REDIS_PORT", 6379))
+        
+        cache = Redis(host=redis_host, port=redis_port, decode_responses=True)
+        pubsub = cache.pubsub()
+        await pubsub.subscribe("skinport:live_listings")
+        print("[SKINPORT WS] Subscribed to Redis channel 'skinport:live_listings'")
+        
+        try:
+            async for message in pubsub.listen():
+                if message["type"] != "message":
+                    continue
+                
+                try:
+                    data = json.loads(message["data"])
+                    sales = data.get("sales", [])
+                    for sale in sales:
+                        market_hash_name = sale.get("marketHashName")
+                        sale_price = sale.get("salePrice")
+                        
+                        if market_hash_name and sale_price is not None:
+                            # salePrice is in USD cents when currency is USD
+                            price_usd = float(sale_price) / 100.0
+                            wear = sale.get("wear")
+                            stickers = sale.get("stickers", [])
+                            
+                            # Handle version suffix in naming if present
+                            version = sale.get("version")
+                            if version and version != "default":
+                                wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
+                                for w in wears:
+                                    if market_hash_name.endswith(w):
+                                        base_name = market_hash_name[:-len(w)].strip()
+                                        market_hash_name = f"{base_name} ({version}) {w}"
+                                        break
+                                else:
+                                    market_hash_name = f"{market_hash_name} ({version})"
+
+                            yield MarketTick(
+                                market_hash_name=market_hash_name,
+                                price_usd=price_usd,
+                                float_value=wear,
+                                stickers=stickers
+                            )
+                except Exception as parse_err:
+                    print(f"[SKINPORT WS] Error parsing sidecar listing message: {parse_err}")
+        finally:
+            await pubsub.unsubscribe("skinport:live_listings")
+            await cache.aclose()

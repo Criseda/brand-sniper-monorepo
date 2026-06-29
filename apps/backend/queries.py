@@ -56,6 +56,78 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
         print(f"[SKINPORT API] Error fetching sales history for '{market_hash_name}': {e}")
     return {}
 
+async def get_sticker_price_cents(sticker_name: str) -> int | None:
+    """
+    Resolves the real-time average price of a sticker (in USD cents).
+    First tries to fetch the live Sales History API (which resolves age discrepancies),
+    then falls back to querying the database market_items and historical_prices tables.
+    Uses caching (via sales_history_cache) to honor the 8 requests/5 mins rate limit.
+    """
+    # 1. Try to fetch from live Skinport history API (automatically caches)
+    history = await fetch_skinport_sales_history(sticker_name)
+    if history:
+        h24 = history.get("last_24_hours", {})
+        h7 = history.get("last_7_days", {})
+        h30 = history.get("last_30_days", {})
+        h90 = history.get("last_90_days", {})
+        
+        def to_cents(val):
+            return round(float(val) * 100) if val is not None else None
+            
+        m24 = to_cents(h24.get("median"))
+        m7 = to_cents(h7.get("median"))
+        m30 = to_cents(h30.get("median"))
+        m90 = to_cents(h90.get("median"))
+        
+        # Check median in order of recency with active volume
+        if m24 and h24.get("volume", 0) > 0:
+            return m24
+        elif m7 and h7.get("volume", 0) > 0:
+            return m7
+        elif m30 and h30.get("volume", 0) > 0:
+            return m30
+        elif m90:
+            return m90
+
+    # 2. Database Fallback (if API is rate-limited or offline)
+    print(f"[SKINPORT API] Fallback to database lookup for sticker '{sticker_name}'")
+    try:
+        async with AsyncSessionLocal() as session:
+            # Resolve item_id for the sticker
+            item_stmt = (
+                select(MarketItem.id)
+                .where(MarketItem.market_hash_name == sticker_name)
+            )
+            item_res = await session.execute(item_stmt)
+            item_row = item_res.fetchone()
+            if not item_row:
+                return None
+            sticker_item_id = item_row[0]
+            
+            # Query historical average price
+            hist_stmt = (
+                select(func.avg(HistoricalPrice.median_price_cents))
+                .where(HistoricalPrice.item_id == sticker_item_id)
+            )
+            hist_res = await session.execute(hist_stmt)
+            avg_hist = hist_res.scalar()
+            if avg_hist is not None:
+                return round(float(avg_hist))
+                
+            # Query live ticks average price
+            live_stmt = (
+                select(func.avg(LiveMarketTick.price_cents))
+                .where(LiveMarketTick.item_id == sticker_item_id)
+            )
+            live_res = await session.execute(live_stmt)
+            avg_live = live_res.scalar()
+            if avg_live is not None:
+                return round(float(avg_live))
+    except Exception as dbe:
+        print(f"[DATABASE] Error during sticker database fallback lookup: {dbe}")
+        
+    return None
+
 async def get_item_market_context(market_hash_name: str) -> dict:
     """
     Queries historical data, macro baselines, and live API sales history,
