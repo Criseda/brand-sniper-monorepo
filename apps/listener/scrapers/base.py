@@ -7,6 +7,7 @@ class BaseScraper(ABC):
     
     def __init__(self, platform_name: str):
         self.platform_name = platform_name
+        self.sidecar_script_path = None  # Override in subclass if a Node.js sidecar is needed
 
     @abstractmethod
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
@@ -28,5 +29,5 @@ class BaseScraper(ABC):
         Optional non-blocking generator that subscribes to the platform's 
         WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects.
         """
-        if False:
-            yield None
+        return
+        yield

@@ -4,11 +4,15 @@ import json
 import os
 import time
 from typing import AsyncGenerator
+from pathlib import Path
+
 import aiohttp
 from redis.asyncio import Redis
+
 from scrapers.base import BaseScraper
 from models import MarketTick
-from shared_utils import parse_version_from_name
+from shared_utils import parse_version_from_name, build_versioned_name, resolve_recent_median
+
 
 class SkinportScraper(BaseScraper):
     """Production Ingestion Engine for Skinport utilizing Basic Auth and mandatory Brotli compression."""
@@ -27,6 +31,12 @@ class SkinportScraper(BaseScraper):
         self.cache_ttl = 600  # 10 minutes cache TTL
         self.history_api_cooldown_until = 0.0
         
+        # Sidecar script path for the Node.js WebSocket relay
+        self.sidecar_script_path = Path(__file__).parent / "skinport_websocket" / "sidecar.js"
+
+        # Shared session for API requests (lazy init)
+        self._session: aiohttp.ClientSession | None = None
+        
     def _build_auth_header(self) -> str:
         """Constructs a compliant HTTP Basic Authentication header string using Base64 encoding."""
         if not self.client_id or not self.client_secret:
@@ -36,65 +46,72 @@ class SkinportScraper(BaseScraper):
         raw_credentials = f"{self.client_id}:{self.client_secret}"
         encoded_bytes = base64.b64encode(raw_credentials.encode("utf-8"))
         return f"Basic {encoded_bytes.decode('utf-8')}"
-        
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Returns a shared aiohttp session, creating it lazily if needed."""
+        if self._session is None or self._session.closed:
+            headers = {
+                "Accept": "application/json",
+                "Accept-Encoding": "br",
+                "User-Agent": "BrandSniperEdgeTelemetry/1.0"
+            }
+            auth_string = self._build_auth_header()
+            if auth_string:
+                headers["Authorization"] = auth_string
+            self._session = aiohttp.ClientSession(
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15, connect=5)
+            )
+        return self._session
+
+    async def close(self):
+        """Closes the shared session cleanly."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
         """Polls Skinport REST feeds, passing authenticated, Brotli-decompressed tokens down the pipe."""
-        headers = {
-            "Accept": "application/json",
-            "Accept-Encoding": "br",  # CRITICAL: Explicitly required by Skinport for this endpoint
-            "User-Agent": "BrandSniperEdgeTelemetry/1.0"
-        }
-        
-        # Inject authorization header if credentials exist
+        session = await self._get_session()
         auth_string = self._build_auth_header()
         if auth_string:
-            headers["Authorization"] = auth_string
             print("[SKINPORT] Basic Authentication token successfully compiled and injected.")
         
         backoff_seconds = 305
         while True:
             try:
-                async with aiohttp.ClientSession(headers=headers) as session:
-                    # Target CS2 inventory items denominated in USD
-                    params = {"app_id": 730, "currency": "USD", "tradable": 0}
+                # Target CS2 inventory items denominated in USD
+                params = {"app_id": 730, "currency": "USD", "tradable": 0}
+                
+                print(f"[SKINPORT] Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
+                async with session.get(self.api_url, params=params) as response:
                     
-                    print(f"[SKINPORT] Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
-                    async with session.get(self.api_url, params=params, timeout=15.0) as response:
+                    if response.status == 200:
+                        # aiohttp automatically uses the loaded 'brotli' library to transparently unpack the data
+                        raw_items = await response.json()
+                        print(f"[SKINPORT] Successfully decompressed {len(raw_items)} market entries.")
+                        backoff_seconds = 305  # Reset on success
                         
-                        if response.status == 200:
-                            # aiohttp automatically uses the loaded 'brotli' library to transparently unpack the data
-                            raw_items = await response.json()
-                            print(f"[SKINPORT] Successfully decompressed {len(raw_items)} market entries.")
-                            backoff_seconds = 305  # Reset on success
-                            
-                            for item in raw_items:
-                                # We track 'min_price' as our entry signal parameter
-                                if item.get("min_price") is not None:
-                                    market_hash_name = item["market_hash_name"]
-                                    version = item.get("version")
-                                    if version:
-                                        wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
-                                        for wear in wears:
-                                            if market_hash_name.endswith(wear):
-                                                base_name = market_hash_name[:-len(wear)].strip()
-                                                market_hash_name = f"{base_name} ({version}) {wear}"
-                                                break
-                                        else:
-                                            market_hash_name = f"{market_hash_name} ({version})"
-                                    yield MarketTick(
-                                        market_hash_name=market_hash_name,
-                                        price_usd=float(item["min_price"])
-                                    )
+                        for item in raw_items:
+                            # We track 'min_price' as our entry signal parameter
+                            if item.get("min_price") is not None:
+                                market_hash_name = item["market_hash_name"]
+                                version = item.get("version")
+                                market_hash_name = build_versioned_name(market_hash_name, version)
+                                yield MarketTick(
+                                    market_hash_name=market_hash_name,
+                                    price_usd=float(item["min_price"])
+                                )
                                     
-                        elif response.status == 401:
-                            print("[SKINPORT] API Rejected Credentials! Check your client ID and secret variables inside your .env file.")
-                            backoff_seconds = 305
-                        elif response.status == 429:
-                            backoff_seconds = min(1200, backoff_seconds * 2)
-                            print(f"[SKINPORT] High-velocity rate limits encountered. Backing off production loop... Retrying in {backoff_seconds} seconds.")
-                        else:
-                            print(f"[SKINPORT] Marketplace responded with unexpected HTTP status code: {response.status}")
-                            backoff_seconds = 305
+                    elif response.status == 401:
+                        print("[SKINPORT] API Rejected Credentials! Check your client ID and secret variables inside your .env file.")
+                        backoff_seconds = 305
+                    elif response.status == 429:
+                        backoff_seconds = min(1200, backoff_seconds * 2)
+                        print(f"[SKINPORT] High-velocity rate limits encountered. Backing off production loop... Retrying in {backoff_seconds} seconds.")
+                    else:
+                        print(f"[SKINPORT] Marketplace responded with unexpected HTTP status code: {response.status}")
+                        backoff_seconds = 305
                             
             except Exception as e:
                 print(f"[SKINPORT] Telemetry connection dropout encountered: {e}")
@@ -107,12 +124,13 @@ class SkinportScraper(BaseScraper):
     async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
         """
         Queries `/v1/sales/history` using the base name, filters for the matching version,
-        and determines if the price represents a genuine discount (e.g. <= 15% discount)
+        and determines if the price represents a genuine discount (e.g. <= 5% discount at edge)
         adjusted for active downtrends to prevent alerting on structural market shifts.
         """
         now = time.time()
         if now < self.history_api_cooldown_until:
-            return True
+            # During cooldown, skip verification (return False) to avoid dispatching unverified alerts
+            return False
             
         try:
             base_name, version = parse_version_from_name(market_hash_name)
@@ -134,83 +152,43 @@ class SkinportScraper(BaseScraper):
                     "currency": "USD",
                     "market_hash_name": base_name
                 }
-                headers = {
-                    "Accept-Encoding": "br",
-                    "User-Agent": "BrandSniperEdgeTelemetry/1.0"
-                }
-                auth_string = self._build_auth_header()
-                if auth_string:
-                    headers["Authorization"] = auth_string
+                session = await self._get_session()
 
-                # Create a localized session for verification
-                async with aiohttp.ClientSession(headers=headers) as session:
-                    async with session.get(url, params=params, timeout=5.0) as response:
-                        if response.status != 200:
-                            print(f"[SKINPORT HISTORY] Non-200 status fetching history for '{base_name}': {response.status}")
-                            if response.status == 429:
-                                print(f"[SKINPORT HISTORY] Rate limit hit (429) fetching history for '{base_name}'. Cooldown active for 60 seconds.")
-                                self.history_api_cooldown_until = now + 60.0
-                            return True  # Fallback to True to let backend double check
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5, connect=2)) as response:
+                    if response.status != 200:
+                        print(f"[SKINPORT HISTORY] Non-200 status fetching history for '{base_name}': {response.status}")
+                        if response.status == 429:
+                            print(f"[SKINPORT HISTORY] Rate limit hit (429) fetching history for '{base_name}'. Cooldown active for 60 seconds.")
+                            self.history_api_cooldown_until = now + 60.0
+                        return False  # Skip unverifiable anomalies instead of blindly approving
+                    
+                    data = await response.json()
+                    if not isinstance(data, list) or len(data) == 0:
+                        return True
+                    
+                    # Find entry matching our specific version
+                    for entry in data:
+                        if entry.get("version") == version:
+                            target_entry = entry
+                            break
+                    
+                    if not target_entry:
+                        target_entry = data[0]
                         
-                        data = await response.json()
-                        if not isinstance(data, list) or len(data) == 0:
-                            return True
-                        
-                        # Find entry matching our specific version
-                        for entry in data:
-                            if entry.get("version") == version:
-                                target_entry = entry
-                                break
-                        
-                        if not target_entry:
-                            target_entry = data[0]
-                            
-                        # Save in cache
-                        self.history_cache[cache_key] = (now, target_entry)
+                    # Save in cache
+                    self.history_cache[cache_key] = (now, target_entry)
 
             if not target_entry:
                 return True
                 
-            # Run evaluation on target_entry
-            h24 = target_entry.get("last_24_hours") or {}
-            h7 = target_entry.get("last_7_days") or {}
-            h30 = target_entry.get("last_30_days") or {}
-            h90 = target_entry.get("last_90_days") or {}
-            
-            m24 = h24.get("median")
-            m7 = h7.get("median")
-            m30 = h30.get("median")
-            m90 = h90.get("median")
-            
-            recent_median = None
-            if m24 and h24.get("volume", 0) > 0:
-                recent_median = m24
-            elif m7 and h7.get("volume", 0) > 0:
-                recent_median = m7
-            elif m30 and h30.get("volume", 0) > 0:
-                recent_median = m30
-            else:
-                recent_median = m90
+            # Resolve recent median using shared utility
+            recent_median = resolve_recent_median(target_entry)
                 
             if recent_median is None:
                 return True
                 
-            # Calculate active downtrend to apply discount buffer
-            downtrend_detected = False
-            downtrend_severity = 0.0
-            ref_recent = m7 if m7 else m24
-            ref_older = m30 if m30 else m90
-            
-            if ref_recent and ref_older and ref_recent < ref_older:
-                downtrend_detected = True
-                downtrend_severity += (ref_older - ref_recent) / ref_older
-                
-            if m24 and m7 and m24 < m7:
-                downtrend_detected = True
-                downtrend_severity += (m7 - m24) / m7
-                
+            # Edge pre-filter: 5% discount threshold (backend applies stricter 15% with downtrend penalties)
             base_discount = 0.95
-            # Edge pre-filter does not apply downtrend penalties to avoid filtering moderate discounts (e.g. 8-12%)
             applied_discount = base_discount
                 
             threshold = recent_median * applied_discount
@@ -256,17 +234,9 @@ class SkinportScraper(BaseScraper):
                             wear = sale.get("wear")
                             stickers = sale.get("stickers", [])
                             
-                            # Handle version suffix in naming if present
+                            # Handle version suffix using shared utility
                             version = sale.get("version")
-                            if version and version != "default":
-                                wears = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
-                                for w in wears:
-                                    if market_hash_name.endswith(w):
-                                        base_name = market_hash_name[:-len(w)].strip()
-                                        market_hash_name = f"{base_name} ({version}) {w}"
-                                        break
-                                else:
-                                    market_hash_name = f"{market_hash_name} ({version})"
+                            market_hash_name = build_versioned_name(market_hash_name, version)
 
                             yield MarketTick(
                                 market_hash_name=market_hash_name,
