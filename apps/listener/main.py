@@ -212,7 +212,7 @@ async def verify_and_dispatch(tick: MarketTick, z_score: float, scraper):
 
 async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
     """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
-    cache = Redis(host="localhost", port=6379, decode_responses=True)
+    cache = Redis(host="localhost", port=6380, decode_responses=True)
     
     batch_buffer = []
     dedup_cache = OrderedDict()
