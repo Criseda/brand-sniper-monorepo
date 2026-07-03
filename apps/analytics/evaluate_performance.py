@@ -8,6 +8,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
 sys.path.append(str(PROJECT_ROOT / "packages" / "shared_utils" / "src"))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from prefect import flow, task
 from sqlmodel import select, Session, create_engine
 import mlflow
@@ -53,7 +56,8 @@ Return your evaluation in strict JSON format:
 def fetch_daily_trades():
     with Session(engine) as session:
         # Fetching all trades for demonstration (in production, filter by today's date)
-        stmt = select(SimulatedTrade, MarketItem.market_hash_name).join(MarketItem, SimulatedTrade.item_id == MarketItem.id)
+        # We limit to 1 here to strictly respect Gemini Free Tier Quotas (5 requests / min)
+        stmt = select(SimulatedTrade, MarketItem.market_hash_name).join(MarketItem, SimulatedTrade.item_id == MarketItem.id).limit(1)
         results = session.execute(stmt).all()
         return results
 
@@ -72,22 +76,32 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
     
     try:
         # We pass the FastMCP tools directly to Gemini to avoid ad-hoc JSON execution layers
+        # Note: We cannot use response_mime_type="application/json" with tools=[] in the Gemini API.
         chat = gemini_client.chats.create(
             model="gemini-2.5-flash",
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
-                tools=[fetch_live_market_floor, search_macro_trends],
-                response_mime_type="application/json"
+                tools=[fetch_live_market_floor, search_macro_trends]
             )
         )
         
         response = chat.send_message(prompt)
-        result_json = json.loads(response.text)
+        
+        # Clean markdown code blocks from response
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
+        result_json = json.loads(raw_text.strip())
         score = result_json.get("confidence_score", 0)
         reasoning = result_json.get("reasoning", "No reasoning provided.")
         
-        print(f"   -> CFO Score: {score}/100")
-        print(f"   -> CFO Reasoning: {reasoning}")
+        safe_reasoning = reasoning.encode('ascii', 'ignore').decode('ascii')
+        print(f"   -> CFO Reasoning: {safe_reasoning}")
         
         # Log the evaluation to MLflow securely
         with mlflow.start_run(experiment_id=experiment_id, run_name=f"audit_{item_name}") as run:
@@ -97,10 +111,13 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
             mlflow.log_metric("cfo_confidence_score", score)
             mlflow.set_tag("eval_status", "APPROVED" if score >= 70 else "REJECTED")
             
-            # Log the CFO's full reasoning as an artifact (text file)
-            with open("cfo_reasoning.txt", "w") as f:
-                f.write(reasoning)
-            mlflow.log_artifact("cfo_reasoning.txt")
+            # Log the CFO's full reasoning as an artifact without polluting the repo
+            import tempfile
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = os.path.join(temp_dir, "cfo_reasoning.txt")
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    f.write(safe_reasoning)
+                mlflow.log_artifact(temp_path)
             
     except Exception as e:
         print(f"[ERROR] Gemini CFO failed to evaluate trade: {e}")
