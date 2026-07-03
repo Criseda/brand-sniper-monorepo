@@ -1,11 +1,11 @@
 import json
 
-def evaluate_opportunity(tick, redis_client) -> bool:
+async def evaluate_opportunity(tick, redis_client) -> bool:
     """
     Evaluates a market anomaly deterministically using macro baselines and sticker valuations.
     """
     # 1. Fetch baseline from Redis
-    baseline_raw = redis_client.get(f"baseline:{tick.market_hash_name}")
+    baseline_raw = await redis_client.get(f"baseline:{tick.market_hash_name}")
     if not baseline_raw:
         return False
         
@@ -25,7 +25,7 @@ def evaluate_opportunity(tick, redis_client) -> bool:
             name = sticker.get("name")
             if name:
                 # Fetch sticker price from Redis hashmap
-                price_str = redis_client.hget("sticker_prices", name)
+                price_str = await redis_client.hget("sticker_prices", name)
                 if price_str:
                     try:
                         total_sticker_value_cents += int(price_str)

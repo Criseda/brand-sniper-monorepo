@@ -23,58 +23,56 @@ flowchart TD
     Market[LIVE MARKET DATA STREAM]
 
     %% Edge Node Subgraph
-    subgraph Edge[RASPBERRY PI 5 Edge Node / Ingestion]
+    subgraph Edge[RASPBERRY PI 5 Edge Node / Hot Path]
         direction TB
         Listener[/apps/listener Async Polling/]:::process
-        Redis[(Redis Cache Hot 5-Min Window)]:::dataStore
-        Postgres[(PostgreSQL Database SQLModel/Alembic)]:::dataStore
-        Prometheus[(Prometheus / Grafana Observability Core)]:::dataStore
+        DRE[/Deterministic Rules Engine & Executor/]:::process
+        EdgeRedis[(Edge Redis Cache 6380)]:::dataStore
         
-        Listener -->|High-Frequency Ticks| Redis
-        Listener -->|Bulk Batches| Postgres
+        Listener -->|High-Frequency Ticks| DRE
+        DRE <-->|O(1) Baseline Lookup| EdgeRedis
     end
     Edge:::edgeNode
 
     Market -->|WebSockets / REST| Listener
 
     %% Compute Node Subgraph
-    subgraph Compute[WINDOWS PC Compute & Agentic Engine]
+    subgraph Compute[WINDOWS PC Command Center / Cold Path]
         direction TB
-        Backend[/apps/backend FastAPI & DRE/]:::process
-        Analytics[/apps/analytics Prefect CFO Pipeline/]:::process
+        Backend[/apps/backend FastAPI Core/]:::process
+        Analytics[/apps/analytics Prefect Macro & CFO/]:::process
+        Postgres[(PostgreSQL Database SQLModel)]:::dataStore
+        Prometheus[(Prometheus / Grafana Observability)]:::dataStore
         MLflow[(MLflow Server Model Registry)]:::dataStore
         Gemini[Google Gemini API Adversarial Agent]:::process
 
-        Backend -->|Executes synchronous trades| Postgres
+        Backend -->|Logs simulated trades| Postgres
+        Backend -->|"Scrapes Metrics"| Prometheus
         Analytics -->|Fetches trades to Audit| Postgres
         Analytics <-->|Agentic Reasoning Loop| Gemini
         Analytics -->|Logs Audits & Rants| MLflow
+        Analytics -->|Syncs offline ML models to Edge| EdgeRedis
     end
     Compute:::computeNode
 
     %% Cross-Network Connections
-    Edge <-->|"Local Network LAN"| Compute
-    Backend -->|"Scrapes Metrics"| Prometheus
-    Backend -->|"O(1) Baseline Lookup"| Redis
-    
-    %% Alerts
-    Discord[DISCORD WEBHOOK ALERT]:::alert
-    Backend -->|Notifies| Discord
+    DRE -->|Async POST Trade Logs| Backend
+    Listener -->|Async POST Batched Ticks| Backend
 ```
 
 ### 📡 1. The Short-Term Anomaly Path (The Edge)
-Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks. It writes incoming vectors concurrently to a Redis hot-cache window and a cold PostgreSQL history database. 
+Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks. It writes incoming vectors concurrently to a local Edge Redis hot-cache window, and instantly evaluates them. 
 
 ### ⚡ 2. The Deterministic Rules Engine (The Hot Path)
-When `/apps/backend` receives a signal, the **Deterministic Rules Engine (DRE)** queries Redis in `O(1)` time (sub-millisecond latency) to construct a localized baseline. If the mathematical Z-score indicates a severe anomaly, the `PaperExecutor` immediately executes a simulated trade synchronously. **Average latency: <20ms.**
+When a statistical anomaly is detected, the **Deterministic Rules Engine (DRE)**—now residing entirely on the Edge Node—queries the Edge Redis in `O(1)` time (sub-millisecond latency) to validate the drop against long-term ML baselines. If verified, the local `PaperExecutor` executes the trade synchronously, totally bypassing the network boundary. **Average latency: <5ms.**
 
 ### 📈 3. Observability (Grafana & Prometheus)
-Zero blocking external dependencies. The hot path increments memory-safe `prometheus_client` gauges and histograms. Prometheus scrapes this data on a schedule, and **Grafana** provides a stunning real-time visualization of simulated PnL and DRE execution latency.
+The Edge Node asynchronously POSTs the execution logs to the Windows backend. The backend increments memory-safe `prometheus_client` gauges and histograms. Prometheus scrapes this data on a schedule, and **Grafana** provides a stunning real-time visualization of simulated PnL.
 
 ### 🧠 4. The Adversarial CFO (The Cold Path)
-To prevent Circular Feedback Loops (where the AI grades trades using the same stale database data that triggered them), we built the **Adversarial CFO**.
+To prevent Circular Feedback Loops, we built the **Adversarial CFO**.
 Orchestrated by **Prefect**, this daily offline pipeline feeds the bot's simulated trades to Google's **Gemini**. The AI is armed with **FastMCP** tools (`fetch_live_market_floor`, `search_macro_trends`), allowing it to scrape the *actual live internet* to prove the bot wrong (e.g. detecting falling knives or market crashes). 
-Its final grade and reasoning trace are logged immutably into **MLflow**.
+Its final grade and reasoning trace are logged immutably into **MLflow**. Prefect then syncs the newly evaluated ML baselines back across the network to the Edge Redis cache.
 
 ---
 

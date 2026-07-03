@@ -21,7 +21,13 @@ cp .env.example .env
 ```
 Ensure `GEMINI_API_KEY` is populated. The pipeline automatically enforces rate-limiting safeguards for Free-Tier Gemini keys (query limits and cooldowns).
 
-### 2. Run the Evaluation Flow
+### 2. Update Edge Baselines
+The Prefect pipeline calculates macro baseline statistics over the Postgres history and syncs them to the Edge Node's local Redis cache, providing the DRE with O(1) intelligence.
+```bash
+uv run python update_baselines.py
+```
+
+### 3. Run the Evaluation Flow
 The Prefect flow queries the latest simulated trades and orchestrates the Gemini Agent to audit them.
 
 ```bash

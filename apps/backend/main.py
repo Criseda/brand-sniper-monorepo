@@ -21,6 +21,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from schemas import BulkIngestionPayload, SimulatedTradePayload
 from database import AsyncSessionLocal, engine
 from shared_utils import parse_item_meta
+from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
 from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice, SimulatedTrade
 
 @asynccontextmanager
@@ -78,6 +79,11 @@ async def get_or_create_item_id(session, name: str) -> int:
 @app.post("/api/v1/ingest/trade", status_code=status.HTTP_201_CREATED)
 async def ingest_simulated_trade(payload: SimulatedTradePayload):
     print(f"\n[CORE COMPUTE] Logging Simulated Trade: {payload.market_hash_name} for ${payload.purchase_price_cents/100:.2f}")
+    
+    # Update Prometheus Telemetry
+    paper_trades_executed_total.inc()
+    paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
+    
     async with AsyncSessionLocal() as session:
         async with session.begin():
             item_id = await get_or_create_item_id(session, payload.market_hash_name)

@@ -1,20 +1,16 @@
-# Backend: Deterministic Rules Engine (DRE) & API
+# Backend: API Core & Telemetry Gateway
 
-The Backend application is the **Hot Path** of the Brand Sniper engine. It is designed entirely for hyper-speed and deterministic execution, stripping away all heavy dependencies like Large Language Models (LLMs) or synchronous tracking architectures.
+The Backend application is a high-throughput **Cold Path API Node** running on the Windows Compute Engine. It has been stripped of all heavy processing and decision-making logic (the DRE was moved to the Edge Node). It acts as the central router for data persistence and telemetry observability.
 
 ## ⚡ Core Components
 
-### 1. Deterministic Rules Engine (`rules_engine.py`)
-Replaces the old AI verifier. When a market tick arrives, the DRE queries the Redis Hot Cache to fetch the asset's rolling standard deviation (Z-Score) baseline. Because it uses native math and `O(1)` memory lookups instead of ML inference, it evaluates pricing anomalies in under a millisecond.
+### 1. Fast Data Ingestion (`main.py`)
+Provides REST API endpoints (`/api/v1/ingest/bulk` and `/api/v1/ingest/trade`) for the Edge Node to asynchronously push market ticks and simulated trade logs. It utilizes native `SQLModel` async sessions to insert data into PostgreSQL efficiently, minimizing locking overhead.
 
-### 2. Paper Executor (`executor.py`)
-When the DRE validates a `True` signal (e.g. Z-Score < -2.5), the executor instantly commits a `SimulatedTrade` row into the PostgreSQL database via `asyncpg`. This decouples the trading logic from external HTTP API bottlenecks during paper-trading phases.
-
-### 3. Real-Time Observability (`telemetry.py`)
-MLflow has been completely stripped from the hot path. Instead, the backend leverages non-blocking `prometheus_client` instruments:
-- **`paper_trading_estimated_profit_total`**: A Gauge tracking total un-realized PnL.
-- **`total_trade_executions`**: A Counter of successful snipes.
-- **`rules_engine_latency_seconds`**: A Histogram measuring the microseconds spent verifying the trade.
+### 2. Real-Time Observability (`telemetry.py`)
+Acts as the central scraping target for the local Prometheus server. It leverages non-blocking `prometheus_client` instruments:
+- **`paper_trading_estimated_profit_total`**: A Gauge tracking total un-realized PnL of simulated trades.
+- **`paper_trades_executed_total`**: A Counter tracking the number of successful snipes executed by the Edge node.
 
 ## 🚀 Setup & Execution
 
@@ -26,7 +22,7 @@ cp .env.example .env
 *(No AI API keys are required for the Backend app).*
 
 ### 2. Run the API Server
-Ensure your Docker Compose stack (Redis, Postgres) is running first, then launch FastAPI:
+Ensure your Docker Compose stack (Postgres, Prometheus, Grafana) is running first, then launch FastAPI:
 
 ```bash
 uv run fastapi dev main.py --port 8080
@@ -35,4 +31,4 @@ uv run fastapi dev main.py --port 8080
 ### 3. View the Dashboards
 - **FastAPI Swagger Docs**: `http://localhost:8080/docs`
 - **Prometheus Metrics Scrape Endpoint**: `http://localhost:8080/metrics`
-- **Grafana Live Dashboard**: `http://localhost:3000` (Use the `grafana_dashboard.json` file in this directory to import the visualizer).
+- **Grafana Live Dashboard**: `http://localhost:3000` (Use the `grafana_dashboard.json` file in the deployments directory to import the visualizer).

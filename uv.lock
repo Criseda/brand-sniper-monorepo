@@ -201,6 +201,7 @@ dependencies = [
     { name = "prefect" },
     { name = "psycopg2-binary" },
     { name = "pytest-mock" },
+    { name = "redis" },
     { name = "shared-utils" },
 ]
 
@@ -214,6 +215,7 @@ requires-dist = [
     { name = "prefect", specifier = ">=3.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pytest-mock", specifier = ">=3.15.1" },
+    { name = "redis", specifier = ">=5.0.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
 ]
 
@@ -1879,6 +1881,13 @@ dependencies = [
     { name = "shared-utils" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-mock" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
@@ -1886,6 +1895,13 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "pytest-mock", specifier = ">=3.15.1" },
 ]
 
 [[package]]
