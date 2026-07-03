@@ -22,14 +22,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: sniper_redis
-    ports:
-      - "6379:6379"
-    networks:
-      - sniper_network
-    restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server

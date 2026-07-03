@@ -18,11 +18,10 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-from agent import run_verification_loop
-from schemas import AnomalyAlertPayload, BulkIngestionPayload
+from schemas import BulkIngestionPayload, SimulatedTradePayload
 from database import AsyncSessionLocal, engine
 from shared_utils import parse_item_meta
-from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice
+from shared_utils.models import MarketItem, LiveMarketTick, HistoricalPrice, SimulatedTrade
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -76,11 +75,21 @@ async def get_or_create_item_id(session, name: str) -> int:
     return item_id
 
 
-@app.post("/api/v1/alerts/anomaly", status_code=status.HTTP_202_ACCEPTED)
-async def process_edge_anomaly(payload: AnomalyAlertPayload, background_tasks: BackgroundTasks):
-    print(f"\n[CORE COMPUTE] Anomaly Intercepted: {payload.market_hash_name} dropped to ${payload.price_usd:.2f} (Z={payload.z_score})")
-    background_tasks.add_task(run_verification_loop, payload)
-    return {"status": "QUEUED"}
+@app.post("/api/v1/ingest/trade", status_code=status.HTTP_201_CREATED)
+async def ingest_simulated_trade(payload: SimulatedTradePayload):
+    print(f"\n[CORE COMPUTE] Logging Simulated Trade: {payload.market_hash_name} for ${payload.purchase_price_cents/100:.2f}")
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            item_id = await get_or_create_item_id(session, payload.market_hash_name)
+            trade = SimulatedTrade(
+                item_id=item_id,
+                purchase_price_cents=payload.purchase_price_cents,
+                estimated_profit_cents=payload.estimated_profit_cents,
+                trigger_z_score=payload.trigger_z_score,
+                simulated_buy_timestamp=datetime.now(timezone.utc).replace(tzinfo=None)
+            )
+            session.add(trade)
+    return {"status": "SUCCESS"}
 
 @app.post("/api/v1/ingest/bulk", status_code=status.HTTP_201_CREATED)
 async def process_bulk_ingestion(payload: BulkIngestionPayload):
