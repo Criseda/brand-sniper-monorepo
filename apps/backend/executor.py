@@ -24,10 +24,10 @@ class PaperExecutor(ExecutionService):
             purchase_price_cents=purchase_price_cents,
             estimated_profit_cents=estimated_profit_cents,
             trigger_z_score=z_score,
-            simulated_buy_timestamp=datetime.now(timezone.utc)
+            simulated_buy_timestamp=datetime.now(timezone.utc).replace(tzinfo=None)
         )
         self.session.add(trade)
-        self.session.commit()
+        await self.session.commit()
         
         # Log to stdout for observability
         print(f"[PAPER TRADE] Simulated Buy | Item ID: {item_id} | Price: ${purchase_price_cents/100:.2f} | Est. Profit: ${estimated_profit_cents/100:.2f} | Z-Score: {z_score}")
