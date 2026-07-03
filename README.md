@@ -53,9 +53,9 @@ flowchart TD
     Compute:::computeNode
 
     %% Cross-Network Connections
-    Edge <-.-> |Local Network LAN| Compute
-    Backend -.->|Scrapes Metrics| Prometheus
-    Backend -.->|O(1) Baseline Lookup| Redis
+    Edge <-->|"Local Network LAN"| Compute
+    Backend -->|"Scrapes Metrics"| Prometheus
+    Backend -->|"O(1) Baseline Lookup"| Redis
     
     %% Alerts
     Discord[DISCORD WEBHOOK ALERT]:::alert
