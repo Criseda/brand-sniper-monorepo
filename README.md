@@ -1,8 +1,8 @@
-# Algorithmic Market Sniping & Macro Arbitrage Engine
+# Brand Sniper: Algorithmic Market Sniping & Macro Arbitrage Engine
 
 A production-grade, distributed data and AI system engineered to detect real-time market pricing anomalies and forecast long-term macroeconomic asset trends. The system architecture is built as a high-velocity Python monorepo split across a localized hybrid-network topology (Raspberry Pi 5 edge node and Windows PC compute engine). 
 
-The platform monitors secondary digital asset marketplaces (using Counter-Strike 2 / Steam skins as a high-throughput proxy commodity) to identify deep mispricings using statistical filters, validating opportunities through an isolated multi-agent LLM reasoning pipeline before triggering trade executions.
+**The platform's mission has evolved:** We utilize a lightning-fast **Deterministic Rules Engine (DRE)** on the hot-path to instantly paper-trade statistical anomalies, while an offline **Agentic AI Pipeline (The Adversarial CFO)** leverages Live Tools to independently audit those trades asynchronously.
 
 ---
 
@@ -10,65 +10,71 @@ The platform monitors secondary digital asset marketplaces (using Counter-Strike
 
 The infrastructure is explicitly decoupled across two physical nodes to replicate an enterprise-grade hybrid-cloud network topology:
 
+```mermaid
+flowchart TD
+    %% Define styles
+    classDef edgeNode fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC
+    classDef computeNode fill:#1E293B,stroke:#A78BFA,stroke-width:2px,color:#F8FAFC
+    classDef dataStore fill:#334155,stroke:#94A3B8,stroke-width:1px,color:#E2E8F0
+    classDef process fill:#0F172A,stroke:#64748B,stroke-width:1px,color:#E2E8F0,shape:rect
+    classDef alert fill:#7F1D1D,stroke:#FCA5A5,stroke-width:2px,color:#FEE2E2
 
-```
-           [ LIVE MARKET DATA STREAM ]
-                       │
-                       ▼
+    %% Live Market
+    Market[LIVE MARKET DATA STREAM]
 
-┌────────────────────────────────────────────────────────┐
-│          RASPBERRY PI 5 (Edge / 24/7 Ingestion Node)   │
-│                                                        │
-│  ┌───────────────────────┐    ┌─────────────────────┐  │
-│  │   /apps/listener      │───>│     Redis Cache     │  │
-│  │ (Async Polling Loop)  │    │  (Hot 5-Min Window) │  │
-│  └───────────┬───────────┘    └─────────────────────┘  │
-│              │                                         │
-│              ▼ (Bulk Batches)                          │
-│  ┌───────────────────────┐    ┌─────────────────────┐  │
-│  │  PostgreSQL Database  │<───┤ Prometheus/Grafana  │  │
-│  │  (SQLModel/Alembic)   │    │ (Observability Core)│  │
-│  └───────────────────────┘    └──────────▲──────────┘  │
-└──────────────────────────────────────────┼─────────────┘
-│
-Local Network LAN │ Scrapes Metrics
-│
-┌──────────────────────────────────────────┴─────────────┐
-│          WINDOWS PC (Compute & Core Reasoning Engine)  │
-│                                                        │
-│  ┌───────────────────────┐    ┌─────────────────────┐  │
-│  │   /apps/analytics     │    │   /apps/backend     │  │
-│  │   (Prefect Pipeline)  │    │ (FastAPI & FastMCP) │  │
-│  └───────────┬───────────┘    └──────────┬──────────┘  │
-│              │                           │             │
-│              ▼                           ▼             │
-│  ┌───────────────────────┐    ┌─────────────────────┐  │
-│  │     MLflow Server     │    │   Google ADK Loop   │  │
-│  │   (Model Registry)    │    │   (Gemini Pro)      │  │
-│  └───────────────────────┘    └──────────┬──────────┘  │
-│                                          │             │
-│                                          ▼             │
-│                               [ DISCORD WEBHOOK ALERT ]
-└────────────────────────────────────────────────────────┘
+    %% Edge Node Subgraph
+    subgraph Edge[RASPBERRY PI 5 Edge Node / Ingestion]
+        direction TB
+        Listener[/apps/listener Async Polling/]:::process
+        Redis[(Redis Cache Hot 5-Min Window)]:::dataStore
+        Postgres[(PostgreSQL Database SQLModel/Alembic)]:::dataStore
+        Prometheus[(Prometheus / Grafana Observability Core)]:::dataStore
+        
+        Listener -->|High-Frequency Ticks| Redis
+        Listener -->|Bulk Batches| Postgres
+    end
+    Edge:::edgeNode
 
+    Market -->|WebSockets / REST| Listener
+
+    %% Compute Node Subgraph
+    subgraph Compute[WINDOWS PC Compute & Agentic Engine]
+        direction TB
+        Backend[/apps/backend FastAPI & DRE/]:::process
+        Analytics[/apps/analytics Prefect CFO Pipeline/]:::process
+        MLflow[(MLflow Server Model Registry)]:::dataStore
+        Gemini[Google Gemini API Adversarial Agent]:::process
+
+        Backend -->|Executes synchronous trades| Postgres
+        Analytics -->|Fetches trades to Audit| Postgres
+        Analytics <-->|Agentic Reasoning Loop| Gemini
+        Analytics -->|Logs Audits & Rants| MLflow
+    end
+    Compute:::computeNode
+
+    %% Cross-Network Connections
+    Edge <-.-> |Local Network LAN| Compute
+    Backend -.->|Scrapes Metrics| Prometheus
+    Backend -.->|O(1) Baseline Lookup| Redis
+    
+    %% Alerts
+    Discord[DISCORD WEBHOOK ALERT]:::alert
+    Backend -->|Notifies| Discord
 ```
 
 ### 📡 1. The Short-Term Anomaly Path (The Edge)
-Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks. It writes incoming vectors concurrently to a Redis hot-cache window and a cold PostgreSQL history database. For every asset tick, it calculates a rolling mathematical standard deviation (Z-score):
+Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks. It writes incoming vectors concurrently to a Redis hot-cache window and a cold PostgreSQL history database. 
 
-$$Z = \frac{X - \mu}{\sigma}$$
+### ⚡ 2. The Deterministic Rules Engine (The Hot Path)
+When `/apps/backend` receives a signal, the **Deterministic Rules Engine (DRE)** queries Redis in `O(1)` time (sub-millisecond latency) to construct a localized baseline. If the mathematical Z-score indicates a severe anomaly, the `PaperExecutor` immediately executes a simulated trade synchronously. **Average latency: <20ms.**
 
-Where $X$ is the live price, $\mu$ is the rolling mean, and $\sigma$ is the rolling standard deviation. If a pricing tick triggers a threshold of $Z < -2.5$ (indicating an extreme, sudden flash-crash or human typing error), the Pi instantly dispatches an asynchronous HTTP POST event over the local network to the Windows Compute Engine.
+### 📈 3. Observability (Grafana & Prometheus)
+Zero blocking external dependencies. The hot path increments memory-safe `prometheus_client` gauges and histograms. Prometheus scrapes this data on a schedule, and **Grafana** provides a stunning real-time visualization of simulated PnL and DRE execution latency.
 
-### 📈 2. The Long-Term Macro Path (The Compute Core)
-Running on the **Windows PC**, the `/apps/analytics` engine leverages **Prefect** to orchestrate long-term trend analysis. It extracts year-over-year cyclical market patterns from millions of historical transactions (e.g., localized holiday demand shocks like the Chinese New Year market rally, or structural dips during seasonal platform events). 
-
-The generated macroeconomic baseline forecasts are registered inside an **MLflow** tracking server and exposed back to the database as an expected baseline curve projection.
-
-### 🧠 3. The Multi-Agent Verification Loop
-When an anomaly or macro-accumulation signal hits the Windows **FastAPI** layer (`/apps/backend`), it triggers a structured **Google Agent Development Kit (ADK 2.0)** workflow graph. 
-
-Instead of executing raw programmatic buys on dirty data, **Gemini Pro** initializes as a core validator. Using the **Model Context Protocol (MCP)** powered by `FastMCP`, the agent dynamically runs isolated tools to read asset wear factors, evaluate market volume history, and parse listing descriptions to protect capital from fraud or illiquid traps before firing a checkout payload to a client webhook.
+### 🧠 4. The Adversarial CFO (The Cold Path)
+To prevent Circular Feedback Loops (where the AI grades trades using the same stale database data that triggered them), we built the **Adversarial CFO**.
+Orchestrated by **Prefect**, this daily offline pipeline feeds the bot's simulated trades to Google's **Gemini**. The AI is armed with **FastMCP** tools (`fetch_live_market_floor`, `search_macro_trends`), allowing it to scrape the *actual live internet* to prove the bot wrong (e.g. detecting falling knives or market crashes). 
+Its final grade and reasoning trace are logged immutably into **MLflow**.
 
 ---
 
@@ -76,127 +82,74 @@ Instead of executing raw programmatic buys on dirty data, **Gemini Pro** initial
 
 * **Runtime:** Python 3.12 (Locked via `uv`)
 * **Package Management:** `uv Workspaces` (Unified root lockfile, independent microservice dependency resolutions)
-* **Database & Migrations:** PostgreSQL (`asyncpg` driver), **SQLModel** (Unified SQLAlchemy ORM + Pydantic core types), and **Alembic** (Async version-controlled schema migrations)
+* **Database & Migrations:** PostgreSQL (`psycopg2`), **SQLModel**, and **Alembic** 
 * **Cache:** Redis (Async key-value data-windowing)
 * **Orchestration & Tracking:** Prefect Server & MLflow
-* **AI Graph & Protocols:** Google ADK 2.0 & Model Context Protocol (FastMCP)
+* **AI Graph & Protocols:** Google Gemini & Model Context Protocol (FastMCP)
 * **Observability:** Prometheus & Grafana Stack
 
 ---
 
-## 📂 Repository Structure
+## 🚀 Setup & Installation Guide
 
-```text
-/brand-sniper-monorepo
-│   .gitignore
-│   .python-version           # Fixed Python 3.12 runtime configuration
-│   pyproject.toml            # Global uv Workspace declaration
-│   README.md                 # System documentation
-│   uv.lock                   # Deterministic workspace dependency lockfile
-│
-├── /apps                     # Independent runtime services
-│   ├── /analytics            # Model training & time-series extraction (Windows)
-│   │   ├── Dockerfile
-│   │   ├── long_term_macro.py
-│   │   └── short_term_zscore.py
-│   │
-│   ├── /backend              # Core REST API + FastMCP Agent Server (Windows)
-│   │   ├── /api
-│   │   ├── /mcp_server
-│   │   ├── Dockerfile
-│   │   └── main.py
-│   │
-│   └── /listener             # Always-on 24/7 asset scraping stream (Pi 5)
-│       ├── Dockerfile
-│       └── main.py
-│
-├── /deployments              # DevOps infrastructure configurations
-│   ├── alembic.ini           # Async migration orchestrator configuration
-│   ├── /migrations           # Database schema migration version files
-│   ├── /pi5-stack            # Docker-Compose definition for Postgres, Redis, Prometheus, Grafana
-│   └── /windows-stack        # Docker-Compose definition for Backend, Prefect, MLflow
-│
-└── /packages                 # Shares internal system code libraries
-    └── /shared_utils         # Editable internal dependency
-        ├── __init__.py
-        ├── db_connection.py  # Asynchronous SQL connection pool management
-        ├── models.py         # Declarative SQLModel tables shared across apps
-        └── pyproject.toml    # Shared utility library packaging config
-
-```
-
----
-
-## 🚀 Local Development Setup
+This monorepo is designed to be plug-and-play using `.env.example` templates and Docker Compose.
 
 ### 1. Prerequisites
+Ensure you have `uv` installed globally, along with `Docker` and `Docker Compose`.
+*(Windows PowerShell installation for uv)*: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
-Ensure you have `uv` installed globally on your machine, along with `Docker` and `Docker Compose`.
-
-To install `uv` on Windows (PowerShell):
-
-```powershell
-powershell -c "irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/install.ps1) | iex"
-
-```
-
-### 2. Workspace Initialization
-
-Clone the repository and run `uv sync` from the project root. This command analyzes the entire workspace tree, creates a localized `.venv`, and links the internal `shared-utils` library across all applications instantly:
+### 2. Environment Variables
+To make setup seamless, copy the `.env.example` file in the root directory to `.env` and fill in your keys:
 
 ```bash
-cd brand-sniper-monorepo
+cp .env.example .env
+```
+*(Repeat this for `apps/analytics/.env.example` and `apps/backend/.env.example` if specific microservice configuration is needed).*
+
+### 3. Workspace Initialization
+Run `uv sync` from the project root. This command analyzes the entire workspace tree, creates a localized `.venv`, and links the internal `shared-utils` library across all applications instantly:
+
+```bash
 uv sync
-
 ```
 
-### 3. Spin Up Infrastructure (Docker)
+### 4. Spin Up Infrastructure (Docker)
+Initialize the foundational database, cache, tracking servers, and observability metrics layers.
 
-To initialize the foundational database, cache, and metrics layers:
-
-For the Pi 5 Node (or local emulation):
-
-```bash
-cd deployments/pi5-stack
-docker compose up -d
-
-```
-
-For the Windows Node:
-
+**Windows Compute Node Stack:**
 ```bash
 cd deployments/windows-stack
 docker compose up -d
-
 ```
+This single command spins up:
+- **Grafana** (Port `3000`) - *Default Login: admin / admin*
+- **Prometheus** (Port `9090`)
+- **Prefect Server** (Port `4200`)
+- **MLflow Tracking Server** (Port `5000`)
 
-### 4. Database Migrations (Alembic)
-
-Database migrations are fully decoupled and run natively using an async bridge. Navigate to the deployments directory to generate and apply schemas:
-
+### 5. Database Migrations (Alembic)
+Apply the SQL schemas to the live PostgreSQL instance:
 ```bash
 cd deployments
-# Generate initial migration version script
-uv run alembic revision --autogenerate -m "initial_schema"
-
-# Apply tables to the live PostgreSQL instance
 uv run alembic upgrade head
-
 ```
 
 ---
 
-## 📊 Observability & Telemetry
+## 🖥️ Running the Applications
 
-Every microservice exposes an independent `/metrics` endpoint via the Python `prometheus_client`. The metrics are automatically scraped by Prometheus across the local area network interfaces.
+### Start the Backend (DRE & API)
+```bash
+cd apps/backend
+uv run fastapi dev main.py --port 8080
+```
+- API Docs: `http://localhost:8080/docs`
+- Prometheus Metrics: `http://localhost:8080/metrics`
 
-Core System Performance Indicators tracked:
-
-* `market_ticks_processed_total` (Counter tracking ingestion speed)
-* `gemini_inference_latency_seconds` (Histogram monitoring AI verification overhead)
-* `active_arbitrage_signals` (Gauge tracking real-time market opportunities)
-* `model_prediction_drift_error` (Tracking skew between historical calculations and live pricing)
-
-## Datasets
-
-Linked here: [Counter Strike Market Sale Data](https://www.kaggle.com/datasets/kieranpoc/counter-strike-market-sale-data)
+### Run the Agentic CFO Pipeline
+Once trades exist in the database, execute the adversarial evaluation:
+```bash
+cd apps/analytics
+uv run python evaluate_performance.py
+```
+View the AI's reasoning artifact in **MLflow** at `http://localhost:5000`.

@@ -1,43 +1,34 @@
-# Macro Analytics, Forecasting, and Ingestion Engine
+# Analytics & Agentic Evaluation Pipeline
 
-This service handles bulk data validation, ingestion of millions of historical database records, and schedules long-term macroeconomic pricing analysis using Prefect.
+The Analytics application is the **Cold Path** of the Brand Sniper engine. It operates entirely offline and asynchronously to the live trading mechanisms. 
 
-## Script Directories
+Its primary function is to act as the **Adversarial CFO**: an Agentic AI pipeline designed to brutally audit the synchronous paper trades executed by the Deterministic Rules Engine (DRE).
 
-### 1. Seeding & Validation Scripts
-* **`validate_historical.py`**
-  Scans Kaggle transaction CSV files for format corruptions, null entries, or invalid prices. Outputs dry-run reports before write phases.
-* **`seed_historical.py`**
-  A high-performance bulk seeder. Drops postgres indexes, parses CS2 item types using the shared classifier, and streams vectorized data into the `historical_prices` table using `asyncpg` copy.
-* **`verify_seed_historical.py`**
-  A post-ingestion sweep verifying database integrity, row counts, index health, and duplication groups.
+## 🧠 The Adversarial CFO
 
-### 2. Prefect Orchestration: Macro Trends Pipeline
-* **`long_term_macro.py`**
-  The central analytical cron script. Orchestrated via Prefect 3.0 tasks and flows. It computes the following indicators for each tracked asset:
-  * **Moving Averages:** 30-day and 90-day pricing baselines.
-  * **Price Drift:** Shift percentages to identify macro market trends.
-  * **Volatility:** 30-day daily standard deviation to quantify risk.
-  * **30-Day Volume:** Historical liquidity indicator (used for trade authorization).
-  * **Support Floor:** 10th percentile pricing representing buy-zones.
-  * **Seasonality:** Evaluates average monthly returns to capture cyclical market shifts.
-* Recalculations are written directly back to the database `item_macro_baselines` table using high-speed upsert tasks.
+To prevent the "Circular Feedback Loop" (where an AI grades its own performance using the same stale database metrics that triggered the trade), the CFO is equipped with real-world scraping capabilities via the **Model Context Protocol (MCP)**.
 
----
+### FastMCP Tools (`tools.py`)
+- `fetch_live_market_floor`: Reaches out to the live internet to check the actual current floor price of an asset, identifying if the bot's internal baseline was stale.
+- `search_macro_trends`: Scrapes recent news and patch notes to determine if a severe macro market crash (falling knife) is occurring.
 
-## Getting Started
+## 🚀 Setup & Execution
 
-### 1. Set Up Configuration
-Verify that the `PREFECT_API_URL` environment setting exists in `apps/analytics/.env` to route workflow telemetry to your local Prefect container server:
-```ini
-PREFECT_API_URL="http://localhost:4200/api"
-```
-
-### 2. Running Analytics Locally
-To run the macro trend calculations on a local subset of assets for debugging:
+### 1. Environment Configuration
+Copy the example environment file and insert your API keys:
 ```bash
-uv run python apps/analytics/long_term_macro.py
+cp .env.example .env
+```
+Ensure `GEMINI_API_KEY` is populated. The pipeline automatically enforces rate-limiting safeguards for Free-Tier Gemini keys (query limits and cooldowns).
+
+### 2. Run the Evaluation Flow
+The Prefect flow queries the latest simulated trades and orchestrates the Gemini Agent to audit them.
+
+```bash
+# Execute the Daily CFO Evaluation flow
+uv run python evaluate_performance.py
 ```
 
-Check details and execution graphs directly on your local Prefect Dashboard:
-`http://localhost:4200`
+### 3. Review Audits in MLflow
+Once the pipeline finishes, the CFO's Confidence Score (0-100) and its full reasoning rant are immutably logged.
+Open your local **MLflow Tracking Server** (default: `http://localhost:5000`) and navigate to the `cfo-evaluation` experiment to view the artifact traces.
