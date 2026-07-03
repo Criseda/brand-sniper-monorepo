@@ -49,6 +49,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from prometheus_client import make_asgi_app
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
 # Global in-memory cache mapping market_hash_name to item_id
 item_cache = {}
 

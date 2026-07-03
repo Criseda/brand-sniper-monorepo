@@ -338,6 +338,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "langfuse" },
     { name = "mlflow" },
+    { name = "prometheus-client" },
     { name = "shared-utils" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -356,6 +357,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=2.10.0" },
     { name = "langfuse", specifier = ">=4.11.0" },
     { name = "mlflow", specifier = ">=2.14.0" },
+    { name = "prometheus-client", specifier = ">=0.25.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.28.0" },
 ]
