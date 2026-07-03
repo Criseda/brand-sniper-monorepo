@@ -25,7 +25,7 @@ cp .env.example .env
 Ensure your Docker Compose stack (Postgres, Prometheus, Grafana) is running first, then launch FastAPI:
 
 ```bash
-uv run fastapi dev main.py --port 8080
+uv run python main.py
 ```
 
 ### 3. View the Dashboards

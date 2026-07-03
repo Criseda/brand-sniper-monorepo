@@ -136,13 +136,19 @@ uv run alembic upgrade head
 
 ## 🖥️ Running the Applications
 
-### Start the Backend (DRE & API)
+### Start the Backend (API Core)
 ```bash
 cd apps/backend
-uv run fastapi dev main.py --port 8080
+uv run python main.py
 ```
 - API Docs: `http://localhost:8080/docs`
 - Prometheus Metrics: `http://localhost:8080/metrics`
+
+### Start the Edge Listener (DRE Hot Path)
+```bash
+cd apps/listener
+uv run python main.py
+```
 
 ### Run the Agentic CFO Pipeline
 Once trades exist in the database, execute the adversarial evaluation:
