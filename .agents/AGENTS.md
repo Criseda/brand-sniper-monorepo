@@ -17,7 +17,8 @@ This document outlines structural guidelines, clean code principles, and behavio
 
 ## 2. Dependency & Package Management
 * **Workspace Boundaries:** This repository uses `uv` workspaces.
-  * Never install packages globally or using standard `pip`. Always use `uv add --package <package-name>` inside the targeted directory or update the package-specific `pyproject.toml` and run `uv sync --all-packages`.
+  * **Workspace Syncing:** Because this is a monorepo workspace, you MUST always run `uv sync --all-packages` from the root directory to properly resolve dependencies across all microservices. Running a bare `uv sync` will uninstall microservice dependencies.
+  * Never install packages globally or using standard `pip`. Always use `uv add <package-name>` inside the targeted directory or update the package-specific `pyproject.toml` and run `uv sync --all-packages`.
   * Share utility functions across nodes via the `shared-utils` workspace package (e.g., `packages/shared_utils`).
 
 ---
