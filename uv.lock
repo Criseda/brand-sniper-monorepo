@@ -342,6 +342,12 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110.0" },
@@ -351,6 +357,12 @@ requires-dist = [
     { name = "mlflow", specifier = ">=2.14.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.28.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
 ]
 
 [[package]]
