@@ -80,3 +80,22 @@ class ItemMacroBaseline(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
         index=True
     )
+
+
+class SimulatedTrade(SQLModel, table=True):
+    """
+    Paper trading log for the Deterministic Rules Engine to evaluate strategy profitability.
+    """
+    __tablename__: str = "simulated_trades"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE", index=True)
+    
+    purchase_price_cents: int = Field(nullable=False)
+    estimated_profit_cents: int = Field(nullable=False)
+    trigger_z_score: float = Field(nullable=False)
+    
+    simulated_buy_timestamp: datetime = Field(
+        sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
+        index=True
+    )
