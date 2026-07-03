@@ -30,7 +30,7 @@ flowchart TD
         EdgeRedis[(Edge Redis Cache 6380)]:::dataStore
         
         Listener -->|High-Frequency Ticks| DRE
-        DRE <-->|O(1) Baseline Lookup| EdgeRedis
+        DRE <-->|"O(1) Baseline Lookup"| EdgeRedis
     end
     Edge:::edgeNode
 
