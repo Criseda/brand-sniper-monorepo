@@ -107,10 +107,10 @@ cp .env.example .env
 *(Repeat this for `apps/analytics/.env.example` and `apps/backend/.env.example` if specific microservice configuration is needed).*
 
 ### 3. Workspace Initialization
-Run `uv sync` from the project root. This command analyzes the entire workspace tree, creates a localized `.venv`, and links the internal `shared-utils` library across all applications instantly:
+Run `uv sync --all-packages` from the project root. Because this is a monorepo workspace, you must use the `--all-packages` flag so `uv` resolves dependencies across all microservices simultaneously. This command creates a localized `.venv` and links the internal `shared-utils` library across all applications instantly:
 
 ```bash
-uv sync
+uv sync --all-packages
 ```
 
 ### 4. Spin Up Infrastructure (Docker)
