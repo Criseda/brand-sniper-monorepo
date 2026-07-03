@@ -13,6 +13,9 @@ from redis.asyncio import Redis
 
 from scrapers.factory import ScraperFactory
 from models import MarketTick
+from rules_engine import evaluate_opportunity
+from executor import PaperExecutor
+import json
 
 # Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -29,7 +32,6 @@ load_dotenv(dotenv_path=listener_env_path)
 COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")
 COMPUTE_PORT = os.getenv("COMPUTE_NODE_PORT", "8080")
 
-ANOMALY_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/alerts/anomaly"
 BULK_INGEST_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/ingest/bulk"
 
 # --- Tunable Detection Parameters (configurable via .env) ---
@@ -72,26 +74,7 @@ async def close_http_session():
         _http_session = None
 
 
-async def dispatch_anomaly_to_core(tick: MarketTick, z_score: float):
-    """Pipes an isolated flash-crash alert directly to the backend processing queue."""
-    payload = {
-        "market_hash_name": tick.market_hash_name,
-        "price_usd": tick.price_usd,
-        "price_cents": tick.price_cents,
-        "z_score": round(z_score, 4),
-        "triggered_at": tick.timestamp,
-        "float_value": tick.float_value,
-        "stickers": tick.stickers
-    }
-    try:
-        session = await get_http_session()
-        async with session.post(ANOMALY_URL, json=payload, timeout=aiohttp.ClientTimeout(total=5, connect=2)) as resp:
-            if resp.status == 202:
-                print(f"[LAN] Single alert dispatched for {tick.market_hash_name}")
-            else:
-                print(f"[LAN] Warning: Backend rejected anomaly payload with status {resp.status}")
-    except Exception as e:
-        print(f"[LAN] Telemetry transmission warning (Compute node offline?): {e}")
+
 
 
 async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
@@ -196,18 +179,30 @@ def should_trigger_anomaly(z_score: float, mean_cents: float, tick: MarketTick) 
     return True
 
 
-async def verify_and_dispatch(tick: MarketTick, z_score: float, scraper):
-    """Verifies an anomaly candidate against historical data and dispatches if confirmed."""
+async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: float, cache: Redis):
+    """Evaluates an anomaly locally on the edge and executes the trade if valid."""
     try:
-        is_valid = await scraper.verify_anomaly_with_history(tick.market_hash_name, tick.price_usd)
-        if is_valid:
-            print(f"[ANOMALY] Confirmed true outlier! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}. Dispatching to core compute...")
-            await dispatch_anomaly_to_core(tick, z_score)
+        is_approved = await evaluate_opportunity(tick, cache)
+        if is_approved:
+            print(f"[ANOMALY] Confirmed true outlier by Edge DRE! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}. Executing trade...")
+            
+            baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+            est_profit_cents = 0
+            if baseline_raw:
+                baseline = json.loads(baseline_raw)
+                est_profit_cents = baseline.get("latest_price_cents", tick.price_cents) - tick.price_cents
+            
+            executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
+            await executor.execute(
+                market_hash_name=tick.market_hash_name,
+                purchase_price_cents=tick.price_cents,
+                estimated_profit_cents=est_profit_cents,
+                z_score=z_score
+            )
         else:
-            print(f"[ANOMALY] False outlier filtered: {tick.market_hash_name} at ${tick.price_usd:.2f} is within acceptable historical bounds.")
-    except Exception as ve:
-        print(f"[ANOMALY] Error during edge history verification: {ve}. Dispatching to core as fallback.")
-        await dispatch_anomaly_to_core(tick, z_score)
+            print(f"[ANOMALY] False outlier filtered by Edge DRE: {tick.market_hash_name} at ${tick.price_usd:.2f}.")
+    except Exception as e:
+        print(f"[ANOMALY ERROR] Edge DRE failure for {tick.market_hash_name}: {e}")
 
 
 async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
@@ -256,8 +251,8 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                     if should_trigger_anomaly(z_score, mean_cents, tick):
                         sticker_count = len(tick.stickers)
                         sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
-                        print(f"[ANOMALY] Outlier potential detected: {tick.market_hash_name}{sticker_tag} at ${tick.price_usd:.2f} (Z={z_score:.2f}). Running edge history verification...")
-                        asyncio.create_task(verify_and_dispatch(tick, z_score, scraper))
+                        print(f"[ANOMALY] Outlier potential detected: {tick.market_hash_name}{sticker_tag} at ${tick.price_usd:.2f} (Z={z_score:.2f}). Running Edge DRE...")
+                        asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache))
     
                 # 4. When buffer matches target density constraints, dispatch non-blocking task
                 if len(batch_buffer) >= CHUNK_LIMIT:
