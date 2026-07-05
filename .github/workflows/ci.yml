@@ -21,6 +21,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages --group dev
 
+      - name: Audit dependencies
+        run: uv audit
+
       - name: Lint
         run: uv run ruff check
 
@@ -29,6 +32,14 @@ jobs:
 
       - name: Type check
         run: uv run mypy apps/backend/ apps/listener/ apps/analytics/
+
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     runs-on: ubuntu-latest
