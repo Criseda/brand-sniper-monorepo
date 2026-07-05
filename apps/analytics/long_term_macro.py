@@ -22,12 +22,11 @@ if hasattr(sys.stderr, "reconfigure"):
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(PROJECT_ROOT))
 
-# Load environment variables from backend .env if available
-backend_env = PROJECT_ROOT / "apps" / "backend" / ".env"
-if backend_env.exists():
-    load_dotenv(dotenv_path=backend_env)
+# Load root .env (shared) first, then analytics-specific overrides
+root_env = PROJECT_ROOT / ".env"
+if root_env.exists():
+    load_dotenv(dotenv_path=root_env)
 
-# Load local analytics .env overrides if available
 analytics_env = PROJECT_ROOT / "apps" / "analytics" / ".env"
 if analytics_env.exists():
     load_dotenv(dotenv_path=analytics_env, override=True)

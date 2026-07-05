@@ -12,7 +12,6 @@ dependencies = [
     "fastmcp>=3.4.2",
     "google-genai>=2.10.0",
     "mlflow>=3.14.0",
-    "psycopg2-binary>=2.9.12",
     "redis>=5.0.0",
 ]
 

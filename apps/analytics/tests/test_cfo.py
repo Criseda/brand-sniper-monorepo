@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add parent dir to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -14,10 +16,11 @@ from evaluate_performance import evaluate_trade
 from shared_utils.models import SimulatedTrade
 
 
+@pytest.mark.asyncio
 @patch("evaluate_performance.gemini_client")
 @patch("evaluate_performance.mlflow")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-def test_evaluate_trade(mock_get_experiment_id, mock_mlflow, mock_gemini_client):
+async def test_evaluate_trade(mock_get_experiment_id, mock_mlflow, mock_gemini_client):
     # Setup mock trade
     mock_trade = SimulatedTrade(item_id=1, purchase_price_cents=1000, estimated_profit_cents=500, trigger_z_score=-3.0)
 
@@ -31,7 +34,7 @@ def test_evaluate_trade(mock_get_experiment_id, mock_mlflow, mock_gemini_client)
     mock_gemini_client.chats.create.return_value = mock_chat
 
     # Run the function
-    evaluate_trade(mock_trade, "AK-47 | Redline (Field-Tested)")
+    await evaluate_trade(mock_trade, "AK-47 | Redline (Field-Tested)")
 
     # Verify Gemini was called
     mock_gemini_client.chats.create.assert_called_once()

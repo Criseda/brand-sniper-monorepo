@@ -7,10 +7,13 @@ import sys
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlmodel import text
 
 # Dynamic path alignment to find shared-utils package
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(PROJECT_ROOT))
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
 from shared_utils import get_logger
 from shared_utils.db_connection import async_engine

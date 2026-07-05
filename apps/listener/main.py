@@ -26,9 +26,11 @@ from shared_utils import get_logger
 logger = get_logger("listener.main")
 
 # DYNAMIC NETWORK INFRASTRUCTURE CONFIGURATION
-# Load environment configuration from .env file
+# Load root .env (shared) first, then listener-specific overrides
+project_root = Path(__file__).resolve().parents[2]
+load_dotenv(dotenv_path=project_root / ".env")
 listener_env_path = Path(__file__).parent / ".env"
-load_dotenv(dotenv_path=listener_env_path)
+load_dotenv(dotenv_path=listener_env_path, override=True)
 
 # Pulls target node location from RAM environment, falling back to local loopback
 COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")
