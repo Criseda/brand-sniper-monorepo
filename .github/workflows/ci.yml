@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  UV_SYSTEM_PYTHON: 1
+  UV_PYTHON_VERSION: "3.12"
 
 jobs:
   quality:
@@ -17,7 +17,6 @@ jobs:
 
       - uses: astral-sh/setup-uv@v3
         with:
-          python-version: "3.12"
           enable-cache: true
 
       - name: Install dependencies
@@ -30,7 +29,7 @@ jobs:
         run: uv run ruff format --check
 
       - name: Type check
-        run: uv run mypy
+        run: uv run mypy apps/backend/ apps/listener/ apps/analytics/
 
   test:
     runs-on: ubuntu-latest
@@ -39,7 +38,6 @@ jobs:
 
       - uses: astral-sh/setup-uv@v3
         with:
-          python-version: "3.12"
           enable-cache: true
 
       - name: Install dependencies
