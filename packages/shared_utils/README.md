@@ -4,7 +4,7 @@ This package acts as the connective tissue between the decoupled edge hardware (
 
 Because the monorepo utilizes `uv Workspaces`, this package is included as a localized, editable dependency across all apps. This ensures that a single database change or connection optimization instantly propagates to every microservice without needing to publish to an external PyPI registry.
 
-## 📦 Core Modules
+## Core Modules
 
 ### 1. Unified SQLModel Schemas (`models.py`)
 All PostgreSQL tables are defined here declaratively using **SQLModel** (which merges SQLAlchemy and Pydantic). 

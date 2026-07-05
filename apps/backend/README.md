@@ -2,7 +2,7 @@
 
 The Backend application is a high-throughput **Cold Path API Node** running on the Windows Compute Engine. It has been stripped of all heavy processing and decision-making logic (the DRE was moved to the Edge Node). It acts as the central router for data persistence and telemetry observability.
 
-## ⚡ Core Components
+## Core Components
 
 ### 1. Fast Data Ingestion (`main.py`)
 Provides REST API endpoints (`/api/v1/ingest/bulk` and `/api/v1/ingest/trade`) for the Edge Node to asynchronously push market ticks and simulated trade logs. It utilizes native `SQLModel` async sessions to insert data into PostgreSQL efficiently, minimizing locking overhead.
@@ -13,7 +13,7 @@ Acts as the central scraping target for the local Prometheus server. It leverage
 - **`paper_trades_executed_total`**: A Counter tracking the number of successful snipes executed by the Edge node.
 - **`rules_engine_latency_seconds`**: A Histogram tracking DRE evaluation latency (sub-millisecond to 2s buckets).
 
-## 🚀 Setup & Execution
+## Setup & Execution
 
 ### 1. Environment Configuration
 Copy the example environment file:

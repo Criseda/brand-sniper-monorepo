@@ -12,6 +12,9 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Format**: `uv run ruff format` from root
 - **Typecheck**: `uv run mypy apps/backend/ apps/listener/ apps/analytics/` from root
 - **All quality checks**: `uv run ruff check && uv run ruff format --check && uv run mypy apps/backend/ apps/listener/ apps/analytics/`
+- **Branch protection**: `main` branch requires PRs, CI status checks (`quality`, `test`), and linear history — configured in GitHub repo Settings > Branches
+- **PR template**: `.github/pull_request_template.md` — filled automatically on new PRs
+- **Contributing guide**: `CONTRIBUTING.md` — development workflow, branch naming, CI expectations
 - **CI**: GitHub Actions workflow at `.github/workflows/ci.yml` — runs lint, format check, typecheck, and tests on push/PR to `main`
 - **Config**: ruff and mypy configured in `pyproject.toml` and `mypy.ini` at root
 - **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir

@@ -2,7 +2,7 @@
 
 The Listener application is designed to run 24/7 on edge hardware (e.g., a Raspberry Pi 5). Its sole responsibility is to consume massive firehoses of live market data from secondary marketplaces via REST polling and a **Node.js WebSocket sidecar** (for Socket.IO-based push feeds).
 
-## 📡 The Edge Compute Architecture
+## The Edge Compute Architecture
 
 Because the ingestion node must never block, it routes incoming data ticks concurrently into two fast pipelines:
 
@@ -16,7 +16,7 @@ Because the ingestion node must never block, it routes incoming data ticks concu
 
 The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO feed for real-time sale listings. The sidecar writes parsed listings to stdout, which the main Python process reads line-by-line and feeds into the anomaly detection pipeline.
 
-## 🚀 Setup & Execution
+## Setup & Execution
 
 ### 1. Environment Configuration
 Copy the example environment file:
