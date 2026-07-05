@@ -1,46 +1,50 @@
-# Brand Sniper Coding Rules
+# Brand Sniper Monorepo — Agent Guide
 
-This document outlines structural guidelines, clean code principles, and behavioral rules for writing code in the Brand Sniper monorepo. All AI agents and developers must strictly adhere to these instructions.
+Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 3 apps + 1 shared package.
 
----
+## Commands
 
-## 1. Logging & Messaging Standards
-* **No Emojis:** Do not use emojis in source code files, logs, print statements, or comment structures. Always use standard, clean ASCII/Unicode text.
-* **Prefix-Based Logging:** Use standardized prefix tags for stdout and logging statements to make debugging multi-node traces easier:
-  * `[AGENT]` for backend AI generative actions and decisions.
-  * `[ALERT APPROVED]` for confirmed snipes.
-  * `[LAN]` / `[BATCH FLUSH]` for edge listener networking actions.
-  * `[SKINPORT]` / `[CSFLOAT]` for scraper telemetry.
-  * `[SKINPORT API]` for backend live queries.
+- **Sync all deps** (must use `--all-packages`): `uv sync --all-packages`
+- **Add dep**: run `uv add <pkg>` inside the target `apps/*` or `packages/*` directory, then `uv sync --all-packages` from root
+- **Run app**: `uv run python main.py` from the app's directory (e.g. `apps/backend`, `apps/listener`)
+- **Run tests**: `uv run pytest` from any app/package directory (or root); tests use `pytest` + `pytest-asyncio`
+- **Lint / typecheck / formatter**: none configured — do not run or expect them
+- **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir
+- **Infra (Docker)**: `docker compose up -d` from `deployments/windows-stack/` or `deployments/pi5-stack/`
 
----
+## Package boundaries
 
-## 2. Dependency & Package Management
-* **Workspace Boundaries:** This repository uses `uv` workspaces.
-  * **Workspace Syncing:** Because this is a monorepo workspace, you MUST always run `uv sync --all-packages` from the root directory to properly resolve dependencies across all microservices. Running a bare `uv sync` will uninstall microservice dependencies.
-  * Never install packages globally or using standard `pip`. Always use `uv add <package-name>` inside the targeted directory or update the package-specific `pyproject.toml` and run `uv sync --all-packages`.
-  * Share utility functions across nodes via the `shared-utils` workspace package (e.g., `packages/shared_utils`).
+| Path | Role | Entrypoint |
+|------|------|------------|
+| `apps/backend` | FastAPI REST API, FastMCP agent server, Prometheus metrics | `main.py:app` — uvicorn on `:8080` |
+| `apps/listener` | Edge telemetry daemon — async scraping, Z-score anomaly detection, DRE | `main.py:process_live_telemetry_stream` — asyncio |
+| `apps/analytics` | Prefect macro pipeline + Adversarial CFO (Gemini + FastMCP) | `evaluate_performance.py` (CFO), plus standalone scripts |
+| `packages/shared_utils` | Shared SQLModel models, DB connection, item classifier, pricing utils | Re-exported via `__init__.py` |
 
----
+## Key conventions
 
-## 3. Asynchronous & Performance Architecture
-* **Non-Blocking I/O:** The edge scraper (`apps/listener`) must remain non-blocking. Avoid any synchronous network requests (`requests` library) or blocking calls. Use `aiohttp` or `httpx` with correct timeout settings.
-* **Raspberry Pi Optimizations:** 
-  * Keep the memory footprint minimal. Avoid loading huge packages on the edge scraper node unless necessary.
-  * Keep Redis memory configurations volatile on the Pi 5. Never enable disk persistence (`RDB`/`AOF`) for short-term caching.
-* **Thread/Task-Safe Telemetry:**
-  * Never store transaction or run state in global dictionaries. Use Python's `contextvars.ContextVar` for thread-safe and async-safe context propagation during verification workflows.
+- **No emojis or emoji** in source code, logs, or comments
+- **Prefix-based logging**: `[ANOMALY]`, `[BATCH FLUSH]`, `[ALERT APPROVED]`, `[PAPER TRADE]`, `[CFO]`, `[AGENT]`, `[SKINPORT]`
+- **All DB models** in `packages/shared_utils/src/shared_utils/models.py` — do not add local models in apps
+- **`contextvars.ContextVar`** for thread/async-safe telemetry (no global dicts)
+- **Listener must be non-blocking**: use `aiohttp`, never `requests`
+- **Edge Redis on `localhost:6380`** (not default 6379), `--save "" --appendonly no` (volatile RAM only)
+- **FastMCP** for Gemini tool registration (`@mcp.tool()`), not ad-hoc JSON execution
+- **CFO tools** in `apps/analytics/tools.py`, **backend tools** in `apps/backend/tools.py`
+- **Listener spawns Node.js sidecar** for WebSocket — lives in `scrapers/skinport_websocket/`
 
----
+## Testing quirks
 
-## 4. Database & ORM Guidelines
-* **SQLModel Reference Directory:**
-  * All database models are defined in [models.py](file:///c:/Users/ilaur/git/brand-sniper-monorepo/packages/shared_utils/src/shared_utils/models.py). Do not declare tables or models locally within services.
-  * Every model must use native typing hints (`int | None` instead of `Optional[int]` for modern Python, except where SQLModel field definitions require it).
-  * Do not bypass SQLModel migrations. If database schemas shift, developers must generate and execute an Alembic migration from the `deployments` root.
+- Tests add parent dir to `sys.path` manually (no pytest path config)
+- Listener tests need `@pytest.mark.asyncio`
+- Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine injected via `sys.modules` — no PostgreSQL needed
+- Analytics tests mock `gemini_client` and `mlflow` globally; set `GEMINI_API_KEY` env var
+- shared_utils tests are pure unit tests (no I/O)
+- No integration test suite that requires Docker services
+- Run `uv run pytest` from any app/package directory (or root); 53 tests total across all packages
 
----
+## Migrations
 
-## 5. Agent Verification & Tool Call Conventions
-* **Strict MCP Registration:** Expose tool functionalities to the Gemini verifier exclusively via FastMCP tools (`@mcp.tool()`). Do not write custom prompt parse strings or ad-hoc JSON execution layers.
-* **Separation of Reasoning and Action:** Keep tools focused on returning structured context data (floats, history averages). The LLM analyst holds the responsibility of weighing this data and formulating a verdict.
+- Alembic in `deployments/` — async engine (`asyncpg`), SQLModel `target_metadata`
+- Generate: `uv run alembic revision --autogenerate -m "message"` (from `deployments/`)
+- Apply: `uv run alembic upgrade head`
