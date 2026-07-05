@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     # Load all existing market items into RAM cache
     async with AsyncSessionLocal() as session:
         stmt = select(MarketItem.market_hash_name, MarketItem.id)
-        result = await session.execute(stmt)
+        result = await session.exec(stmt)
         for name, item_id in result:
             item_cache[name] = item_id
 
@@ -78,7 +78,7 @@ async def get_or_create_item_id(session, name: str) -> int:
         .returning(MarketItem.id)
     )
 
-    result = await session.execute(stmt)
+    result = await session.exec(stmt)
     item_id = result.scalar()
     item_cache[name] = item_id
     return item_id
@@ -129,7 +129,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
                 )
 
             stmt = insert(LiveMarketTick)
-            await session.execute(stmt, insert_data)
+            await session.exec(stmt, params=insert_data)
 
     logger.info("Bulk write complete. Committed %d ticks to 'live_market_ticks'.", total_ticks)
     return {"status": "SUCCESS", "records_processed": total_ticks}

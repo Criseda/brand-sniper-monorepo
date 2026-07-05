@@ -20,6 +20,11 @@ dev = [
     "mypy>=1.15.0",
 ]
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::UserWarning:prefect.*",
+]
+
 [tool.ruff]
 line-length = 128
 target-version = "py312"
