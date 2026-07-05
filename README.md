@@ -97,7 +97,7 @@ This project enforces code quality through automated CI/CD:
 - **Linting**: `ruff check` — catches unused imports, syntax errors, and anti-patterns
 - **Formatting**: `ruff format` — enforces consistent style (line-length 128, double quotes)
 - **Type checking**: `mypy` — static type analysis across all application code
-- **Testing**: `pytest` with `pytest-asyncio` — 53+ tests covering all apps and shared utilities
+- **Testing**: `pytest` with `pytest-asyncio` — test suite covering all apps and shared utilities
 
 All checks run automatically via GitHub Actions on every push and pull request to `main`.
 Pull requests must pass all CI checks before merging. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
