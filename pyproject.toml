@@ -23,6 +23,7 @@ dev = [
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore::UserWarning:prefect.*",
+    'ignore:.*httpx.*:UserWarning',
 ]
 
 [tool.ruff]
