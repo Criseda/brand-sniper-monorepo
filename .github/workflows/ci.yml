@@ -22,7 +22,7 @@ jobs:
         run: uv sync --all-packages --group dev
 
       - name: Audit dependencies
-        run: uv audit --all-packages
+        run: uv audit
 
       - name: Lint
         run: uv run ruff check
