@@ -4,9 +4,11 @@ A production-grade, distributed data and AI system engineered to detect real-tim
 
 **The platform's mission has evolved:** We utilize a lightning-fast **Deterministic Rules Engine (DRE)** on the hot-path to instantly paper-trade statistical anomalies, while an offline **Agentic AI Pipeline (The Adversarial CFO)** leverages Live Tools to independently audit those trades asynchronously.
 
+![CI](https://github.com/Criseda/brand-sniper-monorepo/actions/workflows/ci.yml/badge.svg)
+
 ---
 
-## 🏗️ System Architecture & Hardware Topology
+## System Architecture & Hardware Topology
 
 The infrastructure is explicitly decoupled across two physical nodes to replicate an enterprise-grade hybrid-cloud network topology:
 
@@ -60,23 +62,23 @@ flowchart TD
     Listener -->|Async POST Batched Ticks| Backend
 ```
 
-### 📡 1. The Short-Term Anomaly Path (The Edge)
+### 1. The Short-Term Anomaly Path (The Edge)
 Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks via REST polling and a **Node.js WebSocket sidecar** (for push-based Socket.IO feeds). It writes incoming vectors concurrently to a local Edge Redis hot-cache window, and instantly evaluates them. 
 
-### ⚡ 2. The Deterministic Rules Engine (The Hot Path)
+### 2. The Deterministic Rules Engine (The Hot Path)
 When a statistical anomaly is detected, the **Deterministic Rules Engine (DRE)**—now residing entirely on the Edge Node—queries the Edge Redis in `O(1)` time (sub-millisecond latency) to validate the drop against long-term ML baselines. If verified, the local `PaperExecutor` executes the trade synchronously, totally bypassing the network boundary. **Average latency: <5ms.**
 
-### 📈 3. Observability (Grafana & Prometheus)
+### 3. Observability (Grafana & Prometheus)
 The Edge Node asynchronously POSTs the execution logs to the Windows backend. The backend increments memory-safe `prometheus_client` gauges and histograms. Prometheus scrapes this data on a schedule, and **Grafana** provides a stunning real-time visualization of simulated PnL.
 
-### 🧠 4. The Adversarial CFO (The Cold Path)
+### 4. The Adversarial CFO (The Cold Path)
 To prevent Circular Feedback Loops, we built the **Adversarial CFO**.
 Orchestrated by **Prefect**, this daily offline pipeline feeds the bot's simulated trades to Google's **Gemini**. The AI is armed with tool functions (`fetch_live_market_floor`, `search_macro_trends`) registered via **FastMCP**, allowing it to evaluate market context and macro trends. In the current prototype these tools return simulated adversarial data; a production deployment would integrate live API keys to scrape real-time market floors and search news/social feeds.
 Its final grade and reasoning trace are logged immutably into **MLflow**. Prefect then syncs the newly evaluated ML baselines back across the network to the Edge Redis cache.
 
 ---
 
-## 🛠️ The Tech Stack
+## Tech Stack
 
 * **Runtime:** Python 3.12 (Locked via `uv`)
 * **Package Management:** `uv Workspaces` (Unified root lockfile, independent microservice dependency resolutions)
@@ -88,9 +90,31 @@ Its final grade and reasoning trace are logged immutably into **MLflow**. Prefec
 
 ---
 
-## 🚀 Setup & Installation Guide
+## Quality Assurance
 
-This monorepo is designed to be plug-and-play using `.env.example` templates and Docker Compose.
+This project enforces code quality through automated CI (GitHub Actions):
+
+- **Linting**: `ruff check` — catches unused imports, syntax errors, and anti-patterns
+- **Formatting**: `ruff format` — enforces consistent style (line-length 128, double quotes)
+- **Type checking**: `mypy` — static type analysis across all application code
+- **Testing**: `pytest` with `pytest-asyncio` — test suite covering all apps and shared utilities
+
+All checks run automatically via GitHub Actions on every push and pull request to `main`.
+Pull requests must pass all CI checks before merging. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
+
+```bash
+# Run all quality checks locally
+uv run ruff check
+uv run ruff format --check
+uv run mypy apps/backend/ apps/listener/ apps/analytics/
+uv run pytest
+```
+
+---
+
+## Setup & Installation Guide
+
+This monorepo is designed to be plug-and-play using `.env.example` templates. PostgreSQL is configured for Azure Flexible Server by default; uncomment the postgres service in `deployments/windows-stack/docker-compose.yml` for local development.
 
 ### 1. Prerequisites
 Ensure you have `uv` installed globally, along with `Docker` and `Docker Compose`.
@@ -134,7 +158,7 @@ uv run alembic upgrade head
 
 ---
 
-## 🖥️ Running the Applications
+## Running the Applications
 
 ### Start the Backend (API Core)
 ```bash
@@ -157,3 +181,32 @@ cd apps/analytics
 uv run python evaluate_performance.py
 ```
 View the AI's reasoning artifact in **MLflow** at `http://localhost:5000`.
+
+---
+
+## Testing
+
+Run the full test suite from any directory:
+```bash
+uv run pytest
+```
+
+Tests are organized by application (`apps/*/tests/`) and the shared package (`packages/shared_utils/tests/`). The suite covers:
+
+- **Backend**: FastAPI endpoint tests using `TestClient` with SQLite in-memory (no PostgreSQL needed)
+- **Listener**: Async anomaly detection and DRE tests using `pytest-asyncio`
+- **Analytics**: Mocked Gemini and MLflow evaluation pipeline tests
+- **Shared utils**: Pure unit tests for asset parsing, pricing, and classification
+
+See [.agents/AGENTS.md](.agents/AGENTS.md) for testing quirks and [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution workflow.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, branch naming, quality checks, and pull request process. In short:
+
+1. Branch from `main` (`feat/`, `fix/`, etc.)
+2. Make changes following project conventions
+3. Run quality checks (`ruff check`, `ruff format --check`, `mypy`, `pytest`)
+4. Open a pull request against `main` — CI must pass before merging
