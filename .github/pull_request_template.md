@@ -13,7 +13,7 @@
 
 ## Checklist
 
-- [ ] I have read [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [ ] I have read [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md)
 - [ ] `uv run ruff check` passes with no new violations
 - [ ] `uv run ruff format --check` passes
 - [ ] `uv run mypy apps/backend/ apps/listener/ apps/analytics/` passes with no new errors
