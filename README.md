@@ -224,3 +224,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, branch nami
 2. Make changes following project conventions
 3. Run quality checks (`ruff check`, `ruff format --check`, `mypy`, `pytest`)
 4. Open a pull request against `main` — CI must pass before merging
+
+---
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**.
+See the [LICENSE](LICENSE) file for more details.
