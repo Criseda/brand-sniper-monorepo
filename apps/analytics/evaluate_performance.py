@@ -31,14 +31,23 @@ from tools import fetch_live_market_floor, search_macro_trends
 engine = create_engine("postgresql+psycopg2://postgres:postgres@localhost:5432/brand_sniper")
 
 # Setup MLflow
-tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-mlflow.set_tracking_uri(tracking_uri)
-client_mlflow = MlflowClient(tracking_uri=tracking_uri)
-try:
-    exp = client_mlflow.get_experiment_by_name("cfo-evaluation")
-    experiment_id = exp.experiment_id if exp else client_mlflow.create_experiment("cfo-evaluation")
-except:
-    experiment_id = "1"
+_experiment_id = None
+
+def get_experiment_id():
+    global _experiment_id
+    if _experiment_id is not None:
+        return _experiment_id
+        
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+    mlflow.set_tracking_uri(tracking_uri)
+    client_mlflow = MlflowClient(tracking_uri=tracking_uri)
+    try:
+        exp = client_mlflow.get_experiment_by_name("cfo-evaluation")
+        _experiment_id = exp.experiment_id if exp else client_mlflow.create_experiment("cfo-evaluation")
+    except Exception:
+        _experiment_id = "1"
+    return _experiment_id
+
 
 # Initialize Gemini Client
 # Assumes GEMINI_API_KEY is set in the environment
@@ -110,7 +119,7 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
         print(f"   -> CFO Reasoning: {safe_reasoning}")
         
         # Log the evaluation to MLflow securely
-        with mlflow.start_run(experiment_id=experiment_id, run_name=f"audit_{item_name}") as run:
+        with mlflow.start_run(experiment_id=get_experiment_id(), run_name=f"audit_{item_name}") as run:
             mlflow.log_param("market_hash_name", item_name)
             mlflow.log_param("purchase_price_cents", trade.purchase_price_cents)
             mlflow.log_param("bot_estimated_profit", trade.estimated_profit_cents)
