@@ -15,23 +15,22 @@ sys.path.append(str(PROJECT_ROOT))
 sys.path.append(str(PROJECT_ROOT / "packages" / "shared_utils" / "src"))
 
 from dotenv import load_dotenv
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+load_dotenv(dotenv_path=PROJECT_ROOT / "apps" / "analytics" / ".env", override=True)
 
-load_dotenv()
-
+from prefect import flow, task
+from sqlmodel import select
+from sqlalchemy.ext.asyncio import AsyncSession
 import mlflow
 from google import genai
 from google.genai import types
 from mlflow.client import MlflowClient
-from prefect import flow, task
 from shared_utils import get_logger
-from shared_utils.models import MarketItem, SimulatedTrade
-from sqlmodel import Session, create_engine, select
+from shared_utils.db_connection import async_engine
+from shared_utils.models import SimulatedTrade, MarketItem
 from tools import fetch_live_market_floor, search_macro_trends
 
 logger = get_logger("analytics.evaluate")
-
-# Setup Database
-engine = create_engine("postgresql+psycopg2://postgres:postgres@localhost:5432/brand_sniper")
 
 # Setup MLflow
 _experiment_id = None
@@ -54,7 +53,6 @@ def get_experiment_id():
 
 
 # Initialize Gemini Client
-# Assumes GEMINI_API_KEY is set in the environment
 gemini_client = genai.Client()
 
 SYSTEM_INSTRUCTION = """
@@ -75,21 +73,19 @@ Return your evaluation in strict JSON format:
 
 
 @task
-def fetch_daily_trades():
-    with Session(engine) as session:
-        # Fetching all trades for demonstration (in production, filter by today's date)
-        # We limit to 1 here to strictly respect Gemini Free Tier Quotas (5 requests / min)
+async def fetch_daily_trades():
+    async with AsyncSession(async_engine) as session:
         stmt = (
             select(SimulatedTrade, MarketItem.market_hash_name)
             .join(MarketItem, SimulatedTrade.item_id == MarketItem.id)
             .limit(1)
         )
-        results = session.execute(stmt).all()
-        return results
+        result = await session.execute(stmt)
+        return result.all()
 
 
 @task
-def evaluate_trade(trade: SimulatedTrade, item_name: str):
+async def evaluate_trade(trade: SimulatedTrade, item_name: str):
     logger.info("Auditing trade for %s...", item_name)
 
     prompt = f"""
@@ -102,8 +98,6 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
     """
 
     try:
-        # We pass the FastMCP tools directly to Gemini to avoid ad-hoc JSON execution layers
-        # Note: We cannot use response_mime_type="application/json" with tools=[] in the Gemini API.
         chat = gemini_client.chats.create(
             model="gemini-2.5-flash",
             config=types.GenerateContentConfig(
@@ -113,7 +107,6 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
 
         response = chat.send_message(prompt)
 
-        # Clean markdown code blocks from response
         raw_text = response.text.strip()
         if raw_text.startswith("```json"):
             raw_text = raw_text[7:]
@@ -129,7 +122,6 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
         safe_reasoning = reasoning.encode("ascii", "ignore").decode("ascii")
         logger.info("CFO Reasoning: %s", safe_reasoning)
 
-        # Log the evaluation to MLflow securely
         with mlflow.start_run(experiment_id=get_experiment_id(), run_name=f"audit_{item_name}"):
             mlflow.log_param("market_hash_name", item_name)
             mlflow.log_param("purchase_price_cents", trade.purchase_price_cents)
@@ -137,7 +129,6 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
             mlflow.log_metric("cfo_confidence_score", score)
             mlflow.set_tag("eval_status", "APPROVED" if score >= 70 else "REJECTED")
 
-            # Log the CFO's full reasoning as an artifact without polluting the repo
             import tempfile
 
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -151,13 +142,14 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
 
 
 @flow(name="Daily CFO Evaluation")
-def run_cfo_evaluation_pipeline():
-    trades = fetch_daily_trades()
+async def run_cfo_evaluation_pipeline():
+    trades = await fetch_daily_trades()
     logger.info("Found %d trades to evaluate.", len(trades))
 
     for trade, item_name in trades:
-        evaluate_trade(trade, item_name)
+        await evaluate_trade(trade, item_name)
 
 
 if __name__ == "__main__":
-    run_cfo_evaluation_pipeline()
+    import asyncio
+    asyncio.run(run_cfo_evaluation_pipeline())

@@ -18,7 +18,10 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 # Dynamic path alignment to ensure the script can find the shared-utils package
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(PROJECT_ROOT))
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
 from shared_utils import get_logger, parse_item_meta
 from shared_utils.db_connection import async_engine

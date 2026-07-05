@@ -9,7 +9,9 @@ from fastapi import FastAPI, status
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
 
-# Dynamically resolve and load the backend's explicit environment file
+# Load root .env (shared) first, then backend-specific overrides
+project_root = Path(__file__).resolve().parents[2]
+load_dotenv(dotenv_path=project_root / ".env")
 backend_env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=backend_env_path)
 

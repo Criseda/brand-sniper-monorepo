@@ -1,27 +1,28 @@
 services:
   # ---------------------------------------------------------------------------
-  # DATA LAYER: Main Application Database & Fast Cache
+  # DATA LAYER: Main Application Database (Optional — uncomment for local dev)
+  # By default, set DATABASE_URL in your .env to point to an external (e.g. Azure)
+  # PostgreSQL instance. Uncomment the block below to run PostgreSQL locally.
   # ---------------------------------------------------------------------------
-  postgres:
-    image: postgres:16-alpine
-    container_name: sniper_postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: brand_sniper
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - sniper_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: sniper_postgres
+  #   environment:
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres
+  #     POSTGRES_DB: brand_sniper
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - sniper_network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 5
 
   # ---------------------------------------------------------------------------
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
@@ -40,9 +41,6 @@ services:
     networks:
       - sniper_network
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   # ---------------------------------------------------------------------------
   # MLOPS LAYER: MLflow Metric Tracking & Model Registry
@@ -90,7 +88,7 @@ services:
 # PERSISTENT STORAGE BOUNDARIES
 # ---------------------------------------------------------------------------
 volumes:
-  postgres_data:
+  # postgres_data:   # Uncomment when using local postgres service
   prefect_data:
   mlflow_data:
   prometheus_data:

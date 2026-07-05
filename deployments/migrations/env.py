@@ -1,5 +1,8 @@
 import asyncio
+import os
+from pathlib import Path
 from logging.config import fileConfig
+from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
 # CORE MONOREPO IMPORTS
@@ -13,6 +16,16 @@ from sqlmodel import SQLModel
 
 # This is the Alembic Config object, which provides access to the values within the .ini file.
 config = context.config
+
+# Load the root .env so DATABASE_URL is available for Alembic
+_root_env = Path(__file__).resolve().parents[2] / ".env"
+if _root_env.exists():
+    load_dotenv(dotenv_path=_root_env)
+
+# Override the database URL from the DATABASE_URL env var if set.
+db_url = os.getenv("DATABASE_URL")
+if db_url:
+    config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
