@@ -17,7 +17,7 @@
   <a href="https://github.com/astral-sh/ruff">
     <img src="https://img.shields.io/badge/code%20style-ruff-000000" alt="Ruff">
   </a>
-  <a href="http://mypy-lang.org/">
+  <a href="https://mypy-lang.org/">
     <img src="https://img.shields.io/badge/types-mypy-blue" alt="Mypy">
   </a>
 </p>
