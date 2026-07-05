@@ -96,8 +96,7 @@ class SkinportScraper(BaseScraper):
 
                     elif response.status == 401:
                         logger.error(
-                            "API Rejected Credentials! Check your "
-                            "client ID and secret variables inside your .env file."
+                            "API Rejected Credentials! Check your client ID and secret variables inside your .env file."
                         )
                         backoff_seconds = 305
                     elif response.status == 429:
@@ -196,13 +195,17 @@ class SkinportScraper(BaseScraper):
             if price_usd <= threshold:
                 logger.info(
                     "Verified! Price $%.2f <= Snipe Threshold $%.2f (Recent Median: $%.2f)",
-                    price_usd, threshold, recent_median,
+                    price_usd,
+                    threshold,
+                    recent_median,
                 )
                 return True
             else:
                 logger.info(
                     "Filtered out! Price $%.2f > Snipe Threshold $%.2f (Recent Median: $%.2f)",
-                    price_usd, threshold, recent_median,
+                    price_usd,
+                    threshold,
+                    recent_median,
                 )
                 return False
         except Exception as e:

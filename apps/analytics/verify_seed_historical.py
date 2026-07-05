@@ -95,7 +95,8 @@ async def run_verification():
         total_market_items = await conn.scalar(text("SELECT COUNT(*) FROM market_items"))
         logger.info(
             "  Result: %s items have historical prices (out of %s total market items).",
-            f"{unique_items_in_prices:,}", f"{total_market_items:,}",
+            f"{unique_items_in_prices:,}",
+            f"{total_market_items:,}",
         )
 
         # 4. Duplication Check (Utilizes group aggregate scan on the index)

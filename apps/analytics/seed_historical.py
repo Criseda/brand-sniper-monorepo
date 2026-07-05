@@ -74,7 +74,10 @@ async def seed_historical_data(truncate: bool = False):
                 if idx % 500 == 0 or idx == 1 or idx == total_files:
                     logger.info(
                         "Seeding Progress: File %d/%d (%d%%) | Current: %s",
-                        idx, total_files, int((idx / total_files) * 100), market_hash_name,
+                        idx,
+                        total_files,
+                        int((idx / total_files) * 100),
+                        market_hash_name,
                     )
 
                 item_id = item_cache.get(market_hash_name)

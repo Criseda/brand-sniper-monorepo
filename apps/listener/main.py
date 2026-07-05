@@ -111,9 +111,7 @@ async def websocket_subscriber_producer(scraper, queue: asyncio.Queue):
             async for tick in scraper.listen_websocket_stream():
                 await queue.put(tick)
         except Exception as e:
-            logger.warning(
-                "Ingestion watchdog caught subscriber crash: %s. Reconnecting in 10 seconds...", e
-            )
+            logger.warning("Ingestion watchdog caught subscriber crash: %s. Reconnecting in 10 seconds...", e)
             await asyncio.sleep(10)
 
 
@@ -188,7 +186,8 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
         if is_approved:
             logger.info(
                 "Confirmed true outlier by Edge DRE! %s dropped to $%.2f. Executing trade...",
-                tick.market_hash_name, tick.price_usd,
+                tick.market_hash_name,
+                tick.price_usd,
             )
 
             baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
@@ -257,7 +256,10 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                         sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
                         logger.info(
                             "Outlier potential detected: %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
-                            tick.market_hash_name, sticker_tag, tick.price_usd, z_score,
+                            tick.market_hash_name,
+                            sticker_tag,
+                            tick.price_usd,
+                            z_score,
                         )
                         asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache))
 

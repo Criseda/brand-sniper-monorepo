@@ -48,7 +48,10 @@ class PaperExecutor(ExecutionService):
 
         logger.info(
             "Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: $%.2f | Z-Score: %.2f",
-            market_hash_name, purchase_price_cents / 100, estimated_profit_cents / 100, z_score,
+            market_hash_name,
+            purchase_price_cents / 100,
+            estimated_profit_cents / 100,
+            z_score,
         )
 
         # Fire and forget HTTP POST (wrapped in a background task so it never blocks the hot path)
