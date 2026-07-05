@@ -1,10 +1,40 @@
-# Brand Sniper: Algorithmic Market Sniping & Macro Arbitrage Engine
+<div align="center">
+  <h1>Brand Sniper</h1>
+  <p><strong>Algorithmic Market Sniping & Macro Arbitrage Engine</strong></p>
+  <p><em>A production-grade, distributed data and AI system engineered to detect real-time market pricing anomalies and forecast long-term macroeconomic asset trends.</em></p>
+</div>
 
-A production-grade, distributed data and AI system engineered to detect real-time market pricing anomalies and forecast long-term macroeconomic asset trends. The system architecture is built as a high-velocity Python monorepo split across a localized hybrid-network topology (Raspberry Pi 5 edge node and Windows PC compute engine). 
+<p align="center">
+  <a href="https://github.com/Criseda/brand-sniper-monorepo/actions/workflows/ci.yml">
+    <img src="https://github.com/Criseda/brand-sniper-monorepo/actions/workflows/ci.yml/badge.svg" alt="CI Status">
+  </a>
+  <a href="https://www.python.org/downloads/release/python-3120/">
+    <img src="https://img.shields.io/badge/python-3.12-blue?logo=python" alt="Python 3.12">
+  </a>
+  <a href="https://github.com/astral-sh/uv">
+    <img src="https://img.shields.io/badge/package%20manager-uv-8A2BE2" alt="uv">
+  </a>
+  <a href="https://github.com/astral-sh/ruff">
+    <img src="https://img.shields.io/badge/code%20style-ruff-000000" alt="Ruff">
+  </a>
+  <a href="http://mypy-lang.org/">
+    <img src="https://img.shields.io/badge/types-mypy-blue" alt="Mypy">
+  </a>
+</p>
+
+---
 
 **The platform's mission has evolved:** We utilize a lightning-fast **Deterministic Rules Engine (DRE)** on the hot-path to instantly paper-trade statistical anomalies, while an offline **Agentic AI Pipeline (The Adversarial CFO)** leverages Live Tools to independently audit those trades asynchronously.
 
-![CI](https://github.com/Criseda/brand-sniper-monorepo/actions/workflows/ci.yml/badge.svg)
+---
+
+## Features
+
+- **High-Velocity Hot Path:** Real-time data streams evaluated by a Deterministic Rules Engine (DRE) in <5ms.
+- **Agentic AI Audit (Cold Path):** Autonomous Adversarial CFO powered by Google Gemini to retrospectively audit trades.
+- **Edge-to-Cloud Architecture:** Designed for hybrid deployment across Raspberry Pi 5 edge nodes and PC compute engines.
+- **O(1) Data Lookup:** Sub-millisecond data windowing powered by an edge-local Redis cache.
+- **Comprehensive Observability:** Built-in Prometheus metrics and Grafana dashboards for deep operational insights.
 
 ---
 
@@ -80,35 +110,15 @@ Its final grade and reasoning trace are logged immutably into **MLflow**. Prefec
 
 ## Tech Stack
 
-* **Runtime:** Python 3.12 (Locked via `uv`)
-* **Package Management:** `uv Workspaces` (Unified root lockfile, independent microservice dependency resolutions)
-* **Database & Migrations:** PostgreSQL (`psycopg2`), **SQLModel**, and **Alembic** 
-* **Cache:** Redis (Async key-value data-windowing)
-* **Orchestration & Tracking:** Prefect Server & MLflow
-* **AI Graph & Protocols:** Google Gemini & Model Context Protocol (FastMCP)
-* **Observability:** Prometheus & Grafana Stack
-
----
-
-## Quality Assurance
-
-This project enforces code quality through automated CI (GitHub Actions):
-
-- **Linting**: `ruff check` — catches unused imports, syntax errors, and anti-patterns
-- **Formatting**: `ruff format` — enforces consistent style (line-length 128, double quotes)
-- **Type checking**: `mypy` — static type analysis across all application code
-- **Testing**: `pytest` with `pytest-asyncio` — test suite covering all apps and shared utilities
-
-All checks run automatically via GitHub Actions on every push and pull request to `main`.
-Pull requests must pass all CI checks before merging. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
-
-```bash
-# Run all quality checks locally
-uv run ruff check
-uv run ruff format --check
-uv run mypy apps/backend/ apps/listener/ apps/analytics/
-uv run pytest
-```
+| Category | Technology |
+|---|---|
+| **Runtime** | Python 3.12 (Locked via `uv`) |
+| **Package Management** | `uv Workspaces` (Unified root lockfile, independent microservice dependency resolutions) |
+| **Database & Migrations** | PostgreSQL (`psycopg2`), **SQLModel**, and **Alembic** |
+| **Cache** | Redis (Async key-value data-windowing) |
+| **Orchestration & Tracking** | Prefect Server & MLflow |
+| **AI Graph & Protocols** | Google Gemini & Model Context Protocol (FastMCP) |
+| **Observability** | Prometheus & Grafana Stack |
 
 ---
 
@@ -184,21 +194,25 @@ View the AI's reasoning artifact in **MLflow** at `http://localhost:5000`.
 
 ---
 
-## Testing
+## Quality Assurance
 
-Run the full test suite from any directory:
+This project enforces code quality through automated CI (GitHub Actions):
+
+- **Linting**: `ruff check` — catches unused imports, syntax errors, and anti-patterns
+- **Formatting**: `ruff format` — enforces consistent style (line-length 128, double quotes)
+- **Type checking**: `mypy` — static type analysis across all application code
+- **Testing**: `pytest` with `pytest-asyncio` — test suite covering all apps and shared utilities
+
+All checks run automatically via GitHub Actions on every push and pull request to `main`.
+Pull requests must pass all CI checks before merging. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
+
 ```bash
+# Run all quality checks locally
+uv run ruff check
+uv run ruff format --check
+uv run mypy apps/backend/ apps/listener/ apps/analytics/
 uv run pytest
 ```
-
-Tests are organized by application (`apps/*/tests/`) and the shared package (`packages/shared_utils/tests/`). The suite covers:
-
-- **Backend**: FastAPI endpoint tests using `TestClient` with SQLite in-memory (no PostgreSQL needed)
-- **Listener**: Async anomaly detection and DRE tests using `pytest-asyncio`
-- **Analytics**: Mocked Gemini and MLflow evaluation pipeline tests
-- **Shared utils**: Pure unit tests for asset parsing, pricing, and classification
-
-See [.agents/AGENTS.md](.agents/AGENTS.md) for testing quirks and [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution workflow.
 
 ---
 
