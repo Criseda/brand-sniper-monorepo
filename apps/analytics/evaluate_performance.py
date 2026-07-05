@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sys
@@ -15,19 +16,20 @@ sys.path.append(str(PROJECT_ROOT))
 sys.path.append(str(PROJECT_ROOT / "packages" / "shared_utils" / "src"))
 
 from dotenv import load_dotenv
+
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 load_dotenv(dotenv_path=PROJECT_ROOT / "apps" / "analytics" / ".env", override=True)
 
-from prefect import flow, task
-from sqlmodel import select
-from sqlalchemy.ext.asyncio import AsyncSession
 import mlflow
 from google import genai
 from google.genai import types
 from mlflow.client import MlflowClient
+from prefect import flow, task
 from shared_utils import get_logger
 from shared_utils.db_connection import async_engine
-from shared_utils.models import SimulatedTrade, MarketItem
+from shared_utils.models import MarketItem, SimulatedTrade
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 from tools import fetch_live_market_floor, search_macro_trends
 
 logger = get_logger("analytics.evaluate")
@@ -105,7 +107,7 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str):
             ),
         )
 
-        response = chat.send_message(prompt)
+        response = await asyncio.to_thread(chat.send_message, prompt)
 
         raw_text = response.text.strip()
         if raw_text.startswith("```json"):
@@ -151,5 +153,4 @@ async def run_cfo_evaluation_pipeline():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(run_cfo_evaluation_pipeline())

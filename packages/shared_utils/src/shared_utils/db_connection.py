@@ -6,16 +6,26 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 # Build the database URL from environment, with local fallback
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/brand_sniper"
-)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/brand_sniper")
 
-# Auto-enable SSL for remote connections — required by Azure PostgreSQL
-if "localhost" not in DATABASE_URL and "127.0.0.1" not in DATABASE_URL:
-    if "?" not in DATABASE_URL and "ssl" not in DATABASE_URL:
-        ssl_param = "sslmode=require" if "psycopg2" in DATABASE_URL else "ssl=require"
-        DATABASE_URL += f"?{ssl_param}"
+
+def apply_ssl_for_remote(url: str) -> str:
+    """Auto-enable SSL for remote connections — required by Azure PostgreSQL.
+
+    Handles URLs that already contain query params by using '&' as separator.
+    Only skips adding SSL if an explicit ssl=/sslmode= key is already present.
+    """
+    if "localhost" in url or "127.0.0.1" in url:
+        return url
+    has_ssl = "sslmode=" in url or "ssl=" in url
+    if has_ssl:
+        return url
+    sep = "&" if "?" in url else "?"
+    ssl_param = "sslmode=require" if "psycopg2" in url else "ssl=require"
+    return f"{url}{sep}{ssl_param}"
+
+
+DATABASE_URL = apply_ssl_for_remote(DATABASE_URL)
 
 # Create the asynchronous database engine with enterprise connection pooling
 async_engine = create_async_engine(

@@ -30,7 +30,7 @@ logger = get_logger("listener.main")
 project_root = Path(__file__).resolve().parents[2]
 load_dotenv(dotenv_path=project_root / ".env")
 listener_env_path = Path(__file__).parent / ".env"
-load_dotenv(dotenv_path=listener_env_path)
+load_dotenv(dotenv_path=listener_env_path, override=True)
 
 # Pulls target node location from RAM environment, falling back to local loopback
 COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")

@@ -7,8 +7,8 @@ import sys
 import time
 from pathlib import Path
 
-from sqlmodel import text
 from dotenv import load_dotenv
+from sqlmodel import text
 
 # Dynamic path alignment to find shared-utils package
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

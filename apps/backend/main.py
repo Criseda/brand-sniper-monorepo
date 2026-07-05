@@ -13,7 +13,7 @@ from sqlmodel import SQLModel, select
 project_root = Path(__file__).resolve().parents[2]
 load_dotenv(dotenv_path=project_root / ".env")
 backend_env_path = Path(__file__).resolve().parent / ".env"
-load_dotenv(dotenv_path=backend_env_path)
+load_dotenv(dotenv_path=backend_env_path, override=True)
 
 # Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
 if hasattr(sys.stdout, "reconfigure"):

@@ -1,14 +1,15 @@
 import asyncio
 import os
-from pathlib import Path
 from logging.config import fileConfig
-from dotenv import load_dotenv
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # CORE MONOREPO IMPORTS
 # ---------------------------------------------------------------------------
 import shared_utils.models  # noqa: F401 (register tables with SQLModel.metadata)
 from alembic import context
+from dotenv import load_dotenv
+from shared_utils.db_connection import apply_ssl_for_remote
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -23,8 +24,10 @@ if _root_env.exists():
     load_dotenv(dotenv_path=_root_env)
 
 # Override the database URL from the DATABASE_URL env var if set.
+# Apply the same SSL auto-enable logic used by the application engine.
 db_url = os.getenv("DATABASE_URL")
 if db_url:
+    db_url = apply_ssl_for_remote(db_url)
     config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
