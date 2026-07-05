@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Brand Sniper</h1>
-  <p><strong>Algorithmic Market Sniping & Macro Arbitrage Engine</strong></p>
+  <p><strong>Algorithmic CS2 Market Sniping & Macro Arbitrage Engine</strong></p>
   <p><em>A production-grade, distributed data and AI system engineered to detect real-time market pricing anomalies and forecast long-term macroeconomic asset trends.</em></p>
 </div>
 
