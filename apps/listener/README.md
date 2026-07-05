@@ -1,6 +1,6 @@
 # Listener: Edge Node Ingestion Stream
 
-The Listener application is designed to run 24/7 on edge hardware (e.g., a Raspberry Pi 5). Its sole responsibility is to consume massive firehoses of live market data from secondary marketplaces via WebSockets or high-frequency polling.
+The Listener application is designed to run 24/7 on edge hardware (e.g., a Raspberry Pi 5). Its sole responsibility is to consume massive firehoses of live market data from secondary marketplaces via REST polling and a **Node.js WebSocket sidecar** (for Socket.IO-based push feeds).
 
 ## 📡 The Edge Compute Architecture
 
@@ -11,6 +11,10 @@ Because the ingestion node must never block, it routes incoming data ticks concu
 
 2. **The Batched Ingestion (The Cold Path):**
    Streams bulk batches of market ticks over the network to the Windows Backend REST API (`/api/v1/ingest/bulk`) to be saved into the permanent SQL database. This historical data is later mined by the Analytics pipeline to train the AI baselines.
+
+### Node.js WebSocket Sidecar
+
+The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO feed for real-time sale listings. The sidecar writes parsed listings to stdout, which the main Python process reads line-by-line and feeds into the anomaly detection pipeline.
 
 ## 🚀 Setup & Execution
 

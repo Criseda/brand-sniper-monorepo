@@ -3,12 +3,11 @@ Seed the database with historical prices from the CSV files.
 Please run validate_historical.py first to ensure the data is clean.
 """
 
-import os
-import sys
-import io
 import argparse
+import io
+import sys
 from pathlib import Path
-import urllib.parse
+
 import pandas as pd
 from sqlmodel import select, text
 
@@ -21,12 +20,13 @@ if hasattr(sys.stderr, "reconfigure"):
 # Dynamic path alignment to ensure the script can find the shared-utils package
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
+from shared_utils import parse_item_meta
 from shared_utils.db_connection import async_engine
 from shared_utils.models import MarketItem
-from shared_utils import parse_item_meta
 
 # Path pointing to where your Kaggle files live: /data/items/
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
+
 
 async def seed_historical_data(truncate: bool = False):
     if not DATA_DIR.exists():
@@ -67,10 +67,14 @@ async def seed_historical_data(truncate: bool = False):
 
             for idx, file_path in enumerate(csv_files, start=1):
                 market_hash_name, item_type = parse_item_meta(file_path.name)
-                
+
                 # PROGRESS HEARTBEAT TICKER
                 if idx % 500 == 0 or idx == 1 or idx == total_files:
-                    print(f"Seeding Progress: File {idx}/{total_files} ({int((idx/total_files)*100)}%) | Current: {market_hash_name}")
+                    print(
+                        f"Seeding Progress: File {idx}/{total_files} "
+                        f"({int((idx / total_files) * 100)}%) | "
+                        f"Current: {market_hash_name}"
+                    )
                     sys.stdout.flush()
 
                 item_id = item_cache.get(market_hash_name)
@@ -85,16 +89,17 @@ async def seed_historical_data(truncate: bool = False):
                                 "VALUES ($1, $2) "
                                 "ON CONFLICT (market_hash_name) DO UPDATE SET item_type = EXCLUDED.item_type "
                                 "RETURNING id",
-                                market_hash_name, item_type
+                                market_hash_name,
+                                item_type,
                             )
                             item_cache[market_hash_name] = item_id
 
                         df = pd.read_csv(file_path)
                         if df.empty:
                             continue
-                        
+
                         # Coerce string corruptions safely to null and drop them instantly
-                        df["unix timestamp"] = pd.to_numeric(df["unix timestamp"], errors='coerce')
+                        df["unix timestamp"] = pd.to_numeric(df["unix timestamp"], errors="coerce")
                         df = df.dropna(subset=["unix timestamp"])
 
                         if df.empty:
@@ -102,7 +107,7 @@ async def seed_historical_data(truncate: bool = False):
 
                         # Vectorized operations
                         df["item_id"] = item_id
-                        df["sale_date"] = pd.to_datetime(df["unix timestamp"], unit='s', utc=True)
+                        df["sale_date"] = pd.to_datetime(df["unix timestamp"], unit="s", utc=True)
                         df["median_price_cents"] = (df["price"] * 100).round().astype(int)
                         df["volume_sold"] = df["quantity"].astype(int)
 
@@ -112,14 +117,14 @@ async def seed_historical_data(truncate: bool = False):
                             csv_buffer, index=False, header=False
                         )
                         csv_buffer.seek(0)
-                        csv_data = csv_buffer.getvalue().encode('utf-8')
+                        csv_data = csv_buffer.getvalue().encode("utf-8")
 
                         # Execute fast binary copy
                         await asyncpg_conn.copy_to_table(
                             "historical_prices",
                             source=io.BytesIO(csv_data),
                             columns=["item_id", "sale_date", "median_price_cents", "volume_sold"],
-                            format="csv"
+                            format="csv",
                         )
                         success_count += 1
 
@@ -139,10 +144,12 @@ async def seed_historical_data(truncate: bool = False):
 
     print(f"\nSeeding completed. Successfully processed {success_count} files. Failed files: {fail_count}.")
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="High-performance Postgres historical price seeder.")
     parser.add_argument("--truncate", action="store_true", help="Truncate historical_prices before starting.")
     args = parser.parse_args()
 
     import asyncio
+
     asyncio.run(seed_historical_data(truncate=args.truncate))

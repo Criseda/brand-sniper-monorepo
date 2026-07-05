@@ -1,21 +1,19 @@
 import asyncio
+import json
 import math
 import os
 import signal
 import sys
 from collections import OrderedDict
-from datetime import datetime, timezone
 from pathlib import Path
 
 import aiohttp
 from dotenv import load_dotenv
-from redis.asyncio import Redis
-
-from scrapers.factory import ScraperFactory
-from models import MarketTick
-from rules_engine import evaluate_opportunity
 from executor import PaperExecutor
-import json
+from models import MarketTick
+from redis.asyncio import Redis
+from rules_engine import evaluate_opportunity
+from scrapers.factory import ScraperFactory
 
 # Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -74,9 +72,6 @@ async def close_http_session():
         _http_session = None
 
 
-
-
-
 async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
     """Fires a non-blocking network transmission containing structured bulk arrays."""
     payload = {"source": source, "ticks": chunk}
@@ -106,17 +101,21 @@ async def websocket_subscriber_producer(scraper, queue: asyncio.Queue):
     """Listens to real-time events from the platform's WebSocket stream relay and puts them into the queue."""
     if not hasattr(scraper, "listen_websocket_stream"):
         return
-        
+
     while True:
         try:
             async for tick in scraper.listen_websocket_stream():
                 await queue.put(tick)
         except Exception as e:
-            print(f"[{scraper.platform_name.upper()} WS] Ingestion watchdog caught subscriber crash: {e}. Reconnecting in 10 seconds...")
+            print(
+                f"[{scraper.platform_name.upper()} WS] Ingestion watchdog caught "
+                f"subscriber crash: {e}. Reconnecting in 10 seconds..."
+            )
             await asyncio.sleep(10)
 
 
 # --- Anomaly Detection Helpers ---
+
 
 def is_duplicate(tick: MarketTick, dedup_cache: OrderedDict) -> bool:
     """Returns True if this tick is a duplicate (same price within the dedup window)."""
@@ -184,20 +183,24 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
     try:
         is_approved = await evaluate_opportunity(tick, cache)
         if is_approved:
-            print(f"[ANOMALY] Confirmed true outlier by Edge DRE! {tick.market_hash_name} dropped to ${tick.price_usd:.2f}. Executing trade...")
-            
+            print(
+                f"[ANOMALY] Confirmed true outlier by Edge DRE! "
+                f"{tick.market_hash_name} dropped to ${tick.price_usd:.2f}. "
+                f"Executing trade..."
+            )
+
             baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
             est_profit_cents = 0
             if baseline_raw:
                 baseline = json.loads(baseline_raw)
                 est_profit_cents = baseline.get("latest_price_cents", tick.price_cents) - tick.price_cents
-            
+
             executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
             await executor.execute(
                 market_hash_name=tick.market_hash_name,
                 purchase_price_cents=tick.price_cents,
                 estimated_profit_cents=est_profit_cents,
-                z_score=z_score
+                z_score=z_score,
             )
         else:
             print(f"[ANOMALY] False outlier filtered by Edge DRE: {tick.market_hash_name} at ${tick.price_usd:.2f}.")
@@ -208,12 +211,12 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
 async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
     """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
     cache = Redis(host="localhost", port=6380, decode_responses=True)
-    
+
     batch_buffer = []
-    dedup_cache = OrderedDict()
-    
+    dedup_cache: OrderedDict[str, float] = OrderedDict()
+
     print("[CONSUMER] Telemetry processing consumer loop is active.")
-    
+
     try:
         while True:
             tick = await queue.get()
@@ -222,38 +225,42 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                 if is_duplicate(tick, dedup_cache):
                     continue
                 update_dedup_cache(tick, dedup_cache)
-                
+
                 # Accumulate records for long-term database tracking
-                batch_buffer.append({
-                    "market_hash_name": tick.market_hash_name,
-                    "price_cents": tick.price_cents,
-                    "timestamp": tick.timestamp
-                })
-                
+                batch_buffer.append(
+                    {"market_hash_name": tick.market_hash_name, "price_cents": tick.price_cents, "timestamp": tick.timestamp}
+                )
+
                 # 2. Update Volatile Sliding Cache Layer
                 redis_key = f"market:ticks:{tick.market_hash_name}"
                 value_string = f"{tick.timestamp}:{tick.price_cents}"
                 await cache.zadd(redis_key, {value_string: tick.timestamp})
-                
+
                 # Keep only the last N ticks to resolve the illiquidity Z-score trap
                 card = await cache.zcard(redis_key)
                 if card > SLIDING_WINDOW_SIZE:
                     await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
-                
+
                 # 3. Z-Score anomaly detection
                 raw_elements = await cache.zrange(redis_key, 0, -1)
-                prices = [int(element.split(":")[1]) for element in raw_elements]
-                
+                raw_elements_list: list[str] = raw_elements  # type: ignore[assignment]
+                prices = [int(element.split(":")[1]) for element in raw_elements_list]
+
                 result = calculate_z_score(prices)
                 if result is not None:
                     z_score, mean_cents = result
-                    
+
                     if should_trigger_anomaly(z_score, mean_cents, tick):
                         sticker_count = len(tick.stickers)
                         sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
-                        print(f"[ANOMALY] Outlier potential detected: {tick.market_hash_name}{sticker_tag} at ${tick.price_usd:.2f} (Z={z_score:.2f}). Running Edge DRE...")
+                        print(
+                            f"[ANOMALY] Outlier potential detected: "
+                            f"{tick.market_hash_name}{sticker_tag} at "
+                            f"${tick.price_usd:.2f} (Z={z_score:.2f}). "
+                            f"Running Edge DRE..."
+                        )
                         asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache))
-    
+
                 # 4. When buffer matches target density constraints, dispatch non-blocking task
                 if len(batch_buffer) >= CHUNK_LIMIT:
                     asyncio.create_task(flush_batch_chunk_to_postgres(platform_target, batch_buffer.copy()))
@@ -276,22 +283,19 @@ async def start_sidecar_process(scraper):
     proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
-            "node",
-            str(sidecar_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            "node", str(sidecar_path), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        
+
         async def log_stream(stream, prefix):
             while True:
                 line = await stream.readline()
                 if not line:
                     break
                 print(f"{prefix}{line.decode('utf-8').strip()}")
-                
+
         asyncio.create_task(log_stream(proc.stdout, ""))
         asyncio.create_task(log_stream(proc.stderr, "[SKINPORT WS ERR] "))
-        
+
         await proc.wait()
         print(f"[AGENT] Node.js sidecar process exited with code {proc.returncode}")
     except Exception as e:
@@ -311,16 +315,16 @@ async def process_live_telemetry_stream(platform_target: str):
     print(f"Initializing Extensible Stream Engine: {platform_target.upper()}")
     print(f"Target Routing Node Core             : {COMPUTE_NODE_IP}:{COMPUTE_PORT}")
     print("======================================================================")
-    
-    queue = asyncio.Queue()
+
+    queue: asyncio.Queue[MarketTick] = asyncio.Queue()
     scraper = ScraperFactory.get_scraper(platform_target)
-    
+
     tasks = [
         asyncio.create_task(tick_consumer(queue, platform_target, scraper)),
         asyncio.create_task(rest_poll_producer(scraper, queue)),
-        asyncio.create_task(websocket_subscriber_producer(scraper, queue))
+        asyncio.create_task(websocket_subscriber_producer(scraper, queue)),
     ]
-    
+
     if scraper.sidecar_script_path:
         tasks.append(asyncio.create_task(start_sidecar_process(scraper)))
 
@@ -339,10 +343,7 @@ async def process_live_telemetry_stream(platform_target: str):
     try:
         # Wait until shutdown signal or task failure
         shutdown_task = asyncio.create_task(shutdown_event.wait())
-        done, pending = await asyncio.wait(
-            tasks + [shutdown_task],
-            return_when=asyncio.FIRST_COMPLETED
-        )
+        done, pending = await asyncio.wait(tasks + [shutdown_task], return_when=asyncio.FIRST_COMPLETED)
         # Cancel all remaining tasks
         for task in pending:
             task.cancel()
@@ -351,6 +352,7 @@ async def process_live_telemetry_stream(platform_target: str):
     finally:
         await close_http_session()
         print("[SHUTDOWN] Cleanup complete.")
+
 
 if __name__ == "__main__":
     asyncio.run(process_live_telemetry_stream("skinport"))

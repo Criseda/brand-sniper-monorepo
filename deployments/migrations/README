@@ -1,1 +1,15 @@
-Generic single-database configuration with an async dbapi.
+# Alembic Migrations — Brand Sniper
+
+Async database migrations (asyncpg) for the Brand Sniper monorepo.
+
+## Usage
+```bash
+cd deployments
+uv run alembic upgrade head        # Apply all pending migrations
+uv run alembic revision --autogenerate -m "description"  # Generate a new migration
+```
+
+## Notes
+- All SQLModel schemas are defined in `packages/shared_utils/src/shared_utils/models.py`.
+- Alembic's `env.py` imports models from `shared_utils` and uses `SQLModel.metadata` as `target_metadata`.
+- Migrations use an async engine (`asyncpg`).

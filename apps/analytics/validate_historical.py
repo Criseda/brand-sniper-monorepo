@@ -5,7 +5,7 @@ Please run this before seed_historical_prices.py to prevent errors and save time
 
 import sys
 from pathlib import Path
-import urllib.parse
+
 import pandas as pd
 
 # Force standard streams to use UTF-8 to support Unicode characters on Windows
@@ -21,6 +21,7 @@ from shared_utils import parse_item_meta
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
 
+
 def run_dry_run_validation():
     if not DATA_DIR.exists():
         print(f"Error: Data directory not found at: {DATA_DIR}")
@@ -34,7 +35,16 @@ def run_dry_run_validation():
     total_rows = 0
     corrupt_rows_dropped = 0
     salvaged_files_count = 0
-    type_distribution = {"Knife": 0, "Glove": 0, "Agent": 0, "Weapon Skin": 0, "Sticker": 0, "Music Kit": 0, "Patch": 0, "Container/Collectible": 0}
+    type_distribution = {
+        "Knife": 0,
+        "Glove": 0,
+        "Agent": 0,
+        "Weapon Skin": 0,
+        "Sticker": 0,
+        "Music Kit": 0,
+        "Patch": 0,
+        "Container/Collectible": 0,
+    }
     sample_decodes = []
 
     for idx, file_path in enumerate(csv_files, start=1):
@@ -46,7 +56,7 @@ def run_dry_run_validation():
         market_hash_name, item_type = parse_item_meta(file_path.name)
         if item_type in type_distribution:
             type_distribution[item_type] += 1
-        
+
         # Capture early balance mix to visually confirm logic stability
         if idx <= 4 or idx % 3000 == 0:
             sample_decodes.append((file_path.name, market_hash_name, item_type))
@@ -58,18 +68,18 @@ def run_dry_run_validation():
 
             # Run defensive conversion checks matching the seed code
             initial_row_count = len(df)
-            
+
             # Coerce string-corrupted timestamp records cleanly to NaN
-            df["unix timestamp"] = pd.to_numeric(df["unix timestamp"], errors='coerce')
+            df["unix timestamp"] = pd.to_numeric(df["unix timestamp"], errors="coerce")
             df = df.dropna(subset=["unix timestamp"])
-            
+
             cleaned_row_count = len(df)
             dropped = initial_row_count - cleaned_row_count
-            
+
             if dropped > 0:
                 corrupt_rows_dropped += dropped
                 salvaged_files_count += 1
-                
+
             total_rows += cleaned_row_count
 
         except Exception:
@@ -83,18 +93,19 @@ def run_dry_run_validation():
     print(f"Total Corrupt Rows Dropped: {corrupt_rows_dropped:,}")
     print(f"Total Clean Rows Preserved : {total_rows:,}")
     print("-" * 70)
-    
+
     print("\nREFINED ITEM TYPE DISTRIBUTION:")
     for k, v in type_distribution.items():
         if v > 0:
             print(f" - {k:<22}: {v} files mapped")
-        
+
     print("\nVERIFIED STRINGS SAMPLES:")
     for raw, clean, itype in sample_decodes[:6]:
         print(f" Raw   : {raw}")
         print(f" Clean : {clean} ---> Type: {itype}")
         print("-" * 50)
     print("=" * 70)
+
 
 if __name__ == "__main__":
     run_dry_run_validation()

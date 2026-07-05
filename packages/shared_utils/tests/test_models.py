@@ -1,9 +1,10 @@
-import pytest
-from datetime import datetime, timezone
-from sqlmodel import SQLModel, create_engine, Session
-from sqlalchemy.pool import StaticPool
+from datetime import UTC, datetime
 
+import pytest
 from shared_utils.models import MarketItem, SimulatedTrade
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
+
 
 @pytest.fixture(name="session")
 def session_fixture():
@@ -16,25 +17,26 @@ def session_fixture():
     with Session(engine) as session:
         yield session
 
+
 def test_create_simulated_trade(session: Session):
     # Setup market item
     item = MarketItem(market_hash_name="AK-47 | Redline (Field-Tested)", item_type="Rifle")
     session.add(item)
     session.commit()
     session.refresh(item)
-    
+
     # Create Simulated Trade
     trade = SimulatedTrade(
         item_id=item.id,
         purchase_price_cents=1050,
         estimated_profit_cents=250,
         trigger_z_score=-2.85,
-        simulated_buy_timestamp=datetime.now(timezone.utc)
+        simulated_buy_timestamp=datetime.now(UTC),
     )
     session.add(trade)
     session.commit()
     session.refresh(trade)
-    
+
     # Assertions
     assert trade.id is not None
     assert trade.item_id == item.id

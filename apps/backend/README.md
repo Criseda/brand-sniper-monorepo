@@ -11,6 +11,7 @@ Provides REST API endpoints (`/api/v1/ingest/bulk` and `/api/v1/ingest/trade`) f
 Acts as the central scraping target for the local Prometheus server. It leverages non-blocking `prometheus_client` instruments:
 - **`paper_trading_estimated_profit_total`**: A Gauge tracking total un-realized PnL of simulated trades.
 - **`paper_trades_executed_total`**: A Counter tracking the number of successful snipes executed by the Edge node.
+- **`rules_engine_latency_seconds`**: A Histogram tracking DRE evaluation latency (sub-millisecond to 2s buckets).
 
 ## 🚀 Setup & Execution
 
@@ -31,4 +32,4 @@ uv run python main.py
 ### 3. View the Dashboards
 - **FastAPI Swagger Docs**: `http://localhost:8080/docs`
 - **Prometheus Metrics Scrape Endpoint**: `http://localhost:8080/metrics`
-- **Grafana Live Dashboard**: `http://localhost:3000` (Use the `grafana_dashboard.json` file in the deployments directory to import the visualizer).
+- **Grafana Live Dashboard**: `http://localhost:3000` (Use the `apps/backend/grafana_dashboard.json` file to import the visualizer).

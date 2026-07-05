@@ -1,19 +1,16 @@
-import urllib.parse
 import re
+import urllib.parse
 
-WEAR_SUFFIXES = [
-    "(Factory New)", "(Minimal Wear)", "(Field-Tested)",
-    "(Well-Worn)", "(Battle-Scarred)"
-]
+WEAR_SUFFIXES = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
 
 
 def parse_item_meta(name_or_filename: str) -> tuple[str, str]:
     """
-    Decodes a filename or asset name, resolving the clean market_hash_name 
+    Decodes a filename or asset name, resolving the clean market_hash_name
     and classifying its structural category (e.g. Knife, Glove, Weapon Skin, Agent).
     """
     clean_name = urllib.parse.unquote(name_or_filename.replace(".csv", ""))
-    
+
     if "\u2605" in clean_name:
         if any(w in clean_name for w in ["Gloves", "Wraps"]):
             item_type = "Glove"
@@ -25,7 +22,23 @@ def parse_item_meta(name_or_filename: str) -> tuple[str, str]:
         item_type = "Music Kit"
     elif "Patch |" in clean_name:
         item_type = "Patch"
-    elif any(f in clean_name for f in ["NSWC SEAL", "Guerrilla Warfare", "Sabre", "TACP", "Professionals", "FBI", "SWAT", "Gendarmerie", "KSK"]) or "Agent" in clean_name:
+    elif (
+        any(
+            f in clean_name
+            for f in [
+                "NSWC SEAL",
+                "Guerrilla Warfare",
+                "Sabre",
+                "TACP",
+                "Professionals",
+                "FBI",
+                "SWAT",
+                "Gendarmerie",
+                "KSK",
+            ]
+        )
+        or "Agent" in clean_name
+    ):
         item_type = "Agent"
     else:
         if not any(w in clean_name for w in WEAR_SUFFIXES):
@@ -35,8 +48,9 @@ def parse_item_meta(name_or_filename: str) -> tuple[str, str]:
                 item_type = "Agent"
         else:
             item_type = "Weapon Skin"
-            
+
     return clean_name, item_type
+
 
 def parse_version_from_name(name: str) -> tuple[str, str | None]:
     """
@@ -47,12 +61,12 @@ def parse_version_from_name(name: str) -> tuple[str, str | None]:
     """
     for wear in WEAR_SUFFIXES:
         if name.endswith(wear):
-            rest = name[:-len(wear)].strip()
+            rest = name[: -len(wear)].strip()
             # Match parentheses at the end of the rest string, e.g. "(Phase 3)"
             match = re.search(r"\(([^)]+)\)$", rest)
             if match:
                 version = match.group(1)
-                base_name_without_wear = rest[:-len(match.group(0))].strip()
+                base_name_without_wear = rest[: -len(match.group(0))].strip()
                 base_name = f"{base_name_without_wear} {wear}"
                 return base_name, version
             break
@@ -79,9 +93,7 @@ def build_versioned_name(market_hash_name: str, version: str | None) -> str:
 
     for wear in WEAR_SUFFIXES:
         if market_hash_name.endswith(wear):
-            base_name = market_hash_name[:-len(wear)].strip()
+            base_name = market_hash_name[: -len(wear)].strip()
             return f"{base_name} ({version}) {wear}"
 
     return f"{market_hash_name} ({version})"
-
-

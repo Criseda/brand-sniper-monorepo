@@ -6,11 +6,11 @@ Its primary function is to act as the **Adversarial CFO**: an Agentic AI pipelin
 
 ## 🧠 The Adversarial CFO
 
-To prevent the "Circular Feedback Loop" (where an AI grades its own performance using the same stale database metrics that triggered the trade), the CFO is equipped with real-world scraping capabilities via the **Model Context Protocol (MCP)**.
+To prevent the "Circular Feedback Loop" (where an AI grades its own performance using the same stale database metrics that triggered the trade), the CFO is equipped with tool functions that act as adversarial market checkers. These are registered via FastMCP and passed directly to the Gemini SDK as callable tools (bypassing the MCP server transport in the current prototype).
 
-### FastMCP Tools (`tools.py`)
-- `fetch_live_market_floor`: Reaches out to the live internet to check the actual current floor price of an asset, identifying if the bot's internal baseline was stale.
-- `search_macro_trends`: Scrapes recent news and patch notes to determine if a severe macro market crash (falling knife) is occurring.
+### Tool Functions (`tools.py`)
+- `fetch_live_market_floor`: Intended to check the live floor price of an asset. Currently returns simulated adversarial data (prototype mock — replace with real API calls for production).
+- `search_macro_trends`: Intended to scrape news/patch notes for macro market trends. Currently returns simulated responses (prototype mock — replace with a search API for production).
 
 ## 🚀 Setup & Execution
 

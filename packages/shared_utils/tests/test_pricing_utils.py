@@ -1,5 +1,5 @@
 import pytest
-from shared_utils.pricing_utils import to_cents, resolve_recent_median, detect_downtrend
+from shared_utils.pricing_utils import detect_downtrend, resolve_recent_median, to_cents
 
 
 class TestToCents:

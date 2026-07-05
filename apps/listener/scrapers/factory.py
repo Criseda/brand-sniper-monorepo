@@ -5,7 +5,7 @@ from scrapers.skinport import SkinportScraper
 class ScraperFactory:
     """Central registry mapping marketplace identifiers to their respective client architectures.
     Uses singleton caching to ensure shared state (history cache, cooldowns) across all consumers."""
-    
+
     _registry: dict[str, type[BaseScraper]] = {
         "skinport": SkinportScraper,
         # To add a new platform in the future, you simply drop it here:

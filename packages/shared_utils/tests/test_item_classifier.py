@@ -1,8 +1,7 @@
-import pytest
 from shared_utils.item_classifier import (
+    build_versioned_name,
     parse_item_meta,
     parse_version_from_name,
-    build_versioned_name,
 )
 
 
@@ -66,16 +65,12 @@ class TestParseItemMeta:
 
 class TestParseVersionFromName:
     def test_with_phase(self):
-        base, version = parse_version_from_name(
-            "\u2605 Butterfly Knife | Doppler (Phase 3) (Factory New)"
-        )
+        base, version = parse_version_from_name("\u2605 Butterfly Knife | Doppler (Phase 3) (Factory New)")
         assert base == "\u2605 Butterfly Knife | Doppler (Factory New)"
         assert version == "Phase 3"
 
     def test_with_gem(self):
-        base, version = parse_version_from_name(
-            "★ Karambit | Doppler (Ruby) (Factory New)"
-        )
+        base, version = parse_version_from_name("★ Karambit | Doppler (Ruby) (Factory New)")
         assert base == "★ Karambit | Doppler (Factory New)"
         assert version == "Ruby"
 

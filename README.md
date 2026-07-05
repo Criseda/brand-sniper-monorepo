@@ -61,7 +61,7 @@ flowchart TD
 ```
 
 ### 📡 1. The Short-Term Anomaly Path (The Edge)
-Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks. It writes incoming vectors concurrently to a local Edge Redis hot-cache window, and instantly evaluates them. 
+Running 24/7 inside Docker on the **Raspberry Pi 5**, the `/apps/listener` service consumes real-time market data ticks via REST polling and a **Node.js WebSocket sidecar** (for push-based Socket.IO feeds). It writes incoming vectors concurrently to a local Edge Redis hot-cache window, and instantly evaluates them. 
 
 ### ⚡ 2. The Deterministic Rules Engine (The Hot Path)
 When a statistical anomaly is detected, the **Deterministic Rules Engine (DRE)**—now residing entirely on the Edge Node—queries the Edge Redis in `O(1)` time (sub-millisecond latency) to validate the drop against long-term ML baselines. If verified, the local `PaperExecutor` executes the trade synchronously, totally bypassing the network boundary. **Average latency: <5ms.**
@@ -71,7 +71,7 @@ The Edge Node asynchronously POSTs the execution logs to the Windows backend. Th
 
 ### 🧠 4. The Adversarial CFO (The Cold Path)
 To prevent Circular Feedback Loops, we built the **Adversarial CFO**.
-Orchestrated by **Prefect**, this daily offline pipeline feeds the bot's simulated trades to Google's **Gemini**. The AI is armed with **FastMCP** tools (`fetch_live_market_floor`, `search_macro_trends`), allowing it to scrape the *actual live internet* to prove the bot wrong (e.g. detecting falling knives or market crashes). 
+Orchestrated by **Prefect**, this daily offline pipeline feeds the bot's simulated trades to Google's **Gemini**. The AI is armed with tool functions (`fetch_live_market_floor`, `search_macro_trends`) registered via **FastMCP**, allowing it to evaluate market context and macro trends. In the current prototype these tools return simulated adversarial data; a production deployment would integrate live API keys to scrape real-time market floors and search news/social feeds.
 Its final grade and reasoning trace are logged immutably into **MLflow**. Prefect then syncs the newly evaluated ML baselines back across the network to the Edge Redis cache.
 
 ---

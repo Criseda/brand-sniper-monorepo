@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 from models import MarketTick
+
 
 class BaseScraper(ABC):
     """Abstract Base Class establishing the programmatic contract for all market ingestion nodes."""
-    
+
     def __init__(self, platform_name: str):
         self.platform_name = platform_name
         self.sidecar_script_path = None  # Override in subclass if a Node.js sidecar is needed
@@ -12,7 +14,7 @@ class BaseScraper(ABC):
     @abstractmethod
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
         """
-        Continuous non-blocking generator that polls the target platform API 
+        Continuous non-blocking generator that polls the target platform API
         and yields verified, normalized MarketTick objects.
         """
         pass
@@ -26,8 +28,8 @@ class BaseScraper(ABC):
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
         """
-        Optional non-blocking generator that subscribes to the platform's 
+        Optional non-blocking generator that subscribes to the platform's
         WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects.
         """
         return
-        yield
+        yield

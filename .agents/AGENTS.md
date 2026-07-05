@@ -8,7 +8,12 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Add dep**: run `uv add <pkg>` inside the target `apps/*` or `packages/*` directory, then `uv sync --all-packages` from root
 - **Run app**: `uv run python main.py` from the app's directory (e.g. `apps/backend`, `apps/listener`)
 - **Run tests**: `uv run pytest` from any app/package directory (or root); tests use `pytest` + `pytest-asyncio`
-- **Lint / typecheck / formatter**: none configured — do not run or expect them
+- **Lint**: `uv run ruff check` from root
+- **Format**: `uv run ruff format` from root
+- **Typecheck**: `uv run mypy apps/backend/ apps/listener/ apps/analytics/` from root
+- **All quality checks**: `uv run ruff check && uv run ruff format --check && uv run mypy apps/backend/ apps/listener/ apps/analytics/`
+- **CI**: GitHub Actions workflow at `.github/workflows/ci.yml` — runs lint, format check, typecheck, and tests on push/PR to `main`
+- **Config**: ruff and mypy configured in `pyproject.toml` and `mypy.ini` at root
 - **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir
 - **Infra (Docker)**: `docker compose up -d` from `deployments/windows-stack/` or `deployments/pi5-stack/`
 

@@ -1,6 +1,7 @@
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
 from fastmcp import FastMCP
 
 # Align workspace directories for imports
@@ -12,32 +13,36 @@ from telemetry import run_telemetry
 # Initialize the Model Context Protocol server instance
 mcp = FastMCP("BrandSniperVerifier")
 
+
 @mcp.tool()
 async def get_market_context(market_hash_name: str) -> dict:
     """
-    Queries historical database averages and calculates target cash-equivalent 
+    Queries historical database averages and calculates target cash-equivalent
     baselines and discount snipe thresholds for a given asset name.
     """
     context = await get_item_market_context(market_hash_name)
     try:
         t_dict = run_telemetry.get()
         if t_dict is not None:
-            t_dict.update({
-                "historical_steam_avg_cents": context.get("historical_steam_avg_cents"),
-                "historical_skinport_avg_cents": context.get("historical_skinport_avg_cents"),
-                "real_time_skinport_median_cents": context.get("real_time_skinport_median_cents"),
-                "cash_equivalent_avg_cents": context.get("cash_equivalent_avg_cents"),
-                "snipe_threshold_cents": context.get("snipe_threshold_cents"),
-                "is_liquid": context.get("is_liquid"),
-                "downtrend_detected": context.get("downtrend_detected"),
-                "downtrend_severity": context.get("downtrend_severity"),
-                "regime_shift_detected": context.get("regime_shift_detected"),
-                "item_page": context.get("item_page"),
-                "market_page": context.get("market_page"),
-            })
+            t_dict.update(
+                {
+                    "historical_steam_avg_cents": context.get("historical_steam_avg_cents"),
+                    "historical_skinport_avg_cents": context.get("historical_skinport_avg_cents"),
+                    "real_time_skinport_median_cents": context.get("real_time_skinport_median_cents"),
+                    "cash_equivalent_avg_cents": context.get("cash_equivalent_avg_cents"),
+                    "snipe_threshold_cents": context.get("snipe_threshold_cents"),
+                    "is_liquid": context.get("is_liquid"),
+                    "downtrend_detected": context.get("downtrend_detected"),
+                    "downtrend_severity": context.get("downtrend_severity"),
+                    "regime_shift_detected": context.get("regime_shift_detected"),
+                    "item_page": context.get("item_page"),
+                    "market_page": context.get("market_page"),
+                }
+            )
     except LookupError:
         pass
     return context
+
 
 @mcp.tool()
 def verify_float_value(market_hash_name: str, float_value: float) -> str:
@@ -61,6 +66,7 @@ def verify_float_value(market_hash_name: str, float_value: float) -> str:
             return f"Extreme high float ({float_value:.4f}) - desirable 'rust' pattern for Rust Coat items. Premium value."
     return f"Standard float ({float_value:.4f}) - falls in standard wear corridor, no extra wear premium."
 
+
 @mcp.tool()
 def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
     """
@@ -69,14 +75,14 @@ def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
     """
     print(f"\n[ALERT APPROVED] Snipe opportunity verified for {market_hash_name}!")
     print(f"   Direct Purchase Link: {item_page}")
-    
+
     res = {
         "status": "APPROVED",
         "asset": market_hash_name,
         "item_page": item_page,
-        "timestamp": int(datetime.now().timestamp())
+        "timestamp": int(datetime.now().timestamp()),
     }
-    
+
     try:
         t_dict = run_telemetry.get()
         if t_dict is not None:
@@ -84,6 +90,5 @@ def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
             t_dict["item_page"] = item_page
     except LookupError:
         pass
-        
-    return res
 
+    return res
