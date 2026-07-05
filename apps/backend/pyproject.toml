@@ -12,6 +12,7 @@ dependencies = [
     "fastmcp>=3.4.2",
     "mlflow>=2.14.0",
     "prometheus-client>=0.25.0",
+    "httpx>=0.28.0",
 ]
 
 [tool.uv.sources]

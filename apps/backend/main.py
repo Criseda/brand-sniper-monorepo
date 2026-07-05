@@ -20,6 +20,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 from database import AsyncSessionLocal, engine
+from queries import close_http_session
 from schemas import BulkIngestionPayload, SimulatedTradePayload
 from shared_utils import parse_item_meta
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
@@ -43,6 +44,10 @@ async def lifespan(app: FastAPI):
 
     print(f"[CORE COMPUTE] Pre-cached {len(item_cache)} market items in memory.")
     yield
+    # Graceful shutdown: clean up connections
+    await close_http_session()
+    await engine.dispose()
+    print("[CORE COMPUTE] Connections closed, shutdown complete.")
 
 
 app = FastAPI(

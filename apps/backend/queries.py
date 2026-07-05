@@ -10,6 +10,14 @@ from sqlalchemy import func, select
 _backend_session: aiohttp.ClientSession | None = None
 
 
+async def close_http_session() -> None:
+    """Closes the shared aiohttp session on graceful shutdown."""
+    global _backend_session
+    if _backend_session is not None and not _backend_session.closed:
+        await _backend_session.close()
+        _backend_session = None
+
+
 async def _get_session() -> aiohttp.ClientSession:
     """Returns a shared aiohttp session for backend API calls."""
     global _backend_session

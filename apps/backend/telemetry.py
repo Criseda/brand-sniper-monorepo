@@ -1,3 +1,5 @@
+from contextvars import ContextVar
+
 from prometheus_client import Counter, Gauge, Histogram
 
 # Total estimated profit of all successful paper trades
@@ -7,6 +9,9 @@ paper_trading_estimated_profit_total = Gauge(
 
 # Number of successful paper trades
 paper_trades_executed_total = Counter("paper_trades_executed_total", "Total number of successful paper trades executed")
+
+# Thread/async-safe telemetry context for propagating per-request metadata
+run_telemetry: ContextVar[dict | None] = ContextVar("run_telemetry", default=None)
 
 # Latency of the Deterministic Rules Engine
 rules_engine_latency_seconds = Histogram(
