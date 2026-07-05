@@ -92,7 +92,7 @@ Its final grade and reasoning trace are logged immutably into **MLflow**. Prefec
 
 ## Quality Assurance
 
-This project enforces code quality through automated CI/CD:
+This project enforces code quality through automated CI (GitHub Actions):
 
 - **Linting**: `ruff check` — catches unused imports, syntax errors, and anti-patterns
 - **Formatting**: `ruff format` — enforces consistent style (line-length 128, double quotes)
