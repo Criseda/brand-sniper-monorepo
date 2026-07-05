@@ -2,6 +2,9 @@ import abc
 import asyncio
 
 import aiohttp
+from shared_utils import get_logger
+
+logger = get_logger("listener.executor")
 
 
 class ExecutionService(abc.ABC):
@@ -43,11 +46,9 @@ class PaperExecutor(ExecutionService):
             "trigger_z_score": round(z_score, 4),
         }
 
-        # Log to stdout for observability
-        print(
-            f"[PAPER TRADE] Simulated Buy | Item: {market_hash_name} | "
-            f"Price: ${purchase_price_cents / 100:.2f} | "
-            f"Est. Profit: ${estimated_profit_cents / 100:.2f} | Z-Score: {z_score:.2f}"
+        logger.info(
+            "Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: $%.2f | Z-Score: %.2f",
+            market_hash_name, purchase_price_cents / 100, estimated_profit_cents / 100, z_score,
         )
 
         # Fire and forget HTTP POST (wrapped in a background task so it never blocks the hot path)
@@ -59,6 +60,6 @@ class PaperExecutor(ExecutionService):
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(self.trade_ingest_url, json=payload) as resp:
                     if resp.status not in (201, 202):
-                        print(f"[PAPER TRADE ERROR] Backend rejected trade log with status {resp.status}")
+                        logger.warning("Backend rejected trade log with status %s", resp.status)
         except Exception as e:
-            print(f"[PAPER TRADE ERROR] Failed to reach Command Center to log trade: {e}")
+            logger.error("Failed to reach Command Center to log trade: %s", e)

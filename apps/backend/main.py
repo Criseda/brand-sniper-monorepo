@@ -22,9 +22,11 @@ if hasattr(sys.stderr, "reconfigure"):
 from database import AsyncSessionLocal, engine
 from queries import close_http_session
 from schemas import BulkIngestionPayload, SimulatedTradePayload
-from shared_utils import parse_item_meta
+from shared_utils import get_logger, parse_item_meta
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
+
+logger = get_logger("backend.main")
 
 
 @asynccontextmanager
@@ -33,7 +35,7 @@ async def lifespan(app: FastAPI):
     # Ensure tables are created
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-    print("[CORE COMPUTE] Database schemas verified and mapped successfully.")
+    logger.info("Database schemas verified and mapped successfully.")
 
     # Load all existing market items into RAM cache
     async with AsyncSessionLocal() as session:
@@ -42,12 +44,12 @@ async def lifespan(app: FastAPI):
         for name, item_id in result:
             item_cache[name] = item_id
 
-    print(f"[CORE COMPUTE] Pre-cached {len(item_cache)} market items in memory.")
+    logger.info("Pre-cached %d market items in memory.", len(item_cache))
     yield
     # Graceful shutdown: clean up connections
     await close_http_session()
     await engine.dispose()
-    print("[CORE COMPUTE] Connections closed, shutdown complete.")
+    logger.info("Connections closed, shutdown complete.")
 
 
 app = FastAPI(
@@ -84,7 +86,7 @@ async def get_or_create_item_id(session, name: str) -> int:
 
 @app.post("/api/v1/ingest/trade", status_code=status.HTTP_201_CREATED)
 async def ingest_simulated_trade(payload: SimulatedTradePayload):
-    print(f"\n[CORE COMPUTE] Logging Simulated Trade: {payload.market_hash_name} for ${payload.purchase_price_cents / 100:.2f}")
+    logger.info("Logging Simulated Trade: %s for $%.2f", payload.market_hash_name, payload.purchase_price_cents / 100)
 
     # Update Prometheus Telemetry
     paper_trades_executed_total.inc()
@@ -107,7 +109,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
 @app.post("/api/v1/ingest/bulk", status_code=status.HTTP_201_CREATED)
 async def process_bulk_ingestion(payload: BulkIngestionPayload):
     total_ticks = len(payload.ticks)
-    print(f"\n[CORE COMPUTE] Bulk Ingestion Intercepted: {total_ticks} elements from '{payload.source}'")
+    logger.info("Bulk Ingestion Intercepted: %d elements from '%s'", total_ticks, payload.source)
 
     if total_ticks == 0:
         return {"status": "SKIPPED", "records_processed": 0}
@@ -129,7 +131,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
             stmt = insert(LiveMarketTick)
             await session.execute(stmt, insert_data)
 
-    print(f"   [POSTGRES] Bulk write complete. Committed {total_ticks} ticks to 'live_market_ticks'.")
+    logger.info("Bulk write complete. Committed %d ticks to 'live_market_ticks'.", total_ticks)
     return {"status": "SUCCESS", "records_processed": total_ticks}
 
 

@@ -20,9 +20,11 @@ if hasattr(sys.stderr, "reconfigure"):
 # Dynamic path alignment to ensure the script can find the shared-utils package
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from shared_utils import parse_item_meta
+from shared_utils import get_logger, parse_item_meta
 from shared_utils.db_connection import async_engine
 from shared_utils.models import MarketItem
+
+logger = get_logger("analytics.seed")
 
 # Path pointing to where your Kaggle files live: /data/items/
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
@@ -30,30 +32,30 @@ DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
 
 async def seed_historical_data(truncate: bool = False):
     if not DATA_DIR.exists():
-        print(f"Error: Data directory not found at target location: {DATA_DIR}")
+        logger.error("Data directory not found at target location: %s", DATA_DIR)
         return
 
-    print("Igniting High-Performance Bulk Ingestion Engine...")
+    logger.info("Igniting High-Performance Bulk Ingestion Engine...")
     csv_files = list(DATA_DIR.glob("*.csv"))
     total_files = len(csv_files)
-    print(f"Found {total_files} historical CSV files containing ~105M rows.\n")
+    logger.info("Found %d historical CSV files containing ~105M rows.", total_files)
 
     # Step 1: Temporarily drop index to maximize ingestion speed
     async with async_engine.begin() as conn:
-        print("Dropping index 'ix_historical_prices_item_date' to accelerate bulk load...")
+        logger.info("Dropping index 'ix_historical_prices_item_date' to accelerate bulk load...")
         await conn.execute(text("DROP INDEX IF EXISTS ix_historical_prices_item_date"))
         if truncate:
-            print("Truncating table 'historical_prices'...")
+            logger.info("Truncating table 'historical_prices'...")
             await conn.execute(text("TRUNCATE TABLE historical_prices RESTART IDENTITY"))
 
     # Step 2: Cache all existing MarketItems to prevent N+1 DB select queries
-    print("Caching existing MarketItems in memory...")
+    logger.info("Caching existing MarketItems in memory...")
     item_cache = {}
     async with async_engine.connect() as conn:
         result = await conn.execute(select(MarketItem.market_hash_name, MarketItem.id))
         for name, item_id in result:
             item_cache[name] = item_id
-    print(f"Loaded {len(item_cache)} market items into cache.")
+    logger.info("Loaded %d market items into cache.", len(item_cache))
 
     # Track progress and execution statistics
     success_count = 0
@@ -70,12 +72,10 @@ async def seed_historical_data(truncate: bool = False):
 
                 # PROGRESS HEARTBEAT TICKER
                 if idx % 500 == 0 or idx == 1 or idx == total_files:
-                    print(
-                        f"Seeding Progress: File {idx}/{total_files} "
-                        f"({int((idx / total_files) * 100)}%) | "
-                        f"Current: {market_hash_name}"
+                    logger.info(
+                        "Seeding Progress: File %d/%d (%d%%) | Current: %s",
+                        idx, total_files, int((idx / total_files) * 100), market_hash_name,
                     )
-                    sys.stdout.flush()
 
                 item_id = item_cache.get(market_hash_name)
 
@@ -129,20 +129,20 @@ async def seed_historical_data(truncate: bool = False):
                         success_count += 1
 
                 except Exception as e:
-                    print(f"Skipping data for '{market_hash_name}' due to insertion failure: {e}")
+                    logger.warning("Skipping data for '%s' due to insertion failure: %s", market_hash_name, e)
                     fail_count += 1
                     continue
 
     finally:
         # Step 4: Always restore the index even if the main loop errored out
-        print("Recreating index 'ix_historical_prices_item_date' (this might take a few minutes for 100M+ rows)...")
+        logger.info("Recreating index 'ix_historical_prices_item_date' (this might take a few minutes for 100M+ rows)...")
         async with async_engine.begin() as conn:
             await conn.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_historical_prices_item_date ON historical_prices (item_id, sale_date)")
             )
-        print("Index restored successfully.")
+        logger.info("Index restored successfully.")
 
-    print(f"\nSeeding completed. Successfully processed {success_count} files. Failed files: {fail_count}.")
+    logger.info("Seeding completed. Successfully processed %d files. Failed files: %d.", success_count, fail_count)
 
 
 if __name__ == "__main__":

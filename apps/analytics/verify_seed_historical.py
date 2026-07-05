@@ -12,19 +12,22 @@ from sqlmodel import text
 # Dynamic path alignment to find shared-utils package
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
+from shared_utils import get_logger
 from shared_utils.db_connection import async_engine
+
+logger = get_logger("analytics.verify")
 
 
 async def run_verification():
-    print("======================================================================")
-    print("              POST-FLIGHT DATABASE VERIFICATION SWEEP                 ")
-    print("======================================================================")
+    logger.info("======================================================================")
+    logger.info("              POST-FLIGHT DATABASE VERIFICATION SWEEP                 ")
+    logger.info("======================================================================")
 
     start_time = time.time()
 
     async with async_engine.connect() as conn:
         # 1. Index health and validity check (Check this first as it takes <1ms)
-        print("Checking index health on 'historical_prices'...")
+        logger.info("Checking index health on 'historical_prices'...")
         index_query = text("""
             SELECT
                 i.relname AS index_name,
@@ -46,14 +49,14 @@ async def run_verification():
             index_name, is_valid = index_row
             status = "VALID" if is_valid else "INVALID/CORRUPT"
             if is_valid:
-                print(f"  Result: Index '{index_name}' is {status}.")
+                logger.info("  Result: Index '%s' is %s.", index_name, status)
             else:
-                print(f"  Result: Index '{index_name}' is {status}. Rebuilding might be required.")
+                logger.warning("  Result: Index '%s' is %s. Rebuilding might be required.", index_name, status)
         else:
-            print("  Result: Index 'ix_historical_prices_item_date' was NOT found in system catalog!")
+            logger.error("  Result: Index 'ix_historical_prices_item_date' was NOT found in system catalog!")
 
         # 2. Combined table statistics scan (Consolidates 4 separate sequential scans into 1)
-        print("\nPerforming unified data integrity scan (row counts, nulls, invalid values, and date ranges)...")
+        logger.info("Performing unified data integrity scan (row counts, nulls, invalid values, and date ranges)...")
         stats_query = text("""
             SELECT
                 COUNT(*) as total_rows,
@@ -69,17 +72,17 @@ async def run_verification():
         stats_result = await conn.execute(stats_query)
         total_rows, min_date, max_date, null_count, invalid_val_count = stats_result.fetchone()
 
-        print(f"  Total rows found    : {total_rows:,}")
-        print(f"  Null columns count  : {null_count}")
-        print(f"  Invalid values count: {invalid_val_count} (prices <= 0 or volumes < 0)")
-        print(f"  Date range bounds   : {min_date} to {max_date}")
+        logger.info("  Total rows found    : %s", f"{total_rows:,}")
+        logger.info("  Null columns count  : %s", null_count)
+        logger.info("  Invalid values count: %s (prices <= 0 or volumes < 0)", f"{invalid_val_count:,}")
+        logger.info("  Date range bounds   : %s to %s", min_date, max_date)
 
         if total_rows == 0:
-            print("Failure: No records found in 'historical_prices'. Seeding failed.")
+            logger.error("Failure: No records found in 'historical_prices'. Seeding failed.")
             return
 
         # 3. MarketItems mapping check (Optimized with EXISTS instead of COUNT DISTINCT)
-        print("\nChecking mapping coverage on market_items...")
+        logger.info("Checking mapping coverage on market_items...")
         unique_items_in_prices = await conn.scalar(
             text("""
             SELECT COUNT(*) FROM market_items
@@ -90,13 +93,13 @@ async def run_verification():
         """)
         )
         total_market_items = await conn.scalar(text("SELECT COUNT(*) FROM market_items"))
-        print(
-            f"  Result: {unique_items_in_prices:,} items have historical prices "
-            f"(out of {total_market_items:,} total market items)."
+        logger.info(
+            "  Result: %s items have historical prices (out of %s total market items).",
+            f"{unique_items_in_prices:,}", f"{total_market_items:,}",
         )
 
         # 4. Duplication Check (Utilizes group aggregate scan on the index)
-        print("\nChecking for duplicate pricing keys (same item and timestamp)...")
+        logger.info("Checking for duplicate pricing keys (same item and timestamp)...")
         dup_query = text("""
             SELECT COUNT(*) FROM (
                 SELECT item_id, sale_date
@@ -107,12 +110,12 @@ async def run_verification():
         """)
         duplicates = await conn.scalar(dup_query)
         if duplicates == 0:
-            print("  Result: Success! No duplicates found.")
+            logger.info("  Result: Success! No duplicates found.")
         else:
-            print(f"  Result: Found {duplicates:,} keys with duplicate dates. Data may have double-seeded.")
+            logger.warning("  Result: Found %s keys with duplicate dates. Data may have double-seeded.", f"{duplicates:,}")
 
         # 5. Print Sample data counts (Optimized grouping before join to avoid joining 105M rows)
-        print("\nTop 5 tracked items by volume count:")
+        logger.info("Top 5 tracked items by volume count:")
         sample_query = text("""
             SELECT m.market_hash_name, t.count
             FROM (
@@ -126,12 +129,12 @@ async def run_verification():
         """)
         samples = await conn.execute(sample_query)
         for name, count in samples:
-            print(f"  - {name:<50} : {count:,} price points")
+            logger.info("  - %-50s : %s price points", name, f"{count:,}")
 
     elapsed = time.time() - start_time
-    print("======================================================================")
-    print(f"          VERIFICATION COMPLETE (Execution Time: {elapsed:.2f}s)       ")
-    print("======================================================================")
+    logger.info("======================================================================")
+    logger.info("          VERIFICATION COMPLETE (Execution Time: %.2fs)       ", elapsed)
+    logger.info("======================================================================")
 
 
 if __name__ == "__main__":

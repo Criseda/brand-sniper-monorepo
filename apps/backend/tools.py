@@ -8,7 +8,10 @@ from fastmcp import FastMCP
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from queries import get_item_market_context
+from shared_utils import get_logger
 from telemetry import run_telemetry
+
+logger = get_logger("backend.tools")
 
 # Initialize the Model Context Protocol server instance
 mcp = FastMCP("BrandSniperVerifier")
@@ -73,8 +76,8 @@ def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
     Flags the anomaly alert as a verified, genuine deep discount and registers the direct marketplace purchase link.
     Call this ONLY after verifying a true arbitrage opportunity.
     """
-    print(f"\n[ALERT APPROVED] Snipe opportunity verified for {market_hash_name}!")
-    print(f"   Direct Purchase Link: {item_page}")
+    logger.info("Snipe opportunity verified for %s!", market_hash_name)
+    logger.info("   Direct Purchase Link: %s", item_page)
 
     res = {
         "status": "APPROVED",

@@ -21,6 +21,10 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+from shared_utils import get_logger
+
+logger = get_logger("listener.main")
+
 # DYNAMIC NETWORK INFRASTRUCTURE CONFIGURATION
 # Load environment configuration from .env file
 listener_env_path = Path(__file__).parent / ".env"
@@ -79,11 +83,11 @@ async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
         session = await get_http_session()
         async with session.post(BULK_INGEST_URL, json=payload, timeout=aiohttp.ClientTimeout(total=15, connect=3)) as resp:
             if resp.status == 201:
-                print(f"[BATCH FLUSH] Successfully committed {len(chunk)} items to Compute Node.")
+                logger.info("Successfully committed %d items to Compute Node.", len(chunk))
             else:
-                print(f"[BATCH FLUSH] Backend rejected batch with status: {resp.status}")
+                logger.warning("Backend rejected batch with status: %s", resp.status)
     except Exception as e:
-        print(f"[BATCH FLUSH] Failed to reach Compute Node database router: {e}")
+        logger.error("Failed to reach Compute Node database router: %s", e)
 
 
 async def rest_poll_producer(scraper, queue: asyncio.Queue):
@@ -93,7 +97,7 @@ async def rest_poll_producer(scraper, queue: asyncio.Queue):
             async for tick in scraper.poll_market_stream():
                 await queue.put(tick)
         except Exception as e:
-            print(f"[REST POLL] Producer error: {e}. Retrying REST stream in 10 seconds...")
+            logger.warning("Producer error: %s. Retrying REST stream in 10 seconds...", e)
             await asyncio.sleep(10)
 
 
@@ -107,9 +111,8 @@ async def websocket_subscriber_producer(scraper, queue: asyncio.Queue):
             async for tick in scraper.listen_websocket_stream():
                 await queue.put(tick)
         except Exception as e:
-            print(
-                f"[{scraper.platform_name.upper()} WS] Ingestion watchdog caught "
-                f"subscriber crash: {e}. Reconnecting in 10 seconds..."
+            logger.warning(
+                "Ingestion watchdog caught subscriber crash: %s. Reconnecting in 10 seconds...", e
             )
             await asyncio.sleep(10)
 
@@ -183,10 +186,9 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
     try:
         is_approved = await evaluate_opportunity(tick, cache)
         if is_approved:
-            print(
-                f"[ANOMALY] Confirmed true outlier by Edge DRE! "
-                f"{tick.market_hash_name} dropped to ${tick.price_usd:.2f}. "
-                f"Executing trade..."
+            logger.info(
+                "Confirmed true outlier by Edge DRE! %s dropped to $%.2f. Executing trade...",
+                tick.market_hash_name, tick.price_usd,
             )
 
             baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
@@ -203,9 +205,9 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
                 z_score=z_score,
             )
         else:
-            print(f"[ANOMALY] False outlier filtered by Edge DRE: {tick.market_hash_name} at ${tick.price_usd:.2f}.")
+            logger.info("False outlier filtered by Edge DRE: %s at $%.2f.", tick.market_hash_name, tick.price_usd)
     except Exception as e:
-        print(f"[ANOMALY ERROR] Edge DRE failure for {tick.market_hash_name}: {e}")
+        logger.error("Edge DRE failure for %s: %s", tick.market_hash_name, e)
 
 
 async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
@@ -215,7 +217,7 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
     batch_buffer = []
     dedup_cache: OrderedDict[str, float] = OrderedDict()
 
-    print("[CONSUMER] Telemetry processing consumer loop is active.")
+    logger.info("Telemetry processing consumer loop is active.")
 
     try:
         while True:
@@ -253,11 +255,9 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                     if should_trigger_anomaly(z_score, mean_cents, tick):
                         sticker_count = len(tick.stickers)
                         sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
-                        print(
-                            f"[ANOMALY] Outlier potential detected: "
-                            f"{tick.market_hash_name}{sticker_tag} at "
-                            f"${tick.price_usd:.2f} (Z={z_score:.2f}). "
-                            f"Running Edge DRE..."
+                        logger.info(
+                            "Outlier potential detected: %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
+                            tick.market_hash_name, sticker_tag, tick.price_usd, z_score,
                         )
                         asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache))
 
@@ -266,7 +266,7 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                     asyncio.create_task(flush_batch_chunk_to_postgres(platform_target, batch_buffer.copy()))
                     batch_buffer.clear()
             except Exception as item_err:
-                print(f"[CONSUMER] Error processing tick for '{tick.market_hash_name}': {item_err}")
+                logger.error("Error processing tick for '%s': %s", tick.market_hash_name, item_err)
             finally:
                 queue.task_done()
     finally:
@@ -279,7 +279,7 @@ async def start_sidecar_process(scraper):
     if not sidecar_path or not sidecar_path.exists():
         return
 
-    print(f"[AGENT] Spawning Node.js sidecar: {sidecar_path}")
+    logger.info("Spawning Node.js sidecar: %s", sidecar_path)
     proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -291,18 +291,18 @@ async def start_sidecar_process(scraper):
                 line = await stream.readline()
                 if not line:
                     break
-                print(f"{prefix}{line.decode('utf-8').strip()}")
+                logger.info("%s%s", prefix, line.decode("utf-8").strip())
 
         asyncio.create_task(log_stream(proc.stdout, ""))
         asyncio.create_task(log_stream(proc.stderr, "[SKINPORT WS ERR] "))
 
         await proc.wait()
-        print(f"[AGENT] Node.js sidecar process exited with code {proc.returncode}")
+        logger.info("Node.js sidecar process exited with code %s", proc.returncode)
     except Exception as e:
-        print(f"[AGENT] Error running Node.js sidecar: {e}")
+        logger.error("Error running Node.js sidecar: %s", e)
     finally:
         if proc and proc.returncode is None:
-            print("[AGENT] Terminating Node.js sidecar process...")
+            logger.info("Terminating Node.js sidecar process...")
             try:
                 proc.terminate()
                 await proc.wait()
@@ -311,10 +311,10 @@ async def start_sidecar_process(scraper):
 
 
 async def process_live_telemetry_stream(platform_target: str):
-    print("======================================================================")
-    print(f"Initializing Extensible Stream Engine: {platform_target.upper()}")
-    print(f"Target Routing Node Core             : {COMPUTE_NODE_IP}:{COMPUTE_PORT}")
-    print("======================================================================")
+    logger.info("======================================================================")
+    logger.info("Initializing Extensible Stream Engine: %s", platform_target.upper())
+    logger.info("Target Routing Node Core             : %s:%s", COMPUTE_NODE_IP, COMPUTE_PORT)
+    logger.info("======================================================================")
 
     queue: asyncio.Queue[MarketTick] = asyncio.Queue()
     scraper = ScraperFactory.get_scraper(platform_target)
@@ -332,7 +332,7 @@ async def process_live_telemetry_stream(platform_target: str):
     shutdown_event = asyncio.Event()
 
     def _signal_handler():
-        print("\n[SHUTDOWN] Signal received. Cleaning up...")
+        logger.info("Signal received. Cleaning up...")
         shutdown_event.set()
 
     if os.name != "nt":
@@ -351,7 +351,7 @@ async def process_live_telemetry_stream(platform_target: str):
         await asyncio.gather(*pending, return_exceptions=True)
     finally:
         await close_http_session()
-        print("[SHUTDOWN] Cleanup complete.")
+        logger.info("Cleanup complete.")
 
 
 if __name__ == "__main__":

@@ -17,20 +17,22 @@ if hasattr(sys.stderr, "reconfigure"):
 # Dynamic path alignment to ensure the script can find the shared-utils package
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from shared_utils import parse_item_meta
+from shared_utils import get_logger, parse_item_meta
+
+logger = get_logger("analytics.validate")
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
 
 
 def run_dry_run_validation():
     if not DATA_DIR.exists():
-        print(f"Error: Data directory not found at: {DATA_DIR}")
+        logger.error("Data directory not found at: %s", DATA_DIR)
         return
 
-    print("Initializing Pre-Flight Data Validation Sweep...")
+    logger.info("Initializing Pre-Flight Data Validation Sweep...")
     csv_files = list(DATA_DIR.glob("*.csv"))
     total_files = len(csv_files)
-    print(f"Total files found for validation: {total_files}\n")
+    logger.info("Total files found for validation: %d", total_files)
 
     total_rows = 0
     corrupt_rows_dropped = 0
@@ -50,8 +52,7 @@ def run_dry_run_validation():
     for idx, file_path in enumerate(csv_files, start=1):
         # ⏳ LIVE PROGRESS HEARTBEAT
         if idx % 500 == 0 or idx == 1 or idx == total_files:
-            print(f"⏳ Progress: Scanned {idx}/{total_files} files... ({int((idx / total_files) * 100)}%)")
-            sys.stdout.flush()
+            logger.info("Progress: Scanned %d/%d files... (%d%%)", idx, total_files, int((idx / total_files) * 100))
 
         market_hash_name, item_type = parse_item_meta(file_path.name)
         if item_type in type_distribution:
@@ -85,26 +86,26 @@ def run_dry_run_validation():
         except Exception:
             continue
 
-    print("\n" + "=" * 70)
-    print("                      DATA SANITY REPORT                      ")
-    print("=" * 70)
-    print(f"Total Operational Files   : {total_files}")
-    print(f"Files Requiring Row Drops : {salvaged_files_count} (Corrupted text lines auto-purged)")
-    print(f"Total Corrupt Rows Dropped: {corrupt_rows_dropped:,}")
-    print(f"Total Clean Rows Preserved : {total_rows:,}")
-    print("-" * 70)
+    logger.info("=" * 70)
+    logger.info("                      DATA SANITY REPORT                      ")
+    logger.info("=" * 70)
+    logger.info("Total Operational Files   : %d", total_files)
+    logger.info("Files Requiring Row Drops : %d (Corrupted text lines auto-purged)", salvaged_files_count)
+    logger.info("Total Corrupt Rows Dropped: %s", f"{corrupt_rows_dropped:,}")
+    logger.info("Total Clean Rows Preserved : %s", f"{total_rows:,}")
+    logger.info("-" * 70)
 
-    print("\nREFINED ITEM TYPE DISTRIBUTION:")
+    logger.info("REFINED ITEM TYPE DISTRIBUTION:")
     for k, v in type_distribution.items():
         if v > 0:
-            print(f" - {k:<22}: {v} files mapped")
+            logger.info(" - %-22s: %d files mapped", k, v)
 
-    print("\nVERIFIED STRINGS SAMPLES:")
+    logger.info("VERIFIED STRINGS SAMPLES:")
     for raw, clean, itype in sample_decodes[:6]:
-        print(f" Raw   : {raw}")
-        print(f" Clean : {clean} ---> Type: {itype}")
-        print("-" * 50)
-    print("=" * 70)
+        logger.info(" Raw   : %s", raw)
+        logger.info(" Clean : %s ---> Type: %s", clean, itype)
+        logger.info("-" * 50)
+    logger.info("=" * 70)
 
 
 if __name__ == "__main__":

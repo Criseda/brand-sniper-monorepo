@@ -2,9 +2,11 @@ import time
 
 import aiohttp
 from database import AsyncSessionLocal
-from shared_utils import detect_downtrend, parse_version_from_name, resolve_recent_median, to_cents
+from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy import func, select
+
+logger = get_logger("backend.queries")
 
 # Shared aiohttp session for backend API requests
 _backend_session: aiohttp.ClientSession | None = None
@@ -46,7 +48,7 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
     if cache_key in sales_history_cache:
         ts, cached_entry = sales_history_cache[cache_key]
         if now - ts < CACHE_TTL_SECONDS:
-            print(f"[SKINPORT API] Returning cached sales history for '{market_hash_name}' (version: {version})")
+            logger.info("Returning cached sales history for '%s' (version: %s)", market_hash_name, version)
             return cached_entry
 
     url = "https://api.skinport.com/v1/sales/history"
@@ -68,9 +70,9 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
                     sales_history_cache[cache_key] = (now, resolved_entry)
                     return resolved_entry
             else:
-                print(f"[SKINPORT API] Non-200 status fetching history for '{market_hash_name}': {response.status}")
+                logger.warning("Non-200 status fetching history for '%s': %s", market_hash_name, response.status)
     except Exception as e:
-        print(f"[SKINPORT API] Error fetching sales history for '{market_hash_name}': {e}")
+        logger.error("Error fetching sales history for '%s': %s", market_hash_name, e)
     return {}
 
 
@@ -89,7 +91,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
             return to_cents(median_usd)
 
     # 2. Database Fallback (if API is rate-limited or offline)
-    print(f"[SKINPORT API] Fallback to database lookup for sticker '{sticker_name}'")
+    logger.info("Fallback to database lookup for sticker '%s'", sticker_name)
     try:
         async with AsyncSessionLocal() as session:
             # Resolve item_id for the sticker
@@ -114,7 +116,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
             if avg_live is not None:
                 return round(float(avg_live))
     except Exception as dbe:
-        print(f"[DATABASE] Error during sticker database fallback lookup: {dbe}")
+        logger.error("Error during sticker database fallback lookup: %s", dbe)
 
     return None
 

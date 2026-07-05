@@ -21,8 +21,11 @@ analytics_env = PROJECT_ROOT / "apps" / "analytics" / ".env"
 if analytics_env.exists():
     load_dotenv(dotenv_path=analytics_env, override=True)
 
+from shared_utils import get_logger
 from shared_utils.db_connection import async_engine
 from shared_utils.models import ItemMacroBaseline, MarketItem
+
+logger = get_logger("analytics.update_baselines")
 
 
 async def sync_baselines_to_edge():
@@ -31,11 +34,11 @@ async def sync_baselines_to_edge():
     to the Edge Node's Redis instance for zero-latency hot-path evaluation.
     """
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
-    print(f"Connecting to Edge Redis at {edge_redis_url}")
+    logger.info("Connecting to Edge Redis at %s", edge_redis_url)
 
     redis = Redis.from_url(edge_redis_url)
 
-    print("Fetching baselines from PostgreSQL...")
+    logger.info("Fetching baselines from PostgreSQL...")
     async with async_engine.connect() as conn:
         stmt = select(
             MarketItem.market_hash_name,
@@ -45,7 +48,7 @@ async def sync_baselines_to_edge():
         result = await conn.execute(stmt)
         rows = result.fetchall()
 
-    print(f"Found {len(rows)} baselines. Pushing to Edge Redis...")
+    logger.info("Found %d baselines. Pushing to Edge Redis...", len(rows))
 
     async with redis.pipeline(transaction=False) as pipe:
         for market_hash_name, support_floor, latest_price in rows:
@@ -56,7 +59,7 @@ async def sync_baselines_to_edge():
         if rows:
             await pipe.execute()
 
-    print("Edge Redis sync complete!")
+    logger.info("Edge Redis sync complete!")
     await redis.aclose()
 
 

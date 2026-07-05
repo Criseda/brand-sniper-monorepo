@@ -9,9 +9,11 @@ from pathlib import Path
 import aiohttp
 from models import MarketTick
 from redis.asyncio import Redis
-from shared_utils import build_versioned_name, parse_version_from_name, resolve_recent_median
+from shared_utils import build_versioned_name, get_logger, parse_version_from_name, resolve_recent_median
 
 from scrapers.base import BaseScraper
+
+logger = get_logger("listener.skinport")
 
 
 class SkinportScraper(BaseScraper):
@@ -68,7 +70,7 @@ class SkinportScraper(BaseScraper):
         session = await self._get_session()
         auth_string = self._build_auth_header()
         if auth_string:
-            print("[SKINPORT] Basic Authentication token successfully compiled and injected.")
+            logger.info("Basic Authentication token successfully compiled and injected.")
 
         backoff_seconds = 305
         while True:
@@ -76,12 +78,12 @@ class SkinportScraper(BaseScraper):
                 # Target CS2 inventory items denominated in USD
                 params = {"app_id": 730, "currency": "USD", "tradable": 0}
 
-                print("[SKINPORT] Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
+                logger.info("Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
                 async with session.get(self.api_url, params=params) as response:
                     if response.status == 200:
                         # aiohttp automatically uses the loaded 'brotli' library to transparently unpack the data
                         raw_items = await response.json()
-                        print(f"[SKINPORT] Successfully decompressed {len(raw_items)} market entries.")
+                        logger.info("Successfully decompressed %d market entries.", len(raw_items))
                         backoff_seconds = 305  # Reset on success
 
                         for item in raw_items:
@@ -93,28 +95,27 @@ class SkinportScraper(BaseScraper):
                                 yield MarketTick(market_hash_name=market_hash_name, price_usd=float(item["min_price"]))
 
                     elif response.status == 401:
-                        print(
-                            "[SKINPORT] API Rejected Credentials! Check your "
+                        logger.error(
+                            "API Rejected Credentials! Check your "
                             "client ID and secret variables inside your .env file."
                         )
                         backoff_seconds = 305
                     elif response.status == 429:
                         backoff_seconds = min(1200, backoff_seconds * 2)
-                        print(
-                            f"[SKINPORT] High-velocity rate limits encountered. "
-                            f"Backing off production loop... "
-                            f"Retrying in {backoff_seconds} seconds."
+                        logger.warning(
+                            "High-velocity rate limits encountered. Backing off production loop... Retrying in %d seconds.",
+                            backoff_seconds,
                         )
                     else:
-                        print(f"[SKINPORT] Marketplace responded with unexpected HTTP status code: {response.status}")
+                        logger.warning("Marketplace responded with unexpected HTTP status code: %s", response.status)
                         backoff_seconds = 305
 
             except Exception as e:
-                print(f"[SKINPORT] Telemetry connection dropout encountered: {e}")
+                logger.error("Telemetry connection dropout encountered: %s", e)
                 backoff_seconds = 305
 
             # Respect the 5-minute cache instruction or back off if rate limited
-            print(f"[SKINPORT] Entering calculated cooldown cycle for {backoff_seconds} seconds...")
+            logger.info("Entering calculated cooldown cycle for %d seconds...", backoff_seconds)
             await asyncio.sleep(backoff_seconds)
 
     async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
@@ -138,7 +139,7 @@ class SkinportScraper(BaseScraper):
             if cache_key in self.history_cache:
                 ts, cached_entry = self.history_cache[cache_key]
                 if now - ts < self.cache_ttl:
-                    print(f"[SKINPORT HISTORY] Using cached sales history for '{base_name}' (version: {version})")
+                    logger.info("Using cached sales history for '%s' (version: %s)", base_name, version)
                     target_entry = cached_entry
 
             if not target_entry:
@@ -152,12 +153,11 @@ class SkinportScraper(BaseScraper):
                     timeout=aiohttp.ClientTimeout(total=5, connect=2),
                 ) as response:
                     if response.status != 200:
-                        print(f"[SKINPORT HISTORY] Non-200 status fetching history for '{base_name}': {response.status}")
+                        logger.warning("Non-200 status fetching history for '%s': %s", base_name, response.status)
                         if response.status == 429:
-                            print(
-                                f"[SKINPORT HISTORY] Rate limit hit (429) fetching "
-                                f"history for '{base_name}'. "
-                                f"Cooldown active for 60 seconds."
+                            logger.warning(
+                                "Rate limit hit (429) fetching history for '%s'. Cooldown active for 60 seconds.",
+                                base_name,
                             )
                             self.history_api_cooldown_until = now + 60.0
                         return False  # Skip unverifiable anomalies instead of blindly approving
@@ -194,21 +194,19 @@ class SkinportScraper(BaseScraper):
             threshold = recent_median * applied_discount
 
             if price_usd <= threshold:
-                print(
-                    f"[SKINPORT HISTORY] Verified! "
-                    f"Price ${price_usd:.2f} <= Snipe Threshold ${threshold:.2f} "
-                    f"(Recent Median: ${recent_median:.2f})"
+                logger.info(
+                    "Verified! Price $%.2f <= Snipe Threshold $%.2f (Recent Median: $%.2f)",
+                    price_usd, threshold, recent_median,
                 )
                 return True
             else:
-                print(
-                    f"[SKINPORT HISTORY] Filtered out! "
-                    f"Price ${price_usd:.2f} > Snipe Threshold ${threshold:.2f} "
-                    f"(Recent Median: ${recent_median:.2f})"
+                logger.info(
+                    "Filtered out! Price $%.2f > Snipe Threshold $%.2f (Recent Median: $%.2f)",
+                    price_usd, threshold, recent_median,
                 )
                 return False
         except Exception as e:
-            print(f"[SKINPORT HISTORY] Error verifying anomaly for '{market_hash_name}': {e}")
+            logger.error("Error verifying anomaly for '%s': %s", market_hash_name, e)
             return True
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
@@ -222,7 +220,7 @@ class SkinportScraper(BaseScraper):
         cache = Redis(host=redis_host, port=redis_port, decode_responses=True)
         pubsub = cache.pubsub()
         await pubsub.subscribe("skinport:live_listings")
-        print("[SKINPORT WS] Subscribed to Redis channel 'skinport:live_listings'")
+        logger.info("Subscribed to Redis channel 'skinport:live_listings'")
 
         try:
             async for message in pubsub.listen():
@@ -250,7 +248,7 @@ class SkinportScraper(BaseScraper):
                                 market_hash_name=market_hash_name, price_usd=price_usd, float_value=wear, stickers=stickers
                             )
                 except Exception as parse_err:
-                    print(f"[SKINPORT WS] Error parsing sidecar listing message: {parse_err}")
+                    logger.error("Error parsing sidecar listing message: %s", parse_err)
         finally:
             await pubsub.unsubscribe("skinport:live_listings")
             await cache.aclose()

@@ -23,9 +23,12 @@ from google import genai
 from google.genai import types
 from mlflow.client import MlflowClient
 from prefect import flow, task
+from shared_utils import get_logger
 from shared_utils.models import MarketItem, SimulatedTrade
 from sqlmodel import Session, create_engine, select
 from tools import fetch_live_market_floor, search_macro_trends
+
+logger = get_logger("analytics.evaluate")
 
 # Setup Database
 engine = create_engine("postgresql+psycopg2://postgres:postgres@localhost:5432/brand_sniper")
@@ -87,7 +90,7 @@ def fetch_daily_trades():
 
 @task
 def evaluate_trade(trade: SimulatedTrade, item_name: str):
-    print(f"[CFO] Auditing trade for {item_name}...")
+    logger.info("Auditing trade for %s...", item_name)
 
     prompt = f"""
     The bot bought: {item_name}
@@ -124,7 +127,7 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
         reasoning = result_json.get("reasoning", "No reasoning provided.")
 
         safe_reasoning = reasoning.encode("ascii", "ignore").decode("ascii")
-        print(f"   -> CFO Reasoning: {safe_reasoning}")
+        logger.info("CFO Reasoning: %s", safe_reasoning)
 
         # Log the evaluation to MLflow securely
         with mlflow.start_run(experiment_id=get_experiment_id(), run_name=f"audit_{item_name}"):
@@ -144,13 +147,13 @@ def evaluate_trade(trade: SimulatedTrade, item_name: str):
                 mlflow.log_artifact(temp_path)
 
     except Exception as e:
-        print(f"[ERROR] Gemini CFO failed to evaluate trade: {e}")
+        logger.error("Gemini CFO failed to evaluate trade: %s", e)
 
 
 @flow(name="Daily CFO Evaluation")
 def run_cfo_evaluation_pipeline():
     trades = fetch_daily_trades()
-    print(f"[PREFECT] Found {len(trades)} trades to evaluate.")
+    logger.info("Found %d trades to evaluate.", len(trades))
 
     for trade, item_name in trades:
         evaluate_trade(trade, item_name)

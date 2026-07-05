@@ -1,5 +1,10 @@
+from shared_utils import get_logger
+
+logger = get_logger("main")
+
+
 def main():
-    print("Hello from brand-sniper-monorepo!")
+    logger.info("Hello from brand-sniper-monorepo!")
 
 
 if __name__ == "__main__":
