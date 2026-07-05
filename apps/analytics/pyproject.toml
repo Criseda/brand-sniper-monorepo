@@ -8,7 +8,7 @@ dependencies = [
     "shared-utils",
     "pandas>=2.2.0",
     "prefect>=3.0.0",
-    "mcp>=1.28.0",
+    "mcp>=1.28.1",
     "fastmcp>=3.4.2",
     "google-genai>=2.10.0",
     "mlflow>=3.14.0",
