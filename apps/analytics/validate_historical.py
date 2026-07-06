@@ -14,9 +14,6 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Dynamic path alignment to ensure the script can find the shared-utils package
-sys.path.append(str(Path(__file__).resolve().parents[2]))
-
 from shared_utils import get_logger, parse_item_meta
 
 logger = get_logger("analytics.validate")
@@ -83,7 +80,8 @@ def run_dry_run_validation():
 
             total_rows += cleaned_row_count
 
-        except Exception:
+        except Exception as e:
+            logger.warning("Skipping corrupt or unreadable file '%s': %s", file_path.name, e)
             continue
 
     logger.info("=" * 70)

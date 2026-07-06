@@ -29,6 +29,7 @@ async def _get_http_session() -> aiohttp.ClientSession:
 
 @mcp.tool()
 async def fetch_live_market_floor(market_hash_name: str) -> str:
+    logger.info("[CFO] Fetching live market floor for: %s", market_hash_name)
     try:
         session = await _get_http_session()
         url = f"{BACKEND_URL}/api/v1/market/context/{market_hash_name}"
@@ -70,7 +71,7 @@ async def fetch_live_market_floor(market_hash_name: str) -> str:
 
 @mcp.tool()
 async def search_macro_trends(query: str) -> str:
-    logger.info("Macro trend search requested: %s", query)
+    logger.info("[CFO] Macro trend search requested: %s", query)
     data = {}
     try:
         session = await _get_http_session()

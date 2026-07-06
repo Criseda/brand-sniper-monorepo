@@ -10,9 +10,8 @@ dependencies = [
     "shared-utils",
     "google-genai>=2.10.0",
     "fastmcp>=3.4.2",
-    "mlflow>=2.14.0",
+    "mlflow>=3.14.0",
     "prometheus-client>=0.25.0",
-    "httpx>=0.28.0",
 ]
 
 [tool.uv.sources]
@@ -23,4 +22,5 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-mock>=3.15.1",
+    "aiosqlite>=0.20.0",
 ]

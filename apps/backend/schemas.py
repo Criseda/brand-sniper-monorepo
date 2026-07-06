@@ -30,6 +30,12 @@ class BulkPriceTick(BaseModel):
     timestamp: int = Field(..., description="Unix timestamp of the ingestion event")
 
 
+class SearchTrendsPayload(BaseModel):
+    """Schema for the macro trend search query."""
+
+    query: str = Field(..., description="The search query for macro trend analysis")
+
+
 class BulkIngestionPayload(BaseModel):
     """Container schema for high-throughput multi-venue price uploads sent from edge nodes."""
 

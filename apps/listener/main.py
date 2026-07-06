@@ -85,11 +85,11 @@ async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
         session = await get_http_session()
         async with session.post(BULK_INGEST_URL, json=payload, timeout=aiohttp.ClientTimeout(total=15, connect=3)) as resp:
             if resp.status == 201:
-                logger.info("Successfully committed %d items to Compute Node.", len(chunk))
+                logger.info("[BATCH FLUSH] Successfully committed %d items to Compute Node.", len(chunk))
             else:
-                logger.warning("Backend rejected batch with status: %s", resp.status)
+                logger.warning("[BATCH FLUSH] Backend rejected batch with status: %s", resp.status)
     except Exception as e:
-        logger.error("Failed to reach Compute Node database router: %s", e)
+        logger.error("[BATCH FLUSH] Failed to reach Compute Node database router: %s", e)
 
 
 async def rest_poll_producer(scraper, queue: asyncio.Queue):
@@ -187,7 +187,7 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
         is_approved = await evaluate_opportunity(tick, cache)
         if is_approved:
             logger.info(
-                "Confirmed true outlier by Edge DRE! %s dropped to $%.2f. Executing trade...",
+                "[ANOMALY] Confirmed true outlier by Edge DRE! %s dropped to $%.2f. Executing trade...",
                 tick.market_hash_name,
                 tick.price_usd,
             )
@@ -206,7 +206,7 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
                 z_score=z_score,
             )
         else:
-            logger.info("False outlier filtered by Edge DRE: %s at $%.2f.", tick.market_hash_name, tick.price_usd)
+            logger.info("[ANOMALY] False outlier filtered by Edge DRE: %s at $%.2f.", tick.market_hash_name, tick.price_usd)
     except Exception as e:
         logger.error("Edge DRE failure for %s: %s", tick.market_hash_name, e)
 
@@ -257,7 +257,7 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                         sticker_count = len(tick.stickers)
                         sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
                         logger.info(
-                            "Outlier potential detected: %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
+                            "[ANOMALY] Outlier potential detected: %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
                             tick.market_hash_name,
                             sticker_tag,
                             tick.price_usd,
@@ -310,8 +310,8 @@ async def start_sidecar_process(scraper):
             try:
                 proc.terminate()
                 await proc.wait()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Error terminating sidecar process: %s", e)
 
 
 async def process_live_telemetry_stream(platform_target: str):

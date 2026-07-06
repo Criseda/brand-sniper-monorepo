@@ -43,7 +43,7 @@ async def fetch_tracked_items() -> list[dict]:
     async with async_engine.connect() as conn:
         result = await conn.execute(select(MarketItem.id, MarketItem.market_hash_name, MarketItem.item_type))
         items = [{"id": r[0], "market_hash_name": r[1], "item_type": r[2]} for r in result.fetchall()]
-    logger.info(f"Retrieved {len(items)} market items from database.")
+    logger.info("Retrieved %d market items from database.", len(items))
     return items
 
 
@@ -53,7 +53,7 @@ async def fetch_historical_prices(item_id: int, market_hash_name: str) -> list[d
     Task to fetch long-term historical price data for a specific item.
     """
     logger = get_run_logger()
-    logger.info(f"Fetching historical prices for: {market_hash_name} (ID: {item_id})")
+    logger.info("Fetching historical prices for: %s (ID: %d)", market_hash_name, item_id)
 
     async with async_engine.connect() as conn:
         stmt = (
@@ -64,7 +64,7 @@ async def fetch_historical_prices(item_id: int, market_hash_name: str) -> list[d
         result = await conn.execute(stmt)
         rows = result.fetchall()
 
-    logger.info(f"Fetched {len(rows)} historical records for '{market_hash_name}'.")
+    logger.info("Fetched %d historical records for '%s'.", len(rows), market_hash_name)
     return [{"sale_date": r[0], "median_price_cents": r[1], "volume_sold": r[2]} for r in rows]
 
 
@@ -75,10 +75,10 @@ async def calculate_macro_trends(item_id: int, market_hash_name: str, price_data
     """
     logger = get_run_logger()
     if not price_data:
-        logger.warning(f"No price data available for trend analysis on: {market_hash_name}")
+        logger.warning("No price data available for trend analysis on: %s", market_hash_name)
         return {}
 
-    logger.info(f"Analyzing macro trends for: {market_hash_name}")
+    logger.info("Analyzing macro trends for: %s", market_hash_name)
     df = pd.DataFrame(price_data)
     df["sale_date"] = pd.to_datetime(df["sale_date"])
     df = df.sort_values("sale_date")
@@ -123,10 +123,16 @@ async def calculate_macro_trends(item_id: int, market_hash_name: str, price_data
     }
 
     logger.info(
-        f"[{market_hash_name}] Done. Price: ${latest_price / 100:.2f} | "
-        f"30d Avg: ${latest_30d / 100:.2f} | 90d Avg: ${latest_90d / 100:.2f} | "
-        f"Drift: {drift_percent:.2f}% | Volatility: ${volatility_cents / 100:.2f} | "
-        f"30d Vol: {avg_volume_30d:.1f}/day | Support: ${support_floor_cents / 100:.2f}"
+        "[%s] Done. Price: $%.2f | 30d Avg: $%.2f | 90d Avg: $%.2f | "
+        "Drift: %.2f%% | Volatility: $%.2f | 30d Vol: %.1f/day | Support: $%.2f",
+        market_hash_name,
+        latest_price / 100,
+        latest_30d / 100,
+        latest_90d / 100,
+        drift_percent,
+        volatility_cents / 100,
+        avg_volume_30d,
+        support_floor_cents / 100,
     )
     return analysis
 
@@ -177,11 +183,11 @@ async def save_macro_baselines_to_db(analysis_results: list[dict]):
                 await conn.execute(stmt)
 
     total_items = len(analysis_results)
-    logger.info(f"Successfully saved {len(valid_results)} / {total_items} macro baselines to database.")
+    logger.info("Successfully saved %d / %d macro baselines to database.", len(valid_results), total_items)
     if valid_results:
         # Show top drift item
         top_drift = max(valid_results, key=lambda x: x["drift_percent"])
-        logger.info(f"Highest upward trend: '{top_drift['market_hash_name']}' with {top_drift['drift_percent']:.2f}% drift.")
+        logger.info("Highest upward trend: '%s' with %.2f%% drift.", top_drift["market_hash_name"], top_drift["drift_percent"])
 
 
 @flow(name="long-term-macro-pipeline")
@@ -196,7 +202,7 @@ async def analyze_long_term_macro(limit_items: int = 5):
 
     # Process up to limit_items to be resource-friendly during testing/dev
     items_to_process = items[:limit_items]
-    logger.info(f"Processing a subset of {len(items_to_process)} items (Limit: {limit_items}).")
+    logger.info("Processing a subset of %d items (Limit: %d).", len(items_to_process), limit_items)
 
     results = []
     for item in items_to_process:
