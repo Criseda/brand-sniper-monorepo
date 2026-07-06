@@ -1,19 +1,52 @@
 import json
+import os
+from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+import aiohttp
+from dotenv import load_dotenv
+from fastmcp import FastMCP
 
-# Create the MCP server for the Adversarial CFO
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+load_dotenv(dotenv_path=PROJECT_ROOT / "apps" / "analytics" / ".env", override=True)
+
+from shared_utils import get_logger
+
+logger = get_logger("analytics.tools")
+
 mcp = FastMCP("adversarial_cfo")
+
+BACKEND_URL = os.getenv("COMPUTE_NODE_URL", "http://localhost:8080")
+_session: aiohttp.ClientSession | None = None
+
+
+async def _get_http_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        _session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10, connect=5))
+    return _session
 
 
 @mcp.tool()
-def fetch_live_market_floor(market_hash_name: str) -> str:
-    """
-    Scrapes the live third-party sites for the current lowest listings to check if the DRE's baseline is stale.
-    In this production-mock, it returns simulated real-time data for the CFO to evaluate.
-    """
-    # In a real environment, this would call CSFloat or Skinport API
-    # Here we mock the live market floor to be adversarial to the bot
+async def fetch_live_market_floor(market_hash_name: str) -> str:
+    try:
+        session = await _get_http_session()
+        url = f"{BACKEND_URL}/api/v1/market/context/{market_hash_name}"
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                return json.dumps(
+                    {
+                        "market_hash_name": market_hash_name,
+                        "live_floor_cents": data.get("snipe_threshold_cents") or data.get("cash_equivalent_avg_cents", 0),
+                        "recent_sales_cents": [data.get("real_time_skinport_median_cents", 0)],
+                        "liquidity": "HIGH" if data.get("is_liquid") else "LOW",
+                        "message": "Live market context fetched from backend database.",
+                    }
+                )
+    except Exception as e:
+        logger.warning("Failed to fetch live market floor from backend: %s. Using simulated data.", e)
+
     if "AK-47" in market_hash_name:
         return json.dumps(
             {
@@ -21,30 +54,25 @@ def fetch_live_market_floor(market_hash_name: str) -> str:
                 "live_floor_cents": 1100,
                 "recent_sales_cents": [1150, 1120, 1100, 1080],
                 "liquidity": "HIGH",
-                "message": "Market is crashing for AK-47s right now.",
+                "message": "SIMULATED: Market is crashing for AK-47s right now.",
             }
         )
-    else:
-        return json.dumps(
-            {
-                "market_hash_name": market_hash_name,
-                "live_floor_cents": 5000,
-                "recent_sales_cents": [5000, 4900],
-                "liquidity": "LOW",
-                "message": "Normal market conditions.",
-            }
-        )
+    return json.dumps(
+        {
+            "market_hash_name": market_hash_name,
+            "live_floor_cents": 5000,
+            "recent_sales_cents": [5000, 4900],
+            "liquidity": "LOW",
+            "message": "SIMULATED: Normal market conditions.",
+        }
+    )
 
 
 @mcp.tool()
-def search_macro_trends(query: str) -> str:
-    """
-    Searches recent community news and patch notes to detect macro market trends (e.g. market crashes, falling knives).
-    """
-    # In a real environment, this would use a Google Search API or Reddit scraper
+async def search_macro_trends(query: str) -> str:
     if "crash" in query.lower() or "ak" in query.lower():
         return (
-            "BREAKING: Huge CS2 update just released. All AK-47 skins are dropping "
+            "SIMULATED: Huge CS2 update just released. All AK-47 skins are dropping "
             "in price by 30% due to the new case. This is a falling knife market."
         )
     return "No major macroeconomic news detected."

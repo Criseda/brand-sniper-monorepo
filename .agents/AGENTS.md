@@ -15,7 +15,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Branch protection**: `main` branch requires PRs, CI status checks (`quality`, `test`), and linear history — configured in GitHub repo Settings > Branches
 - **PR template**: `.github/pull_request_template.md` — filled automatically on new PRs
 - **Contributing guide**: `CONTRIBUTING.md` — development workflow, branch naming, CI expectations
-- **CI**: GitHub Actions workflow at `.github/workflows/ci.yml` — runs lint, format check, typecheck, and tests on push/PR to `main`
+- **CI**: GitHub Actions workflow at `.github/workflows/ci.yml` — runs lint, format check, typecheck, and tests on push/PR to any branch
 - **Config**: ruff and mypy configured in `pyproject.toml` and `mypy.ini` at root
 - **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir
 - **Infra (Docker)**: `docker compose up -d` from `deployments/windows-stack/` or `deployments/pi5-stack/`
@@ -24,7 +24,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 | Path | Role | Entrypoint |
 |------|------|------------|
-| `apps/backend` | FastAPI REST API, FastMCP agent server, Prometheus metrics | `main.py:app` — uvicorn on `:8080` |
+| `apps/backend` | FastAPI REST API (ingest, health, market context), FastMCP agent server, Prometheus metrics | `main.py:app` — uvicorn on `:8080` |
 | `apps/listener` | Edge telemetry daemon — async scraping, Z-score anomaly detection, DRE | `main.py:process_live_telemetry_stream` — asyncio |
 | `apps/analytics` | Prefect macro pipeline + Adversarial CFO (Gemini + FastMCP) | `evaluate_performance.py` (CFO), plus standalone scripts |
 | `packages/shared_utils` | Shared SQLModel models, DB connection, item classifier, pricing utils | Re-exported via `__init__.py` |
@@ -43,13 +43,14 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 ## Testing quirks
 
-- Tests add parent dir to `sys.path` manually (no pytest path config)
+- `pyproject.toml` has `pythonpath` set for test discovery (`apps/*`, `shared_utils/src`)
+- Backend test must `sys.path.insert(0, ...)` to ensure `import main` resolves to `apps/backend/main.py` over root `main.py`
 - Listener tests need `@pytest.mark.asyncio`
-- Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine injected via `sys.modules` — no PostgreSQL needed
+- Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine — no PostgreSQL needed
 - Analytics tests mock `gemini_client` and `mlflow` globally; set `GEMINI_API_KEY` env var
 - shared_utils tests are pure unit tests (no I/O)
 - No integration test suite that requires Docker services
-- Run `uv run pytest` from any app/package directory (or root); 53 tests total across all packages
+- Run `uv run pytest` from any app/package directory (or root)
 
 ## Migrations
 

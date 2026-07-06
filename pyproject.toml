@@ -25,6 +25,12 @@ filterwarnings = [
     "ignore::UserWarning:prefect.*",
     'ignore:.*httpx.*:UserWarning',
 ]
+pythonpath = [
+    "packages/shared_utils/src",
+    "apps/backend",
+    "apps/listener",
+    "apps/analytics",
+]
 
 [tool.ruff]
 line-length = 128

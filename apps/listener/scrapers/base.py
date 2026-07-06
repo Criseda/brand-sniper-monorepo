@@ -32,4 +32,4 @@ class BaseScraper(ABC):
         WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects.
         """
         return
-        yield
+        yield  # pragma: no cover

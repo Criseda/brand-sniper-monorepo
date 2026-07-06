@@ -6,12 +6,25 @@ from shared_utils import get_logger
 
 logger = get_logger("listener.executor")
 
+_session: aiohttp.ClientSession | None = None
+
+
+async def _get_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None or _session.closed:
+        timeout = aiohttp.ClientTimeout(total=5, connect=2)
+        _session = aiohttp.ClientSession(timeout=timeout)
+    return _session
+
+
+async def close_http_session() -> None:
+    global _session
+    if _session is not None and not _session.closed:
+        await _session.close()
+        _session = None
+
 
 class ExecutionService(abc.ABC):
-    """
-    Base interface for all autonomous edge trade executors (Live, Paper).
-    """
-
     @abc.abstractmethod
     async def execute(
         self,
@@ -24,11 +37,6 @@ class ExecutionService(abc.ABC):
 
 
 class PaperExecutor(ExecutionService):
-    """
-    Simulates a trade on the Edge node by sending a fire-and-forget payload
-    to the Command Center (Backend) to securely log the SimulatedTrade in Postgres.
-    """
-
     def __init__(self, backend_url: str):
         self.trade_ingest_url = f"{backend_url.rstrip('/')}/api/v1/ingest/trade"
 
@@ -54,15 +62,13 @@ class PaperExecutor(ExecutionService):
             z_score,
         )
 
-        # Fire and forget HTTP POST (wrapped in a background task so it never blocks the hot path)
         asyncio.create_task(self._send_to_backend(payload))
 
     async def _send_to_backend(self, payload: dict) -> None:
         try:
-            timeout = aiohttp.ClientTimeout(total=5, connect=2)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(self.trade_ingest_url, json=payload) as resp:
-                    if resp.status not in (201, 202):
-                        logger.warning("Backend rejected trade log with status %s", resp.status)
+            session = await _get_session()
+            async with session.post(self.trade_ingest_url, json=payload) as resp:
+                if resp.status not in (201, 202):
+                    logger.warning("Backend rejected trade log with status %s", resp.status)
         except Exception as e:
             logger.error("Failed to reach Command Center to log trade: %s", e)

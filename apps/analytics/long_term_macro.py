@@ -12,17 +12,13 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import select
 
-# Force standard streams to use UTF-8 to support Unicode characters on Windows
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Align workspace directories for imports
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.append(str(PROJECT_ROOT))
 
-# Load root .env (shared) first, then analytics-specific overrides
 root_env = PROJECT_ROOT / ".env"
 if root_env.exists():
     load_dotenv(dotenv_path=root_env)
