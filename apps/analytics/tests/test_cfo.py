@@ -1,15 +1,9 @@
 import json
 import os
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Add parent dir to path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-# Mock environment variable for Gemini API Key to bypass init crash
 os.environ["GEMINI_API_KEY"] = "MOCK_API_KEY"
 
 from evaluate_performance import evaluate_trade

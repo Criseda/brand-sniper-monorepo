@@ -72,11 +72,7 @@ Return your evaluation in strict JSON format:
 @task
 async def fetch_daily_trades():
     async with AsyncSession(async_engine) as session:
-        stmt = (
-            select(SimulatedTrade, MarketItem.market_hash_name)
-            .join(MarketItem, SimulatedTrade.item_id == MarketItem.id)
-            .limit(1)
-        )
+        stmt = select(SimulatedTrade, MarketItem.market_hash_name).join(MarketItem, SimulatedTrade.item_id == MarketItem.id)
         result = await session.execute(stmt)
         return result.all()
 

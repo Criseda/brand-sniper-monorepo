@@ -1,11 +1,7 @@
 import json
-import os
-import sys
 from dataclasses import dataclass
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rules_engine import evaluate_opportunity
 
 

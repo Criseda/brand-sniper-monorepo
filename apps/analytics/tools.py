@@ -70,12 +70,20 @@ async def fetch_live_market_floor(market_hash_name: str) -> str:
 
 @mcp.tool()
 async def search_macro_trends(query: str) -> str:
-    if "crash" in query.lower() or "ak" in query.lower():
-        return (
-            "SIMULATED: Huge CS2 update just released. All AK-47 skins are dropping "
-            "in price by 30% due to the new case. This is a falling knife market."
-        )
-    return "No major macroeconomic news detected."
+    logger.info("Macro trend search requested: %s", query)
+    data = {}
+    try:
+        session = await _get_http_session()
+        url = f"{BACKEND_URL}/api/v1/market/search-trends"
+        async with session.post(url, json={"query": query}, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+    except Exception as e:
+        logger.warning("Failed to fetch macro trends from backend: %s", e)
+
+    if not data:
+        return "No major macroeconomic news detected."
+    return json.dumps(data)
 
 
 if __name__ == "__main__":

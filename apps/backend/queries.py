@@ -273,3 +273,41 @@ async def get_item_market_context(market_hash_name: str) -> dict:
             "item_page": skinport_history.get("item_page") if skinport_history else None,
             "market_page": skinport_history.get("market_page") if skinport_history else None,
         }
+
+
+async def search_macro_trends(query: str) -> list[dict]:
+    """
+    Searches tracked items matching the query and returns their macro baseline data.
+    """
+    if not query:
+        return []
+
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(MarketItem.market_hash_name, ItemMacroBaseline)
+            .join(ItemMacroBaseline, MarketItem.id == ItemMacroBaseline.item_id, isouter=True)
+            .where(func.lower(MarketItem.market_hash_name).contains(query.lower()))
+            .limit(10)
+        )
+        result = await session.execute(stmt)
+        rows = result.fetchall()
+
+    if not rows:
+        return []
+
+    results = []
+    for name, baseline in rows:
+        if baseline is None:
+            continue
+        results.append(
+            {
+                "market_hash_name": name,
+                "drift_percent": baseline.drift_percent,
+                "volatility_cents": baseline.volatility_cents,
+                "avg_volume_30d": baseline.avg_volume_30d,
+                "support_floor_cents": baseline.support_floor_cents,
+                "latest_price_cents": baseline.latest_price_cents,
+            }
+        )
+
+    return results

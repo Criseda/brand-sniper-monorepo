@@ -27,9 +27,8 @@ filterwarnings = [
 ]
 pythonpath = [
     "packages/shared_utils/src",
-    "apps/backend",
-    "apps/listener",
     "apps/analytics",
+    "apps/listener",
 ]
 
 [tool.ruff]

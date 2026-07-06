@@ -23,6 +23,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 from database import AsyncSessionLocal, engine
 from queries import close_http_session, get_item_market_context
+from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SimulatedTradePayload
 from shared_utils import get_logger, parse_item_meta
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
@@ -68,6 +69,13 @@ async def health_check():
 async def market_context(market_hash_name: str):
     context = await get_item_market_context(market_hash_name)
     return context
+
+
+@app.post("/api/v1/market/search-trends")
+async def search_trends(payload: dict):
+    query = payload.get("query", "")
+    results = await query_macro_trends(query)
+    return {"query": query, "results": results}
 
 
 from prometheus_client import make_asgi_app
