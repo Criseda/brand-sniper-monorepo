@@ -22,9 +22,9 @@ class BaseScraper(ABC):
     async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
         """
         Secondary verification using the platform's historical data API.
-        Default implementation returns True.
+        Default implementation returns False (fail-safe). Override in subclass for real verification.
         """
-        return True
+        return False
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
         """

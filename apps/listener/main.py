@@ -359,4 +359,5 @@ async def process_live_telemetry_stream(platform_target: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(process_live_telemetry_stream("skinport"))
+    platform_target = os.getenv("LISTENER_PLATFORM", "skinport")
+    asyncio.run(process_live_telemetry_stream(platform_target))

@@ -44,8 +44,8 @@ async def get_market_context(market_hash_name: str) -> dict:
 @mcp.tool()
 def verify_float_value(market_hash_name: str, float_value: float) -> str:
     """
-    Evaluates if the item's float wear value carries a price premium or clean appearance.
-    Supports standard wear thresholds (FN < 0.03, FT < 0.20, and high BS > 0.90 for Rust Coat).
+    Evaluates if the item's float wear value carries a price premium based on standard CS2 wear thresholds.
+    Rarity premiums: sub-0.03 FN, sub-0.15 FT, and high BS for specific patterns (Rust Coat).
     """
     try:
         t_dict = run_telemetry.get()
@@ -56,22 +56,28 @@ def verify_float_value(market_hash_name: str, float_value: float) -> str:
 
     if float_value < 0.03:
         return f"Excellent low float ({float_value:.4f}) - clean Factory New item. Desirable premium value."
+    if float_value < 0.07:
+        return f"Low float Factory New ({float_value:.4f}) - desirable. Better than average FN appearance."
     if 0.15 <= float_value <= 0.20:
         return f"Low float Field-Tested item ({float_value:.4f}) - desirable. Close to Minimal Wear look."
     if float_value >= 0.90:
         if "Rust Coat" in market_hash_name:
             return f"Extreme high float ({float_value:.4f}) - desirable 'rust' pattern for Rust Coat items. Premium value."
+        return f"High float Battle-Scarred ({float_value:.4f}) - typically no premium outside specific patterns."
+    if 0.07 <= float_value <= 0.10:
+        return f"Low float Minimal Wear ({float_value:.4f}) - clean appearance, minor premium."
     return f"Standard float ({float_value:.4f}) - falls in standard wear corridor, no extra wear premium."
 
 
 @mcp.tool()
 def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
     """
-    Flags the anomaly alert as a verified, genuine deep discount and registers the direct marketplace purchase link.
-    Call this ONLY after verifying a true arbitrage opportunity.
+    Flags the anomaly alert as a verified genuine deep discount.
+    This is a paper-only audit tool — no real trade is executed.
+    Records approval in the telemetry context for downstream evaluation.
     """
-    logger.info("Snipe opportunity verified for %s!", market_hash_name)
-    logger.info("   Direct Purchase Link: %s", item_page)
+    logger.info("[ALERT APPROVED] Snipe opportunity verified for %s!", market_hash_name)
+    logger.info("[ALERT APPROVED] Item page: %s", item_page)
 
     res = {
         "status": "APPROVED",
