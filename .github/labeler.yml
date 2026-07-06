@@ -1,0 +1,24 @@
+backend:
+  - apps/backend/**/*
+
+listener:
+  - apps/listener/**/*
+
+analytics:
+  - apps/analytics/**/*
+
+shared-utils:
+  - packages/shared_utils/**/*
+
+deployments:
+  - deployments/**/*
+
+ci:
+  - .github/**/*
+
+dependencies:
+  - pyproject.toml
+  - uv.lock
+
+documentation:
+  - '*.md'
