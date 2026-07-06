@@ -19,6 +19,7 @@ def _load_listener_main():
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def listener_main():
     """Load the real listener main module once per module and pin its constants."""
