@@ -44,7 +44,8 @@ def get_experiment_id():
     try:
         exp = client_mlflow.get_experiment_by_name("cfo-evaluation")
         _experiment_id = exp.experiment_id if exp else client_mlflow.create_experiment("cfo-evaluation")
-    except Exception:
+    except Exception as e:
+        logger.warning("MLflow experiment retrieval failed, defaulting to ID '1': %s", e)
         _experiment_id = "1"
     return _experiment_id
 

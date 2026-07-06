@@ -6,8 +6,10 @@ from pathlib import Path
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 # Load root .env (shared) first, then backend-specific overrides
 project_root = Path(__file__).resolve().parents[2]
@@ -24,7 +26,7 @@ if hasattr(sys.stderr, "reconfigure"):
 from database import AsyncSessionLocal, engine
 from queries import close_http_session, get_item_market_context
 from queries import search_macro_trends as query_macro_trends
-from schemas import BulkIngestionPayload, SimulatedTradePayload
+from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
 from shared_utils import get_logger, parse_item_meta
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
@@ -59,6 +61,14 @@ app = FastAPI(
     title="Algorithmic Market Sniper Engine", description="Core Compute REST API Node", version="1.0.0", lifespan=lifespan
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/health")
 async def health_check():
@@ -72,10 +82,9 @@ async def market_context(market_hash_name: str):
 
 
 @app.post("/api/v1/market/search-trends")
-async def search_trends(payload: dict):
-    query = payload.get("query", "")
-    results = await query_macro_trends(query)
-    return {"query": query, "results": results}
+async def search_trends(payload: SearchTrendsPayload):
+    results = await query_macro_trends(payload.query)
+    return {"query": payload.query, "results": results}
 
 
 from prometheus_client import make_asgi_app
@@ -87,7 +96,7 @@ app.mount("/metrics", metrics_app)
 item_cache: dict[str, int] = {}
 
 
-async def get_or_create_item_id(session, name: str) -> int:
+async def get_or_create_item_id(session: AsyncSession, name: str) -> int:
     """Resolves item_id using fast in-memory cache, falling back to DB insert if missing."""
     if name in item_cache:
         return item_cache[name]
@@ -161,4 +170,4 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8080)

@@ -37,7 +37,7 @@ async def get_market_context(market_hash_name: str) -> dict:
                 }
             )
     except LookupError:
-        pass
+        logger.debug("No telemetry context available for get_market_context")
     return context
 
 
@@ -52,7 +52,7 @@ def verify_float_value(market_hash_name: str, float_value: float) -> str:
         if t_dict is not None:
             t_dict["float_value"] = float_value
     except LookupError:
-        pass
+        logger.debug("No telemetry context available for verify_float_value")
 
     if float_value < 0.03:
         return f"Excellent low float ({float_value:.4f}) - clean Factory New item. Desirable premium value."
@@ -92,6 +92,6 @@ def confirm_alert_approval(market_hash_name: str, item_page: str) -> dict:
             t_dict["alert_approved"] = True
             t_dict["item_page"] = item_page
     except LookupError:
-        pass
+        logger.debug("No telemetry context available for confirm_alert_approval")
 
     return res

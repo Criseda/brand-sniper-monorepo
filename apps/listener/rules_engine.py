@@ -1,7 +1,10 @@
 import json
 
+from models import MarketTick
+from redis.asyncio import Redis
 
-async def evaluate_opportunity(tick, redis_client) -> bool:
+
+async def evaluate_opportunity(tick: MarketTick, redis_client: Redis) -> bool:
     """
     Evaluates a market anomaly deterministically using macro baselines and sticker valuations.
     """
