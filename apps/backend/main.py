@@ -22,7 +22,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 from database import AsyncSessionLocal, engine
-from queries import close_http_session
+from queries import close_http_session, get_item_market_context
 from schemas import BulkIngestionPayload, SimulatedTradePayload
 from shared_utils import get_logger, parse_item_meta
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
@@ -58,6 +58,18 @@ app = FastAPI(
     title="Algorithmic Market Sniper Engine", description="Core Compute REST API Node", version="1.0.0", lifespan=lifespan
 )
 
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "version": "1.0.0"}
+
+
+@app.get("/api/v1/market/context/{market_hash_name:path}")
+async def market_context(market_hash_name: str):
+    context = await get_item_market_context(market_hash_name)
+    return context
+
+
 from prometheus_client import make_asgi_app
 
 metrics_app = make_asgi_app()
@@ -90,21 +102,24 @@ async def get_or_create_item_id(session, name: str) -> int:
 async def ingest_simulated_trade(payload: SimulatedTradePayload):
     logger.info("Logging Simulated Trade: %s for $%.2f", payload.market_hash_name, payload.purchase_price_cents / 100)
 
-    # Update Prometheus Telemetry
     paper_trades_executed_total.inc()
     paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
 
-    async with AsyncSessionLocal() as session:
-        async with session.begin():
-            item_id = await get_or_create_item_id(session, payload.market_hash_name)
-            trade = SimulatedTrade(
-                item_id=item_id,
-                purchase_price_cents=payload.purchase_price_cents,
-                estimated_profit_cents=payload.estimated_profit_cents,
-                trigger_z_score=payload.trigger_z_score,
-                simulated_buy_timestamp=datetime.now(UTC).replace(tzinfo=None),
-            )
-            session.add(trade)
+    try:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                item_id = await get_or_create_item_id(session, payload.market_hash_name)
+                trade = SimulatedTrade(
+                    item_id=item_id,
+                    purchase_price_cents=payload.purchase_price_cents,
+                    estimated_profit_cents=payload.estimated_profit_cents,
+                    trigger_z_score=payload.trigger_z_score,
+                    simulated_buy_timestamp=datetime.now(UTC).replace(tzinfo=None),
+                )
+                session.add(trade)
+    except Exception as e:
+        logger.error("Failed to log simulated trade: %s", e)
+        return {"status": "ERROR", "message": str(e)}
     return {"status": "SUCCESS"}
 
 

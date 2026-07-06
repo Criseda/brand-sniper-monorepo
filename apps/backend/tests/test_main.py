@@ -1,43 +1,28 @@
 import sys
-import types
-from collections.abc import AsyncGenerator
 from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Create a SQLite in-memory engine for test isolation (no PostgreSQL needed)
 _test_engine = create_async_engine("sqlite+aiosqlite://", echo=False)
 _test_session_maker = sessionmaker(bind=_test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
-async def _get_test_session() -> AsyncGenerator[AsyncSession, None]:
-    async with _test_session_maker() as session:
-        yield session
-
-
-# Inject a fake db_connection module so the real one (with PostgreSQL pool kwargs)
-# never executes. When database.py does `from shared_utils.db_connection import ...`,
-# Python finds this pre-loaded module in sys.modules instead.
-_fake_module = types.ModuleType("shared_utils.db_connection")
-_fake_module.async_engine = _test_engine
-_fake_module.async_session_maker = _test_session_maker
-_fake_module.get_async_session = _get_test_session
-sys.modules["shared_utils.db_connection"] = _fake_module
-
-# Correct path priorities to avoid shadowing of 'main' from root directory
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-
-import pytest
-from fastapi.testclient import TestClient
-
-from main import app
-
-
 @pytest.fixture(name="client")
 def client_fixture():
+    backend_dir = str(Path(__file__).resolve().parent.parent)
+    sys.path.insert(0, backend_dir)
+
+    import main as backend_main
+
+    backend_main.engine = _test_engine
+    backend_main.AsyncSessionLocal = _test_session_maker
+
+    from main import app
+
     with TestClient(app) as client:
         yield client
 
@@ -50,10 +35,8 @@ def test_ingest_simulated_trade_success(client):
         "trigger_z_score": -3.5,
     }
 
-    # Test the ingestion endpoint
     response = client.post("/api/v1/ingest/trade", json=payload)
 
-    # Assert successful processing
     assert response.status_code == 201
     assert response.json()["status"] == "SUCCESS"
 

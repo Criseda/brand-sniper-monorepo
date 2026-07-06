@@ -150,7 +150,7 @@ def calculate_z_score(prices: list[int]) -> tuple[float, float] | None:
     n = len(historical_prices)
 
     mean_cents = sum(historical_prices) / n
-    variance = sum((x - mean_cents) ** 2 for x in historical_prices) / n
+    variance = sum((x - mean_cents) ** 2 for x in historical_prices) / (n - 1) if n > 1 else 0.0
     std_dev = math.sqrt(variance)
 
     # Regularize standard deviation to prevent hyper-sensitivity on low-variance histories

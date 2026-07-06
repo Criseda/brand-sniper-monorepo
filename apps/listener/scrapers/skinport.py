@@ -210,7 +210,7 @@ class SkinportScraper(BaseScraper):
                 return False
         except Exception as e:
             logger.error("Error verifying anomaly for '%s': %s", market_hash_name, e)
-            return True
+            return False
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
         """

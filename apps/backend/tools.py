@@ -1,12 +1,6 @@
-import sys
 from datetime import datetime
-from pathlib import Path
 
 from fastmcp import FastMCP
-
-# Align workspace directories for imports
-sys.path.append(str(Path(__file__).resolve().parents[2]))
-
 from queries import get_item_market_context
 from shared_utils import get_logger
 from telemetry import run_telemetry
