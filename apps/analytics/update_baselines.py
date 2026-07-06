@@ -44,6 +44,9 @@ async def sync_baselines_to_edge():
             MarketItem.market_hash_name,
             ItemMacroBaseline.support_floor_cents,
             ItemMacroBaseline.latest_price_cents,
+            ItemMacroBaseline.rolling_30d_avg_cents,
+            ItemMacroBaseline.volatility_cents,
+            ItemMacroBaseline.drift_percent,
         ).join(ItemMacroBaseline, MarketItem.id == ItemMacroBaseline.item_id)
         result = await conn.execute(stmt)
         rows = result.fetchall()
@@ -51,8 +54,15 @@ async def sync_baselines_to_edge():
     logger.info("Found %d baselines. Pushing to Edge Redis...", len(rows))
 
     async with redis.pipeline(transaction=False) as pipe:
-        for market_hash_name, support_floor, latest_price in rows:
-            data = {"support_floor_cents": support_floor, "latest_price_cents": latest_price}
+        for market_hash_name, support_floor, latest_price, rolling_30d_avg, volatility, drift in rows:
+            data = {
+                "support_floor_cents": support_floor,
+                "latest_price_cents": latest_price,
+                "rolling_30d_avg_cents": rolling_30d_avg,
+                "volatility_cents": volatility,
+                "drift_percent": drift,
+                "coefficient_of_variation": round(volatility / rolling_30d_avg, 4) if rolling_30d_avg and volatility else 0.0,
+            }
             pipe.set(f"baseline:{market_hash_name}", json.dumps(data))
 
         # Execute pipeline

@@ -108,6 +108,10 @@ async def calculate_macro_trends(item_id: int, market_hash_name: str, price_data
     support_floor = df["median_price_cents"].quantile(0.10)
     support_floor_cents = int(round(support_floor)) if pd.notna(support_floor) else int(latest_price)
 
+    coefficient_of_variation = (
+        round(volatility_cents / int(latest_price), 4) if int(latest_price) > 0 and volatility_cents > 0 else 0.0
+    )
+
     analysis = {
         "item_id": item_id,
         "market_hash_name": market_hash_name,
@@ -116,6 +120,7 @@ async def calculate_macro_trends(item_id: int, market_hash_name: str, price_data
         "rolling_90d_avg_cents": int(round(latest_90d)),
         "drift_percent": drift_percent,
         "volatility_cents": volatility_cents,
+        "coefficient_of_variation": coefficient_of_variation,
         "avg_volume_30d": avg_volume_30d,
         "support_floor_cents": support_floor_cents,
         "monthly_seasonality": {int(k): float(v) for k, v in monthly_seasonality.items()},
