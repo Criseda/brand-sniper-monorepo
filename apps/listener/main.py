@@ -56,6 +56,10 @@ MIN_HISTORY_POINTS = int(os.getenv("MIN_HISTORY_POINTS", "4"))
 DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "25000"))
 # Batch buffer chunk limit for bulk ingest dispatches
 CHUNK_LIMIT = int(os.getenv("CHUNK_LIMIT", "2500"))
+# Enable macro Z-score fallback for illiquid items (uses long-term volatility from Redis baseline)
+MACRO_ZSCORE_FALLBACK = os.getenv("MACRO_ZSCORE_FALLBACK", "true").lower() in ("true", "1", "yes")
+# Prior weight for Bayesian shrinkage of local stddev toward macro volatility
+MACRO_PRIOR_WEIGHT = float(os.getenv("MACRO_PRIOR_WEIGHT", "5.0"))
 
 # Shared aiohttp session (initialized at startup, closed at shutdown)
 _http_session: aiohttp.ClientSession | None = None
@@ -137,15 +141,41 @@ def update_dedup_cache(tick: MarketTick, dedup_cache: OrderedDict):
         dedup_cache.popitem(last=False)
 
 
-def calculate_z_score(prices: list[int]) -> tuple[float, float] | None:
+def calculate_z_score(
+    prices: list[int],
+    macro_rolling_avg_cents: int | None = None,
+    macro_volatility_cents: int | None = None,
+    macro_cv: float | None = None,
+) -> tuple[float, float, str] | None:
     """
     Calculates the Z-score of the most recent price against the historical window.
-    Returns (z_score, mean_cents) or None if insufficient data.
+
+    Uses Bayesian shrinkage to blend local and macro volatility for robust
+    detection even on illiquid items. Returns (z_score, mean_cents, source)
+    where source is 'local', 'hybrid', or 'macro', or None if insufficient data.
+
+    When local data is scarce (< MIN_HISTORY_POINTS) and macro params exist,
+    falls back to a macro Z-score using long-term volatility (Layer 1 fix for #31).
+    When local data exists, blends estimates using a Bayesian prior (Layer 2).
     """
+    macro_available = (
+        MACRO_ZSCORE_FALLBACK
+        and macro_rolling_avg_cents is not None
+        and macro_volatility_cents is not None
+        and macro_volatility_cents > 0
+        and macro_rolling_avg_cents > 0
+    )
+    current_tick_price = prices[-1]
+
+    # Layer 1: Macro fallback when local window is too sparse
     if len(prices) < MIN_HISTORY_POINTS:
+        if macro_available and macro_rolling_avg_cents is not None and macro_volatility_cents is not None:
+            min_vol = max(macro_volatility_cents, macro_rolling_avg_cents * 0.01)
+            z_score = (current_tick_price - macro_rolling_avg_cents) / min_vol
+            return z_score, float(macro_rolling_avg_cents), "macro"
         return None
 
-    current_tick_price = prices[-1]
+    # Layer 2: Local + Bayesian shrinkage hybrid
     historical_prices = prices[:-1]
     n = len(historical_prices)
 
@@ -153,18 +183,26 @@ def calculate_z_score(prices: list[int]) -> tuple[float, float] | None:
     variance = sum((x - mean_cents) ** 2 for x in historical_prices) / (n - 1) if n > 1 else 0.0
     std_dev = math.sqrt(variance)
 
-    # Regularize standard deviation to prevent hyper-sensitivity on low-variance histories
-    min_std_dev = mean_cents * MIN_STD_DEV_FACTOR
-    effective_std_dev = max(std_dev, min_std_dev)
+    if macro_available and macro_cv is not None and macro_cv > 0:
+        # Bayesian shrinkage: blend local stddev toward macro prior
+        macro_std_estimate = mean_cents * macro_cv
+        blended_variance = (n * variance + MACRO_PRIOR_WEIGHT * macro_std_estimate**2) / (n + MACRO_PRIOR_WEIGHT)
+        effective_std_dev = math.sqrt(blended_variance)
+        source = "hybrid"
+    else:
+        # Fall back to MIN_STD_DEV_FACTOR regularization when no macro prior
+        effective_std_dev = max(std_dev, mean_cents * MIN_STD_DEV_FACTOR)
+        source = "local"
+
     z_score = (current_tick_price - mean_cents) / effective_std_dev
+    return z_score, mean_cents, source
 
-    return z_score, mean_cents
 
-
-def should_trigger_anomaly(z_score: float, mean_cents: float, tick: MarketTick) -> bool:
+def should_trigger_anomaly(z_score: float, mean_cents: float, tick: MarketTick, source: str = "local") -> bool:
     """
     Determines if a Z-score outlier should proceed to history verification,
     applying sticker-aware thresholds and the absolute savings floor.
+    source is logged for observability but does not alter thresholds.
     """
     sticker_count = len(tick.stickers)
     threshold_z = Z_SCORE_STICKER_THRESHOLD if sticker_count > 0 else Z_SCORE_THRESHOLD
@@ -181,22 +219,25 @@ def should_trigger_anomaly(z_score: float, mean_cents: float, tick: MarketTick) 
     return True
 
 
-async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: float, cache: Redis):
+async def evaluate_and_execute(
+    tick: MarketTick, z_score: float, mean_cents: float, cache: Redis, baseline: dict | None = None, source: str = "local"
+):
     """Evaluates an anomaly locally on the edge and executes the trade if valid."""
     try:
-        is_approved = await evaluate_opportunity(tick, cache)
+        is_approved = await evaluate_opportunity(tick, cache, baseline)
         if is_approved:
             logger.info(
-                "[ANOMALY] Confirmed true outlier by Edge DRE! %s dropped to $%.2f. Executing trade...",
+                "[ANOMALY] Confirmed true outlier by Edge DRE (%s)! %s dropped to $%.2f. Executing trade (Z=%.2f)...",
+                source,
                 tick.market_hash_name,
                 tick.price_usd,
+                z_score,
             )
 
-            baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
-            est_profit_cents = 0
-            if baseline_raw:
-                baseline = json.loads(baseline_raw)
-                est_profit_cents = baseline.get("latest_price_cents", tick.price_cents) - tick.price_cents
+            if baseline is None:
+                baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+                baseline = json.loads(baseline_raw) if baseline_raw else {}
+            est_profit_cents = baseline.get("latest_price_cents", tick.price_cents) - tick.price_cents
 
             executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
             await executor.execute(
@@ -206,19 +247,22 @@ async def evaluate_and_execute(tick: MarketTick, z_score: float, mean_cents: flo
                 z_score=z_score,
             )
         else:
-            logger.info("[ANOMALY] False outlier filtered by Edge DRE: %s at $%.2f.", tick.market_hash_name, tick.price_usd)
+            logger.info(
+                "[ANOMALY] False outlier filtered by Edge DRE (%s): %s at $%.2f.", source, tick.market_hash_name, tick.price_usd
+            )
     except Exception as e:
         logger.error("Edge DRE failure for %s: %s", tick.market_hash_name, e)
 
 
 async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
     """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
-    cache = Redis(host="localhost", port=6380, decode_responses=True)
+    edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
+    cache = Redis.from_url(edge_redis_url, decode_responses=True)
 
     batch_buffer = []
     dedup_cache: OrderedDict[str, float] = OrderedDict()
 
-    logger.info("Telemetry processing consumer loop is active.")
+    logger.info("Telemetry processing consumer loop is active (Redis: %s).", edge_redis_url)
 
     try:
         while True:
@@ -239,31 +283,40 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                 value_string = f"{tick.timestamp}:{tick.price_cents}"
                 await cache.zadd(redis_key, {value_string: tick.timestamp})
 
-                # Keep only the last N ticks to resolve the illiquidity Z-score trap
+                # Keep only the last N ticks
                 card = await cache.zcard(redis_key)
                 if card > SLIDING_WINDOW_SIZE:
                     await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
 
-                # 3. Z-Score anomaly detection
+                # 3. Z-Score anomaly detection with macro baseline fallback
                 raw_elements = await cache.zrange(redis_key, 0, -1)
                 raw_elements_list: list[str] = raw_elements  # type: ignore[assignment]
                 prices = [int(element.split(":")[1]) for element in raw_elements_list]
 
-                result = calculate_z_score(prices)
-                if result is not None:
-                    z_score, mean_cents = result
+                # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
+                baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+                baseline_data: dict | None = json.loads(baseline_raw) if baseline_raw else None
 
-                    if should_trigger_anomaly(z_score, mean_cents, tick):
+                macro_avg = baseline_data.get("rolling_30d_avg_cents") if baseline_data else None
+                macro_vol = baseline_data.get("volatility_cents") if baseline_data else None
+                macro_cv = baseline_data.get("coefficient_of_variation") if baseline_data else None
+
+                result = calculate_z_score(prices, macro_avg, macro_vol, macro_cv)
+                if result is not None:
+                    z_score, mean_cents, source = result
+
+                    if should_trigger_anomaly(z_score, mean_cents, tick, source):
                         sticker_count = len(tick.stickers)
                         sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
                         logger.info(
-                            "[ANOMALY] Outlier potential detected: %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
+                            "[ANOMALY] Outlier potential detected (%s): %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
+                            source,
                             tick.market_hash_name,
                             sticker_tag,
                             tick.price_usd,
                             z_score,
                         )
-                        asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache))
+                        asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache, baseline_data, source))
 
                 # 4. When buffer matches target density constraints, dispatch non-blocking task
                 if len(batch_buffer) >= CHUNK_LIMIT:
