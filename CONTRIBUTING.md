@@ -9,7 +9,7 @@
    git checkout -b feat/my-feature
    ```
 
-2. **Make your changes** — follow the conventions in [.agents/AGENTS.md](.agents/AGENTS.md):
+2. **Make your changes** — follow the conventions in [AGENTS.md](AGENTS.md):
    - Use prefix-based structured logging, not `print()`
    - No emojis in source code, logs, or comments
    - Keep shared models in `packages/shared_utils/src/shared_utils/models.py`
@@ -64,4 +64,4 @@ Use a short prefix followed by a description:
 
 ## Need help?
 
-Check the [AGENTS.md](.agents/AGENTS.md) for a quick reference of available commands, package structure, and testing quirks.
+Check the [AGENTS.md](AGENTS.md) for a quick reference of available commands, package structure, and testing quirks.
