@@ -26,9 +26,9 @@ def listener_main():
     mod = _load_listener_main()
     mod.MIN_HISTORY_POINTS = 4
     mod.MIN_STD_DEV_FACTOR = 0.04
-    mod.Z_SCORE_THRESHOLD = -2.5
+    mod.Z_SCORE_THRESHOLD = -2.0
     mod.Z_SCORE_STICKER_THRESHOLD = -1.0
-    mod.MIN_SAVINGS_CENTS = 75
+    mod.MIN_SAVINGS_CENTS = 50
     mod.MACRO_ZSCORE_FALLBACK = True
     mod.MACRO_PRIOR_WEIGHT = 5.0
     return mod
@@ -157,7 +157,7 @@ def test_triggers_with_sticker_relaxed_threshold(listener_main):
 
 def test_rejects_when_savings_below_floor_no_stickers(listener_main):
     tick = _tick(5.80)  # price_cents = 580
-    # mean = 600, savings = 20 < MIN_SAVINGS_CENTS = 75
+    # mean = 600, savings = 20 < MIN_SAVINGS_CENTS = 50
     assert listener_main.should_trigger_anomaly(-3.0, 600, tick) is False
 
 
