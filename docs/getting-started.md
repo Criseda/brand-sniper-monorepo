@@ -18,7 +18,7 @@ cp .env.example .env
 
 Open `.env` and at minimum set:
 - `DATABASE_URL` — use Azure PostgreSQL, or uncomment `postgres:` in `deployments/server-stack/docker-compose.yml` for local dev
-- `GEMINI_API_KEY` — get a free key at [aistudio.google.com](https://aistudio.google.com/app/apikey)
+- `GROQ_API_KEY` — get a free key at [console.groq.com/keys](https://console.groq.com/keys)
 - `SKINPORT_CLIENT_ID` / `SKINPORT_CLIENT_SECRET` — your [Skinport API](https://docs.skinport.com/) creds
 
 ## 2. Install Dependencies

@@ -25,9 +25,9 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 | Path | Role | Entrypoint |
 |------|------|------------|
-| `apps/backend` | FastAPI REST API (ingest, health, market context), FastMCP agent server, Prometheus metrics | `main.py:app` — uvicorn on `:8080` |
+| `apps/backend` | FastAPI REST API (ingest, health, market context), Prometheus metrics | `main.py:app` — uvicorn on `:8080` |
 | `apps/listener` | Edge telemetry daemon — async scraping, Z-score anomaly detection, DRE | `main.py:process_live_telemetry_stream` — asyncio |
-| `apps/analytics` | Prefect macro pipeline + Adversarial CFO (Gemini + FastMCP) | `evaluate_performance.py` (CFO), plus standalone scripts |
+| `apps/analytics` | Prefect macro pipeline + Adversarial CFO (Groq) | `evaluate_performance.py` (CFO), plus standalone scripts |
 | `packages/shared_utils` | Shared SQLModel models, DB connection, item classifier, pricing utils | Re-exported via `__init__.py` |
 
 ## Key conventions
@@ -38,8 +38,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **`contextvars.ContextVar`** for thread/async-safe telemetry (no global dicts)
 - **Listener must be non-blocking**: use `aiohttp`, never `requests`
 - **Edge Redis on `localhost:6380`** (not default 6379), `--save "" --appendonly no` (volatile RAM only)
-- **FastMCP** for Gemini tool registration (`@mcp.tool()`), not ad-hoc JSON execution
-- **CFO tools** in `apps/analytics/tools.py`, **backend tools** in `apps/backend/tools.py`
+- **CFO tools** in `apps/analytics/tools.py` — plain functions, registered as OpenAI-compatible function tools
 - **Listener spawns Node.js sidecar** for WebSocket — lives in `scrapers/skinport_websocket/`
 
 ## Testing quirks
@@ -48,7 +47,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - Backend test must `sys.path.insert(0, ...)` to ensure `import main` resolves to `apps/backend/main.py` over root `main.py`
 - Listener tests need `@pytest.mark.asyncio`
 - Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine — no PostgreSQL needed
-- Analytics tests mock `gemini_client` and `mlflow` globally; set `GEMINI_API_KEY` env var
+- Analytics tests mock `client` and `mlflow` globally; set `GROQ_API_KEY` env var
 - shared_utils tests are pure unit tests (no I/O)
 - No integration test suite that requires Docker services
 - Run `uv run pytest` from any app/package directory (or root)
