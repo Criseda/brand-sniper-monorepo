@@ -1,0 +1,60 @@
+groups:
+  - name: sniper_service_status
+    interval: 15s
+    rules:
+      - alert: BackendDown
+        expr: up{job="sniper-backend"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations: { summary: "Backend API is unreachable", description: "Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }}" }
+
+      - alert: ListenerDown
+        expr: up{job="sniper-listener"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations: { summary: "Listener daemon is down", description: "Prometheus cannot scrape {{ $labels.job }} on {{ $labels.instance }}" }
+
+      - alert: RedisExporterDown
+        expr: up{job="sniper-redis"} == 0
+        for: 30s
+        labels: { severity: warning }
+        annotations: { summary: "Redis exporter is unreachable" }
+
+  - name: sniper_performance
+    interval: 30s
+    rules:
+      - alert: HighDRELantency
+        expr: histogram_quantile(0.95, sum(rate(listener_rules_engine_latency_seconds_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "DRE p95 latency above 500ms", description: "DRE evaluation latency is degrading performance" }
+
+      - alert: HighRedisLatency
+        expr: rate(listener_redis_operation_latency_seconds_sum[5m]) / rate(listener_redis_operation_latency_seconds_count[5m]) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Redis operation latency above 50ms" }
+
+  - name: sniper_anomalies
+    interval: 30s
+    rules:
+      - alert: AnomalyRateSpike
+        expr: rate(listener_anomalies_detected_total[5m]) > 50
+        for: 2m
+        labels: { severity: info }
+        annotations: { summary: "High anomaly detection rate", description: "More than 50 anomalies/min — possible market event or misconfiguration" }
+
+      - alert: LowConfirmationRate
+        expr: sum(rate(listener_anomalies_confirmed_total[15m])) / (sum(rate(listener_anomalies_confirmed_total[15m])) + sum(rate(listener_anomalies_rejected_total[15m]))) < 0.1
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "DRE confirmation rate below 10%", description: "Almost all anomalies are being rejected — check thresholds" }
+
+  - name: sniper_backend_errors
+    interval: 30s
+    rules:
+      - alert: HighBatchFlushErrorRate
+        expr: rate(listener_batch_flush_total{status="error"}[5m]) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "Batch flush errors detected", description: "The listener is failing to flush batches to the backend" }

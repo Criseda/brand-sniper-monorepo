@@ -4,13 +4,27 @@ import math
 import os
 import signal
 import sys
+import time
 from collections import OrderedDict
 from pathlib import Path
 
 import aiohttp
 from dotenv import load_dotenv
 from executor import PaperExecutor
+from listener_telemetry import (
+    anomalies_confirmed_total,
+    anomalies_detected_total,
+    anomalies_rejected_total,
+    batch_buffer_size,
+    batch_flush_total,
+    dedup_cache_size,
+    redis_operation_latency_seconds,
+    rules_engine_latency_seconds,
+    ticks_deduplicated_total,
+    ticks_processed_total,
+)
 from models import MarketTick
+from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
 from scrapers.factory import ScraperFactory
@@ -90,10 +104,13 @@ async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
         async with session.post(BULK_INGEST_URL, json=payload, timeout=aiohttp.ClientTimeout(total=15, connect=3)) as resp:
             if resp.status == 201:
                 logger.info("[BATCH FLUSH] Successfully committed %d items to Compute Node.", len(chunk))
+                batch_flush_total.labels(status="success").inc()
             else:
                 logger.warning("[BATCH FLUSH] Backend rejected batch with status: %s", resp.status)
+                batch_flush_total.labels(status="rejected").inc()
     except Exception as e:
         logger.error("[BATCH FLUSH] Failed to reach Compute Node database router: %s", e)
+        batch_flush_total.labels(status="error").inc()
 
 
 async def rest_poll_producer(scraper, queue: asyncio.Queue):
@@ -224,8 +241,11 @@ async def evaluate_and_execute(
 ):
     """Evaluates an anomaly locally on the edge and executes the trade if valid."""
     try:
+        _dre_t0 = time.monotonic()
         is_approved = await evaluate_opportunity(tick, cache, baseline)
+        rules_engine_latency_seconds.observe(time.monotonic() - _dre_t0)
         if is_approved:
+            anomalies_confirmed_total.inc()
             logger.info(
                 "[ANOMALY] Confirmed true outlier by Edge DRE (%s)! %s dropped to $%.2f. Executing trade (Z=%.2f)...",
                 source,
@@ -247,6 +267,7 @@ async def evaluate_and_execute(
                 z_score=z_score,
             )
         else:
+            anomalies_rejected_total.inc()
             logger.info(
                 "[ANOMALY] False outlier filtered by Edge DRE (%s): %s at $%.2f.", source, tick.market_hash_name, tick.price_usd
             )
@@ -270,31 +291,45 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
             try:
                 # 1. Deduplication Filter
                 if is_duplicate(tick, dedup_cache):
+                    ticks_deduplicated_total.inc()
                     continue
                 update_dedup_cache(tick, dedup_cache)
+                dedup_cache_size.set(len(dedup_cache))
+                ticks_processed_total.inc()
 
                 # Accumulate records for long-term database tracking
                 batch_buffer.append(
                     {"market_hash_name": tick.market_hash_name, "price_cents": tick.price_cents, "timestamp": tick.timestamp}
                 )
+                batch_buffer_size.set(len(batch_buffer))
 
                 # 2. Update Volatile Sliding Cache Layer
                 redis_key = f"market:ticks:{tick.market_hash_name}"
                 value_string = f"{tick.timestamp}:{tick.price_cents}"
+                _t0 = time.monotonic()
                 await cache.zadd(redis_key, {value_string: tick.timestamp})
+                redis_operation_latency_seconds.observe(time.monotonic() - _t0)
 
                 # Keep only the last N ticks
+                _t1 = time.monotonic()
                 card = await cache.zcard(redis_key)
+                redis_operation_latency_seconds.observe(time.monotonic() - _t1)
                 if card > SLIDING_WINDOW_SIZE:
+                    _t2 = time.monotonic()
                     await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
+                    redis_operation_latency_seconds.observe(time.monotonic() - _t2)
 
                 # 3. Z-Score anomaly detection with macro baseline fallback
+                _t3 = time.monotonic()
                 raw_elements = await cache.zrange(redis_key, 0, -1)
+                redis_operation_latency_seconds.observe(time.monotonic() - _t3)
                 raw_elements_list: list[str] = raw_elements  # type: ignore[assignment]
                 prices = [int(element.split(":")[1]) for element in raw_elements_list]
 
                 # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
+                _t4 = time.monotonic()
                 baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+                redis_operation_latency_seconds.observe(time.monotonic() - _t4)
                 baseline_data: dict | None = json.loads(baseline_raw) if baseline_raw else None
 
                 macro_avg = baseline_data.get("rolling_30d_avg_cents") if baseline_data else None
@@ -316,12 +351,14 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                             tick.price_usd,
                             z_score,
                         )
+                        anomalies_detected_total.labels(source=source).inc()
                         asyncio.create_task(evaluate_and_execute(tick, z_score, mean_cents, cache, baseline_data, source))
 
                 # 4. When buffer matches target density constraints, dispatch non-blocking task
                 if len(batch_buffer) >= CHUNK_LIMIT:
                     asyncio.create_task(flush_batch_chunk_to_postgres(platform_target, batch_buffer.copy()))
                     batch_buffer.clear()
+                    batch_buffer_size.set(0)
             except Exception as item_err:
                 logger.error("Error processing tick for '%s': %s", tick.market_hash_name, item_err)
             finally:
@@ -368,6 +405,11 @@ async def start_sidecar_process(scraper):
 
 
 async def process_live_telemetry_stream(platform_target: str):
+    # Start Prometheus metrics HTTP server on a background thread
+    _metrics_port = int(os.getenv("LISTENER_METRICS_PORT", "9100"))
+    start_http_server(_metrics_port)
+    logger.info("[METRICS] Prometheus metrics endpoint listening on :%d/metrics", _metrics_port)
+
     logger.info("======================================================================")
     logger.info("Initializing Extensible Stream Engine: %s", platform_target.upper())
     logger.info("Target Routing Node Core             : %s:%s", COMPUTE_NODE_IP, COMPUTE_PORT)

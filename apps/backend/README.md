@@ -32,4 +32,4 @@ uv run python main.py
 ### 3. View the Dashboards
 - **FastAPI Swagger Docs**: `http://localhost:8080/docs`
 - **Prometheus Metrics Scrape Endpoint**: `http://localhost:8080/metrics`
-- **Grafana Live Dashboard**: `http://localhost:3000` (Use the `apps/backend/grafana_dashboard.json` file to import the visualizer).
+- **Grafana Live Dashboard**: `http://localhost:3000` — auto-provisioned with the [sniper_dashboard.json](../deployments/server-stack/config/grafana/dashboards/sniper_dashboard.json) (18 panels covering trading, ingestion, anomaly detection, performance, and system health).

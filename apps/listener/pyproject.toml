@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "brotli>=1.1.0", # for Skinport
     "python-dotenv>=1.0.0",
+    "prometheus-client>=0.25.0",
     "shared-utils",
 ]
 
