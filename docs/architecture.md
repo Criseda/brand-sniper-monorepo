@@ -38,12 +38,12 @@ flowchart TD
         Postgres[(PostgreSQL)]
         Prometheus[(Prometheus / Grafana)]
         MLflow[(MLflow Model Registry)]
-        Gemini[Google Gemini API]
+        Groq[Groq API qwen/qwen3-32b]
 
         Backend -->|Logs simulated trades| Postgres
         Backend -->|Scrapes Metrics| Prometheus
         Analytics -->|Fetches trades to Audit| Postgres
-        Analytics <-->|"Agentic Reasoning Loop"| Gemini
+        Analytics <-->|"Agentic Reasoning Loop"| Groq
         Analytics -->|Logs Audits| MLflow
         Analytics -->|Syncs baselines to Edge| EdgeRedis
     end
@@ -76,15 +76,17 @@ the cached price history. On a confirmed anomaly:
 The **Analytics** app (`apps/analytics`) runs offline as a batch job. Orchestrated by **Prefect**,
 it evaluates every simulated trade logged to PostgreSQL.
 
-The **Adversarial CFO** is a Google Gemini agent armed with two tool functions:
+The **Adversarial CFO** is a Groq agent (qwen/qwen3-32b) using OpenAI-compatible function tools:
 
 | Tool | Role |
 |------|------|
 | `fetch_live_market_floor` | Checks the live floor price of an asset to validate snipe profitability |
 | `search_macro_trends` | Queries macro market conditions (patch notes, news, trends) |
+| `verify_float_value` | Evaluates if the item's float wear value carries a price premium |
 
-These tools are registered via **FastMCP** and passed to the Gemini SDK as callable functions.
-Gemini uses them to independently verify whether a trade was a genuine snipe or a bad bet.
+These tools are registered as OpenAI-compatible function tools and embedded directly in the
+Chat Completions API call. The model uses them to independently verify whether a trade was
+a genuine snipe or a bad bet.
 
 The CFO's verdict (confidence score 0-100 + reasoning trace) is logged immutably into **MLflow**,
 then newly-evaluated baselines are synced back to the Edge Redis cache for the next hot-path cycle.

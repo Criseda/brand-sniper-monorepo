@@ -61,7 +61,7 @@ additional environment variables from the compose file for Docker-internal netwo
 | Variable | Source |
 |----------|--------|
 | `DATABASE_URL` | Azure PostgreSQL connection string, or local postgres |
-| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/app/apikey) |
+| `GROQ_API_KEY` | [Groq Console](https://console.groq.com/keys) |
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
 

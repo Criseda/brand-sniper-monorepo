@@ -24,14 +24,14 @@
 
 ---
 
-A **Deterministic Rules Engine (DRE)** on the hot path instantly paper-trades statistical anomalies, while an **Agentic AI Pipeline (The Adversarial CFO)** independently audits those trades asynchronously using Google Gemini.
+A **Deterministic Rules Engine (DRE)** on the hot path instantly paper-trades statistical anomalies, while an **Agentic AI Pipeline (The Adversarial CFO)** independently audits those trades asynchronously using Groq.
 
 ---
 
 ## Quick Start
 
 ```bash
-cp .env.example .env          # Fill in DATABASE_URL, GEMINI_API_KEY, SKINPORT_*
+cp .env.example .env          # Fill in DATABASE_URL, GROQ_API_KEY, SKINPORT_*
 uv sync --all-packages
 cd deployments/server-stack && docker compose up -d
 curl http://localhost:8080/health
@@ -49,7 +49,7 @@ See [docs/getting-started.md](docs/getting-started.md) for the full walkthrough.
 | **Database** | PostgreSQL (SQLModel, Alembic, asyncpg) |
 | **Cache** | Redis (volatile RAM, port 6380) |
 | **Orchestration** | Prefect Server |
-| **AI** | Google Gemini + FastMCP |
+| **AI** | Groq (OpenAI-compatible) |
 | **Tracking** | MLflow |
 | **Observability** | Prometheus, Grafana |
 | **Infra** | Docker Compose, uv workspaces |
