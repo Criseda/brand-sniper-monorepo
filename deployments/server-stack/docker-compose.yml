@@ -5,7 +5,7 @@ services:
   # PostgreSQL instance. Uncomment the block below to run PostgreSQL locally.
   # ---------------------------------------------------------------------------
   # postgres:
-  #   image: postgres:16-alpine
+  #   image: postgres:18-alpine
   #   container_name: sniper_postgres
   #   environment:
   #     POSTGRES_USER: postgres
