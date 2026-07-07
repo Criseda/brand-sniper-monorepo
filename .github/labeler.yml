@@ -1,31 +1,31 @@
 backend:
   - changed-files:
-      - any: ['apps/backend/**/*']
+      - any-glob-to-any-file: ['apps/backend/**']
 
 listener:
   - changed-files:
-      - any: ['apps/listener/**/*']
+      - any-glob-to-any-file: ['apps/listener/**']
 
 analytics:
   - changed-files:
-      - any: ['apps/analytics/**/*']
+      - any-glob-to-any-file: ['apps/analytics/**']
 
 shared-utils:
   - changed-files:
-      - any: ['packages/shared_utils/**/*']
+      - any-glob-to-any-file: ['packages/shared_utils/**']
 
 deployments:
   - changed-files:
-      - any: ['deployments/**/*']
+      - any-glob-to-any-file: ['deployments/**']
 
 ci:
   - changed-files:
-      - any: ['.github/**/*']
+      - any-glob-to-any-file: ['.github/**']
 
 dependencies:
   - changed-files:
-      - any: ['pyproject.toml', 'uv.lock']
+      - any-glob-to-any-file: ['pyproject.toml', 'uv.lock']
 
 documentation:
   - changed-files:
-      - any: ['*.md']
+      - any-glob-to-any-file: ['*.md', 'docs/**']
