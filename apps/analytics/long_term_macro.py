@@ -195,6 +195,16 @@ async def save_macro_baselines_to_db(analysis_results: list[dict]):
         logger.info("Highest upward trend: '%s' with %.2f%% drift.", top_drift["market_hash_name"], top_drift["drift_percent"])
 
 
+@task
+async def run_sync_baselines_to_edge():
+    """
+    Prefect task wrapper to trigger Edge Redis sync.
+    """
+    from update_baselines import sync_baselines_to_edge
+
+    await sync_baselines_to_edge()
+
+
 @flow(name="long-term-macro-pipeline")
 async def analyze_long_term_macro(limit_items: int = 5):
     """
@@ -216,6 +226,8 @@ async def analyze_long_term_macro(limit_items: int = 5):
         results.append(analysis)
 
     await save_macro_baselines_to_db(results)
+    # Sync calculated baselines back to Edge Redis cache
+    await run_sync_baselines_to_edge()
     logger.info("Long Term Macro Analysis Pipeline completed successfully.")
 
 
