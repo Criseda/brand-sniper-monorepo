@@ -10,6 +10,7 @@ dependencies = [
     "shared-utils",
     "mlflow>=3.14.0",
     "prometheus-client>=0.25.0",
+    "brotli>=1.1.0",
 ]
 
 [tool.uv.sources]
