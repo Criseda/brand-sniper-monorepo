@@ -25,7 +25,7 @@ flowchart TD
         EdgeRedis[(Edge Redis Cache 6380)]
 
         Listener -->|High-Frequency Ticks| DRE
-        DRE <-->|O(1) Baseline Lookup| EdgeRedis
+        DRE ---|O(1) Baseline Lookup| EdgeRedis
     end
     Edge:::edgeNode
 
@@ -43,7 +43,7 @@ flowchart TD
         Backend -->|Logs simulated trades| Postgres
         Backend -->|Scrapes Metrics| Prometheus
         Analytics -->|Fetches trades to Audit| Postgres
-        Analytics <-->|Agentic Reasoning Loop| Gemini
+        Analytics ---|Agentic Reasoning Loop| Gemini
         Analytics -->|Logs Audits| MLflow
         Analytics -->|Syncs baselines to Edge| EdgeRedis
     end
