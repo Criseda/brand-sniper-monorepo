@@ -6,4 +6,4 @@ scrape_configs:
   - job_name: 'sniper-backend'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['backend:8080']

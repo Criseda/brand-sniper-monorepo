@@ -4,6 +4,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 ## Commands
 
+- **Docs**: user-facing guides live in `docs/` (getting-started, architecture, deployment)
 - **Sync all deps** (must use `--all-packages`): `uv sync --all-packages`
 - **Add dep**: run `uv add <pkg>` inside the target `apps/*` or `packages/*` directory, then `uv sync --all-packages` from root
 - **Run app**: `uv run python main.py` from the app's directory (e.g. `apps/backend`, `apps/listener`)
@@ -18,7 +19,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **CI**: GitHub Actions workflow at `.github/workflows/ci.yml` — runs lint, format check, typecheck, and tests on push/PR to any branch
 - **Config**: ruff and mypy configured in `pyproject.toml` and `mypy.ini` at root
 - **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir
-- **Infra (Docker)**: `docker compose up -d` from `deployments/windows-stack/` or `deployments/pi5-stack/`
+- **Infra (Docker)**: `docker compose up -d` from `deployments/server-stack/` or `deployments/edge-stack/`
 
 ## Package boundaries
 

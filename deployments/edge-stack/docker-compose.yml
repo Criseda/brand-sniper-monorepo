@@ -1,0 +1,47 @@
+services:
+  # ---------------------------------------------------------------------------
+  # EDGE CACHE LAYER: Volatile Sliding-Window Memory
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sniper_edge_redis
+    # CRITICAL PI 5 OPTIMIZATION: Disables both RDB snapshots and AOF logs.
+    # Data stays entirely in RAM, preventing flash/SD-card wear and maximizing IOPS.
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6380:6379"
+    networks:
+      - sniper_edge_network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1gb
+
+  # ---------------------------------------------------------------------------
+  # APPLICATION LAYER: Edge Telemetry Daemon & Ingestion Stream
+  # Set COMPUTE_NODE_IP in your .env or environment to point to the central
+  # backend server (e.g. your Windows machine IP or cloud hostname).
+  # ---------------------------------------------------------------------------
+  listener:
+    build:
+      context: ../../
+      dockerfile: apps/listener/Dockerfile
+    container_name: sniper_listener
+    env_file:
+      - ../../.env
+      - ../../apps/listener/.env
+    environment:
+      - EDGE_REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - sniper_edge_network
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+
+networks:
+  sniper_edge_network:
+    driver: bridge

@@ -203,6 +203,7 @@ dependencies = [
     { name = "mlflow" },
     { name = "pandas" },
     { name = "prefect" },
+    { name = "python-dotenv" },
     { name = "redis" },
     { name = "shared-utils" },
 ]
@@ -223,6 +224,7 @@ requires-dist = [
     { name = "mlflow", specifier = ">=3.14.0" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "prefect", specifier = ">=3.7.7" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
 ]
@@ -1452,7 +1454,7 @@ name = "gunicorn"
 version = "26.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging" },
+    { name = "packaging", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6d/b7/a4a3f632f823e432ce6bc65f62961b7980c898c77f075a2f7118cb3846fe/gunicorn-26.0.0.tar.gz", hash = "sha256:ca9346f85e3a4aeeb64d491045c16b9a35647abd37ea15efe53080eb8b090baf", size = 727286, upload-time = "2026-05-05T06:38:25.529Z" }
 wheels = [
@@ -1967,6 +1969,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "brotli" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "redis" },
     { name = "shared-utils" },
 ]
@@ -1983,6 +1986,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "brotli", specifier = ">=1.1.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
 ]
@@ -2684,8 +2688,8 @@ name = "pendulum"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil" },
-    { name = "tzdata" },
+    { name = "python-dateutil", marker = "python_full_version < '3.13'" },
+    { name = "tzdata", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/72/9a51afa0a822b09e286c4cb827ed7b00bc818dac7bd11a5f161e493a217d/pendulum-3.2.0.tar.gz", hash = "sha256:e80feda2d10fa3ff8b1526715f7d33dcb7e08494b3088f2c8a3ac92d4a4331ce", size = 86912, upload-time = "2026-01-30T11:22:24.093Z" }
 wheels = [
@@ -3933,8 +3937,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography" },
-    { name = "jeepney" },
+    { name = "cryptography", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "jeepney", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
@@ -4457,8 +4461,8 @@ name = "whenever"
 version = "0.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32'" },
-    { name = "tzlocal", marker = "sys_platform != 'darwin' and sys_platform != 'linux'" },
+    { name = "tzdata", marker = "python_full_version >= '3.13' and sys_platform == 'win32'" },
+    { name = "tzlocal", marker = "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fd/13/281bc0bc19f0e2e9559a22137607271d6e684b0f9bcbaf0a95b95a5e9258/whenever-0.10.0.tar.gz", hash = "sha256:a5ef2b5493531de95294080495d4d9bce9691b4b3d681c6952c7a8b3d52d7a04", size = 429588, upload-time = "2026-04-05T18:43:50.199Z" }
 wheels = [

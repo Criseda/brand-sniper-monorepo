@@ -1,6 +1,6 @@
 # Backend: API Core & Telemetry Gateway
 
-The Backend application is a high-throughput **Cold Path API Node** running on the Windows Compute Engine. It has been stripped of all heavy processing and decision-making logic (the DRE was moved to the Edge Node). It acts as the central router for data persistence and telemetry observability.
+The Backend application is a high-throughput **Cold Path API Node** running on the server node. It has been stripped of all heavy processing and decision-making logic (the DRE was moved to the Edge Node). It acts as the central router for data persistence and telemetry observability.
 
 ## Core Components
 
