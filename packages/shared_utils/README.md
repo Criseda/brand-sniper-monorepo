@@ -1,6 +1,6 @@
 # Shared Utilities Package
 
-This package acts as the connective tissue between the decoupled edge hardware (Pi 5 Listener) and the Windows Compute nodes (Backend & Analytics). 
+This package acts as the connective tissue between the decoupled edge node (Listener) and the server node services (Backend & Analytics). 
 
 Because the monorepo utilizes `uv Workspaces`, this package is included as a localized, editable dependency across all apps. This ensures that a single database change or connection optimization instantly propagates to every microservice without needing to publish to an external PyPI registry.
 
