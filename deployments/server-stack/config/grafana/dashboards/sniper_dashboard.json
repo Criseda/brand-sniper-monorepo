@@ -1,4 +1,6 @@
 {
+  "uid": "79c80f9c-f2f0-40bd-8eb8-301f8e7ab1f4",
+  "version": 5,
   "title": "Brand Sniper Live Dashboard",
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
@@ -14,7 +16,7 @@
     },
     {
       "type": "stat",
-      "title": "Total Simulated PnL",
+      "title": "Total Simulated Profit & Loss (PnL)",
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
       "targets": [
         { "expr": "paper_trading_estimated_profit_total / 100", "legendFormat": "USD", "refId": "A" }
@@ -42,19 +44,19 @@
     },
     {
       "type": "timeseries",
-      "title": "Trade Execution Rate",
+      "title": "Simulated Trades/min",
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
       "targets": [
-        { "expr": "rate(paper_trades_executed_total[5m])", "legendFormat": "Trades / sec", "refId": "A" }
+        { "expr": "rate(paper_trades_executed_total[5m]) * 60", "legendFormat": "Simulated Trades", "refId": "A" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cps" } }
+      "fieldConfig": { "defaults": { "unit": "suffix: trades/min" } }
     },
     {
       "type": "timeseries",
-      "title": "PnL Accumulation Rate",
+      "title": "Simulated PnL/min",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
       "targets": [
-        { "expr": "rate(paper_trading_estimated_profit_total[5m]) / 100", "legendFormat": "USD / sec", "refId": "A" }
+        { "expr": "rate(paper_trading_estimated_profit_total[5m]) * 60 / 100", "legendFormat": "PnL / min", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
     },
@@ -66,18 +68,18 @@
     },
     {
       "type": "timeseries",
-      "title": "Tick Processing Rate",
+      "title": "Ticks Processed/sec",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 6 },
       "targets": [
         { "expr": "rate(listener_ticks_processed_total[1m])", "legendFormat": "Processed", "refId": "A" },
         { "expr": "rate(listener_ticks_deduplicated_total[1m])", "legendFormat": "Deduplicated", "refId": "B" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cps" } },
+      "fieldConfig": { "defaults": { "unit": "suffix: ticks/s" } },
       "stack": { "mode": "normal" }
     },
     {
       "type": "gauge",
-      "title": "Dedup Cache Fill",
+      "title": "Deduplication Cache Size",
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 6 },
       "targets": [
         { "expr": "listener_dedup_cache_size", "legendFormat": "Entries", "refId": "A" }
@@ -97,7 +99,7 @@
     },
     {
       "type": "gauge",
-      "title": "Batch Buffer Fill",
+      "title": "Batch Buffer Size",
       "gridPos": { "h": 5, "w": 4, "x": 12, "y": 6 },
       "targets": [
         { "expr": "listener_batch_buffer_size", "legendFormat": "Entries", "refId": "A" }
@@ -117,42 +119,42 @@
     },
     {
       "type": "timeseries",
-      "title": "Batch Flush Rate",
+      "title": "Batch Flushes/min",
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
       "targets": [
-        { "expr": "rate(listener_batch_flush_total{status=\"success\"}[5m])", "legendFormat": "Success", "refId": "A" },
-        { "expr": "rate(listener_batch_flush_total{status=\"error\"}[5m])", "legendFormat": "Error", "refId": "B" },
-        { "expr": "rate(listener_batch_flush_total{status=\"rejected\"}[5m])", "legendFormat": "Rejected", "refId": "C" }
+        { "expr": "rate(listener_batch_flush_total{status=\"success\"}[5m]) * 60", "legendFormat": "Success", "refId": "A" },
+        { "expr": "rate(listener_batch_flush_total{status=\"error\"}[5m]) * 60", "legendFormat": "Error", "refId": "B" },
+        { "expr": "rate(listener_batch_flush_total{status=\"rejected\"}[5m]) * 60", "legendFormat": "Rejected", "refId": "C" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cps" } }
+      "fieldConfig": { "defaults": { "unit": "suffix: flushes/min" } }
     },
     {
       "type": "row",
-      "title": "Anomaly Detection",
+      "title": "Anomaly Detection & Rules Engine (DRE)",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
       "collapsed": false
     },
     {
       "type": "timeseries",
-      "title": "Anomaly Detections (by source)",
+      "title": "Potential Anomalies Flagged/min",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 12 },
       "targets": [
-        { "expr": "rate(listener_anomalies_detected_total{source=\"local\"}[1m])", "legendFormat": "Local", "refId": "A" },
-        { "expr": "rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m])", "legendFormat": "Hybrid", "refId": "B" },
-        { "expr": "rate(listener_anomalies_detected_total{source=\"macro\"}[1m])", "legendFormat": "Macro", "refId": "C" }
+        { "expr": "rate(listener_anomalies_detected_total{source=\"local\"}[1m]) * 60", "legendFormat": "Local", "refId": "A" },
+        { "expr": "rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m]) * 60", "legendFormat": "Hybrid", "refId": "B" },
+        { "expr": "rate(listener_anomalies_detected_total{source=\"macro\"}[1m]) * 60", "legendFormat": "Macro", "refId": "C" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cps" } },
+      "fieldConfig": { "defaults": { "unit": "suffix: detections/min" } },
       "stack": { "mode": "normal" }
     },
     {
       "type": "timeseries",
-      "title": "DRE Outcomes",
+      "title": "DRE Decisions/min",
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 12 },
       "targets": [
-        { "expr": "rate(listener_anomalies_confirmed_total[1m])", "legendFormat": "Confirmed (trade)", "refId": "A" },
-        { "expr": "rate(listener_anomalies_rejected_total[1m])", "legendFormat": "Rejected", "refId": "B" }
+        { "expr": "rate(listener_anomalies_confirmed_total[1m]) * 60", "legendFormat": "Confirmed (trade)", "refId": "A" },
+        { "expr": "rate(listener_anomalies_rejected_total[1m]) * 60", "legendFormat": "Filtered/Rejected", "refId": "B" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cps" } }
+      "fieldConfig": { "defaults": { "unit": "suffix: outcomes/min" } }
     },
     {
       "type": "stat",
@@ -188,7 +190,7 @@
     },
     {
       "type": "timeseries",
-      "title": "DRE Latency (p50 / p95 / p99)",
+      "title": "DRE Latency (ms)",
       "gridPos": { "h": 5, "w": 12, "x": 0, "y": 18 },
       "targets": [
         { "expr": "histogram_quantile(0.50, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p50 (ms)", "refId": "A" },
@@ -199,7 +201,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Redis Operation Latency (avg)",
+      "title": "Redis Latency (ms)",
       "gridPos": { "h": 5, "w": 12, "x": 12, "y": 18 },
       "targets": [
         { "expr": "rate(listener_redis_operation_latency_seconds_sum[1m]) / rate(listener_redis_operation_latency_seconds_count[1m]) * 1000", "legendFormat": "Avg (ms)", "refId": "A" }
@@ -214,7 +216,7 @@
     },
     {
       "type": "gauge",
-      "title": "Redis Memory Usage",
+      "title": "Redis Memory",
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 24 },
       "targets": [
         { "expr": "redis_memory_used_bytes", "legendFormat": "Used", "refId": "A" }
@@ -232,7 +234,7 @@
     },
     {
       "type": "stat",
-      "title": "Redis Keys (db0)",
+      "title": "Redis Keys",
       "gridPos": { "h": 5, "w": 4, "x": 6, "y": 24 },
       "targets": [
         { "expr": "redis_db_keys{db=\"db0\"}", "legendFormat": "Keys", "refId": "A" }
@@ -242,16 +244,16 @@
     },
     {
       "type": "timeseries",
-      "title": "Backend Request Errors",
+      "title": "Backend Errors/min",
       "gridPos": { "h": 5, "w": 7, "x": 10, "y": 24 },
       "targets": [
-        { "expr": "rate(listener_backend_request_errors_total[5m])", "legendFormat": "Errors / sec", "refId": "A" }
+        { "expr": "rate(listener_backend_request_errors_total[5m]) * 60", "legendFormat": "Errors", "refId": "A" }
       ],
-      "fieldConfig": { "defaults": { "unit": "cps" } }
+      "fieldConfig": { "defaults": { "unit": "suffix: errors/min" } }
     },
     {
       "type": "stat",
-      "title": "Services Up",
+      "title": "Services Status",
       "gridPos": { "h": 5, "w": 7, "x": 17, "y": 24 },
       "targets": [
         { "expr": "up{job=\"sniper-backend\"}", "legendFormat": "Backend", "refId": "A" },
