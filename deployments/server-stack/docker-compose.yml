@@ -28,7 +28,7 @@ services:
   # EDGE CACHE LAYER: Volatile Sliding-Window Memory (port 6380)
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: sniper_edge_redis
     command: redis-server --save "" --appendonly no
     ports:
@@ -59,9 +59,11 @@ services:
   # MLOPS LAYER: MLflow Metric Tracking & Model Registry
   # ---------------------------------------------------------------------------
   mlflow-server:
-    image: ghcr.io/mlflow/mlflow:v2.14.1
+    image: ghcr.io/mlflow/mlflow:v3.14.0
     container_name: sniper_mlflow_server
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --artifacts-destination /mlruns --serve-artifacts
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --artifacts-destination /mlruns --serve-artifacts --allowed-hosts '*'
+    environment:
+      - PYTHONWARNINGS=ignore:::mlflow.server.fastapi_app
     ports:
       - "5000:5000"
     volumes:
@@ -80,6 +82,7 @@ services:
       - "9090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting_rules.yml:/etc/prometheus/alerting_rules.yml:ro
       - prometheus_data:/prometheus
     networks:
       - sniper_network
@@ -92,9 +95,25 @@ services:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     networks:
       - sniper_network
     restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: sniper_redis_exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - sniper_network
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
 
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Core Compute Engine REST API & FastMCP Agent Server

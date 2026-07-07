@@ -1,0 +1,273 @@
+{
+  "title": "Brand Sniper Live Dashboard",
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["sniper", "csgo", "market"],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Trading Summary",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Total Simulated PnL",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "paper_trading_estimated_profit_total / 100", "legendFormat": "USD", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto" }
+    },
+    {
+      "type": "stat",
+      "title": "Total Trades Executed",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        { "expr": "paper_trades_executed_total", "legendFormat": "Trades", "refId": "A" }
+      ],
+      "options": { "colorMode": "none", "graphMode": "area" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trade Execution Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        { "expr": "rate(paper_trades_executed_total[5m])", "legendFormat": "Trades / sec", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "PnL Accumulation Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        { "expr": "rate(paper_trading_estimated_profit_total[5m]) / 100", "legendFormat": "USD / sec", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+    },
+    {
+      "type": "row",
+      "title": "Ingestion Pipeline",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Tick Processing Rate",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "rate(listener_ticks_processed_total[1m])", "legendFormat": "Processed", "refId": "A" },
+        { "expr": "rate(listener_ticks_deduplicated_total[1m])", "legendFormat": "Deduplicated", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } },
+      "stack": { "mode": "normal" }
+    },
+    {
+      "type": "gauge",
+      "title": "Dedup Cache Fill",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 6 },
+      "targets": [
+        { "expr": "listener_dedup_cache_size", "legendFormat": "Entries", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "thresholds": { "mode": "percentage", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 80 },
+            { "color": "red", "value": 95 }
+          ]}
+        }
+      },
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "type": "gauge",
+      "title": "Batch Buffer Fill",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "listener_batch_buffer_size", "legendFormat": "Entries", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "thresholds": { "mode": "percentage", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 80 },
+            { "color": "red", "value": 95 }
+          ]}
+        }
+      },
+      "options": { "orientation": "horizontal" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch Flush Rate",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        { "expr": "rate(listener_batch_flush_total{status=\"success\"}[5m])", "legendFormat": "Success", "refId": "A" },
+        { "expr": "rate(listener_batch_flush_total{status=\"error\"}[5m])", "legendFormat": "Error", "refId": "B" },
+        { "expr": "rate(listener_batch_flush_total{status=\"rejected\"}[5m])", "legendFormat": "Rejected", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } }
+    },
+    {
+      "type": "row",
+      "title": "Anomaly Detection",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Anomaly Detections (by source)",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "rate(listener_anomalies_detected_total{source=\"local\"}[1m])", "legendFormat": "Local", "refId": "A" },
+        { "expr": "rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m])", "legendFormat": "Hybrid", "refId": "B" },
+        { "expr": "rate(listener_anomalies_detected_total{source=\"macro\"}[1m])", "legendFormat": "Macro", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } },
+      "stack": { "mode": "normal" }
+    },
+    {
+      "type": "timeseries",
+      "title": "DRE Outcomes",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 12 },
+      "targets": [
+        { "expr": "rate(listener_anomalies_confirmed_total[1m])", "legendFormat": "Confirmed (trade)", "refId": "A" },
+        { "expr": "rate(listener_anomalies_rejected_total[1m])", "legendFormat": "Rejected", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } }
+    },
+    {
+      "type": "stat",
+      "title": "DRE Confirmation Rate",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(rate(listener_anomalies_confirmed_total[15m])) / (sum(rate(listener_anomalies_confirmed_total[15m])) + sum(rate(listener_anomalies_rejected_total[15m]))) * 100",
+          "legendFormat": "Rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "orange", "value": 25 },
+            { "color": "green", "value": 50 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "type": "row",
+      "title": "Performance & Latency",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "DRE Latency (p50 / p95 / p99)",
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 18 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p50 (ms)", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p95 (ms)", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p99 (ms)", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Operation Latency (avg)",
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 18 },
+      "targets": [
+        { "expr": "rate(listener_redis_operation_latency_seconds_sum[1m]) / rate(listener_redis_operation_latency_seconds_count[1m]) * 1000", "legendFormat": "Avg (ms)", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms" } }
+    },
+    {
+      "type": "row",
+      "title": "System Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false
+    },
+    {
+      "type": "gauge",
+      "title": "Redis Memory Usage",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "redis_memory_used_bytes", "legendFormat": "Used", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": { "mode": "percentage", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 80 },
+            { "color": "red", "value": 95 }
+          ]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Redis Keys (db0)",
+      "gridPos": { "h": 5, "w": 4, "x": 6, "y": 24 },
+      "targets": [
+        { "expr": "redis_db_keys{db=\"db0\"}", "legendFormat": "Keys", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none" } },
+      "options": { "colorMode": "none", "graphMode": "area" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend Request Errors",
+      "gridPos": { "h": 5, "w": 7, "x": 10, "y": 24 },
+      "targets": [
+        { "expr": "rate(listener_backend_request_errors_total[5m])", "legendFormat": "Errors / sec", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "cps" } }
+    },
+    {
+      "type": "stat",
+      "title": "Services Up",
+      "gridPos": { "h": 5, "w": 7, "x": 17, "y": 24 },
+      "targets": [
+        { "expr": "up{job=\"sniper-backend\"}", "legendFormat": "Backend", "refId": "A" },
+        { "expr": "up{job=\"sniper-listener\"}", "legendFormat": "Listener", "refId": "B" },
+        { "expr": "up{job=\"sniper-redis\"}", "legendFormat": "Redis", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none" }
+    }
+  ]
+}

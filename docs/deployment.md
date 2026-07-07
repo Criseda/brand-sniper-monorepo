@@ -18,10 +18,10 @@ docker compose up -d
 
 | Service | Image | Container Name | Profile |
 |---------|-------|----------------|---------|
-| Redis 7 | `redis:7-alpine` | `sniper_edge_redis` | always |
+| Redis 8 | `redis:8-alpine` | `sniper_edge_redis` | always |
 | PostgreSQL 16 | `postgres:16-alpine` | `sniper_postgres` | disabled (uncomment to enable local dev) |
 | Prefect Server | `prefecthq/prefect:3-latest` | `sniper_prefect_server` | always |
-| MLflow | `ghcr.io/mlflow/mlflow:v2.20.0` | `sniper_mlflow_server` | always |
+| MLflow | `ghcr.io/mlflow/mlflow:v3.14.0` | `sniper_mlflow_server` | always |
 | Prometheus | `prom/prometheus:latest` | `sniper_prometheus` | always |
 | Grafana | `grafana/grafana:latest` | `sniper_grafana` | always |
 | Backend | custom build | `sniper_backend` | always |

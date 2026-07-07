@@ -1968,6 +1968,7 @@ source = { virtual = "apps/listener" }
 dependencies = [
     { name = "aiohttp" },
     { name = "brotli" },
+    { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "redis" },
@@ -1985,6 +1986,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "brotli", specifier = ">=1.1.0" },
+    { name = "prometheus-client", specifier = ">=0.25.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "redis", specifier = ">=5.0.0" },
