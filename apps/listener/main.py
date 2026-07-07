@@ -54,16 +54,16 @@ BULK_INGEST_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/ingest/bulk"
 
 # --- Tunable Detection Parameters (configurable via .env) ---
 # Minimum absolute savings required for non-stickered anomaly validation
-MIN_SAVINGS_USD = float(os.getenv("MIN_SAVINGS_USD", "0.75"))
+MIN_SAVINGS_USD = float(os.getenv("MIN_SAVINGS_USD", "0.50"))
 MIN_SAVINGS_CENTS = round(MIN_SAVINGS_USD * 100)
 # Z-score threshold for standard items
-Z_SCORE_THRESHOLD = float(os.getenv("Z_SCORE_THRESHOLD", "-2.5"))
+Z_SCORE_THRESHOLD = float(os.getenv("Z_SCORE_THRESHOLD", "-2.0"))
 # Z-score threshold for stickered items (relaxed to catch sticker snipes)
 Z_SCORE_STICKER_THRESHOLD = float(os.getenv("Z_SCORE_STICKER_THRESHOLD", "-1.0"))
 # Minimum std dev regularization factor (prevents hyper-sensitivity on stable prices)
 MIN_STD_DEV_FACTOR = float(os.getenv("MIN_STD_DEV_FACTOR", "0.04"))
 # Sliding window size for Redis price history
-SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "30"))
+SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
 # Minimum data points required before Z-score analysis
 MIN_HISTORY_POINTS = int(os.getenv("MIN_HISTORY_POINTS", "4"))
 # Dedup cache max entries (LRU eviction above this cap)
