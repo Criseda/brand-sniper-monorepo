@@ -8,13 +8,12 @@ dependencies = [
     "shared-utils",
     "pandas>=2.2.0",
     "prefect>=3.7.7",
-    "mcp>=1.28.1",
-    "fastmcp>=3.4.2",
-    "google-genai>=2.10.0",
     "mlflow>=3.14.0",
     "redis>=5.0.0",
     "aiohttp>=3.9.0",
     "python-dotenv>=1.0.0",
+    "openai>=1.0.0",
+    "instructor>=1.15.4",
 ]
 
 [tool.uv.sources]
