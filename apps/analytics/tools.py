@@ -1,8 +1,9 @@
 import json
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 
-import aiohttp
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
@@ -17,25 +18,16 @@ logger = get_logger("analytics.tools")
 mcp = FastMCP("adversarial_cfo")
 
 BACKEND_URL = os.getenv("COMPUTE_NODE_URL", "http://localhost:8080")
-_session: aiohttp.ClientSession | None = None
-
-
-async def _get_http_session() -> aiohttp.ClientSession:
-    global _session
-    if _session is None or _session.closed:
-        _session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10, connect=5))
-    return _session
 
 
 @mcp.tool()
-async def fetch_live_market_floor(market_hash_name: str) -> str:
+def fetch_live_market_floor(market_hash_name: str) -> str:
     logger.info("[CFO] Fetching live market floor for: %s", market_hash_name)
     try:
-        session = await _get_http_session()
         url = f"{BACKEND_URL}/api/v1/market/context/{market_hash_name}"
-        async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+        with urllib.request.urlopen(url, timeout=5) as resp:
             if resp.status == 200:
-                data = await resp.json()
+                data = json.loads(resp.read().decode())
                 return json.dumps(
                     {
                         "market_hash_name": market_hash_name,
@@ -70,15 +62,20 @@ async def fetch_live_market_floor(market_hash_name: str) -> str:
 
 
 @mcp.tool()
-async def search_macro_trends(query: str) -> str:
+def search_macro_trends(query: str) -> str:
     logger.info("[CFO] Macro trend search requested: %s", query)
     data = {}
     try:
-        session = await _get_http_session()
         url = f"{BACKEND_URL}/api/v1/market/search-trends"
-        async with session.post(url, json={"query": query}, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"query": query}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
-                data = await resp.json()
+                data = json.loads(resp.read().decode())
     except Exception as e:
         logger.warning("Failed to fetch macro trends from backend: %s", e)
 
