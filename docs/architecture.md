@@ -20,8 +20,8 @@ flowchart TD
 
     subgraph Edge[EDGE NODE / Hot Path]
         direction TB
-        Listener[\"/apps/listener Async Polling\"]
-        DRE[\"Deterministic Rules Engine & Executor\"]
+        Listener["/apps/listener Async Polling"]
+        DRE["Deterministic Rules Engine & Executor"]
         EdgeRedis[(Edge Redis Cache 6380)]
 
         Listener -->|High-Frequency Ticks| DRE
@@ -33,8 +33,8 @@ flowchart TD
 
     subgraph Compute[SERVER NODE / Cold Path]
         direction TB
-        Backend[\"/apps/backend FastAPI Core\"]
-        Analytics[\"/apps/analytics Prefect & CFO\"]
+        Backend["/apps/backend FastAPI Core"]
+        Analytics["/apps/analytics Prefect & CFO"]
         Postgres[(PostgreSQL)]
         Prometheus[(Prometheus / Grafana)]
         MLflow[(MLflow Model Registry)]

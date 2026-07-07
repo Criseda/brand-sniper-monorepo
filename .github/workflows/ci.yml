@@ -10,12 +10,6 @@ on:
       - 'mypy.ini'
       - '.github/workflows/ci.yml'
   pull_request:
-    paths:
-      - '**.py'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'mypy.ini'
-      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 jobs:
