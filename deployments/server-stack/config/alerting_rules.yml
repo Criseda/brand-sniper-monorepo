@@ -39,7 +39,7 @@ groups:
     interval: 30s
     rules:
       - alert: AnomalyRateSpike
-        expr: rate(listener_anomalies_detected_total[5m]) > 50
+        expr: rate(listener_anomalies_detected_total[5m]) * 60 > 50
         for: 2m
         labels: { severity: info }
         annotations: { summary: "High anomaly detection rate", description: "More than 50 anomalies/min — possible market event or misconfiguration" }
