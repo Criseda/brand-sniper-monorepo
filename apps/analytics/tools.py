@@ -72,25 +72,33 @@ def fetch_live_market_floor(market_hash_name: str) -> str:
         with urllib.request.urlopen(url, timeout=5) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode())
+                # Use undiscounted cash equivalent average or real-time median as the true live floor price
+                live_floor = (
+                    data.get("cash_equivalent_avg_cents")
+                    or data.get("real_time_skinport_median_cents")
+                    or data.get("snipe_threshold_cents")
+                    or 0
+                )
                 return json.dumps(
                     {
                         "market_hash_name": market_hash_name,
-                        "live_floor_cents": data.get("snipe_threshold_cents") or data.get("cash_equivalent_avg_cents", 0),
+                        "live_floor_cents": live_floor,
                         "recent_sales_cents": [data.get("real_time_skinport_median_cents", 0)],
                         "liquidity": "HIGH" if data.get("is_liquid") else "LOW",
                         "message": "Live market context fetched from backend database.",
                     }
                 )
     except Exception as e:
-        logger.warning("Failed to fetch live market floor from backend: %s. Using simulated data.", e)
+        logger.warning("Failed to fetch live market floor from backend: %s. Returning error payload.", e)
 
     return json.dumps(
         {
             "market_hash_name": market_hash_name,
-            "live_floor_cents": 5000,
-            "recent_sales_cents": [5000, 4900],
-            "liquidity": "LOW",
-            "message": "SIMULATED: Fallback data — live backend unavailable.",
+            "live_floor_cents": None,
+            "recent_sales_cents": [],
+            "liquidity": "UNKNOWN",
+            "message": "ERROR: Live backend database unavailable. Valuation verification skipped.",
+            "error": "Failed to fetch live market floor due to backend server connection timeout or failure.",
         }
     )
 

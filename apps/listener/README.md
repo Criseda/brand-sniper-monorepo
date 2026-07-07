@@ -14,7 +14,7 @@ Because the ingestion node must never block, it routes incoming data ticks concu
 
 ### Node.js WebSocket Sidecar
 
-The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO feed for real-time sale listings. The sidecar writes parsed listings to stdout, which the main Python process reads line-by-line and feeds into the anomaly detection pipeline.
+The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO feed for real-time sale listings. The sidecar publishes parsed listings to the local Redis Pub/Sub channel `skinport:live_listings`, which the main Python process subscribes to and feeds into the anomaly detection pipeline. (The subprocess stdout/stderr are captured solely for application logging).
 
 ## Setup & Execution
 

@@ -122,6 +122,10 @@ class SkinportScraper(BaseScraper):
         Queries `/v1/sales/history` using the base name, filters for the matching version,
         and determines if the price represents a genuine discount (e.g. <= 5% discount at edge)
         adjusted for active downtrends to prevent alerting on structural market shifts.
+
+        .. note::
+           This method is currently unused in real-time execution. Anomaly verification is offloaded
+           to O(1) Edge Redis baseline checks to preserve <5ms hot-path latency and avoid rate-limiting.
         """
         now = time.time()
         if now < self.history_api_cooldown_until:

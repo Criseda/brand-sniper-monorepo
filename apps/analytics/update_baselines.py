@@ -32,6 +32,7 @@ async def sync_baselines_to_edge():
     """
     Reads calculated macro baselines from PostgreSQL and pushes them
     to the Edge Node's Redis instance for zero-latency hot-path evaluation.
+    Also syncs sticker baseline prices to Redis hashmap 'sticker_prices'.
     """
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     logger.info("Connecting to Edge Redis at %s", edge_redis_url)
@@ -51,6 +52,15 @@ async def sync_baselines_to_edge():
         result = await conn.execute(stmt)
         rows = result.fetchall()
 
+        # Query sticker prices to populate the DRE sticker premium logic
+        stmt_stickers = (
+            select(MarketItem.market_hash_name, ItemMacroBaseline.latest_price_cents)
+            .join(ItemMacroBaseline, MarketItem.id == ItemMacroBaseline.item_id)
+            .where(MarketItem.item_type == "Sticker")
+        )
+        result_stickers = await conn.execute(stmt_stickers)
+        sticker_rows = result_stickers.fetchall()
+
     logger.info("Found %d baselines. Pushing to Edge Redis...", len(rows))
 
     async with redis.pipeline(transaction=False) as pipe:
@@ -68,6 +78,11 @@ async def sync_baselines_to_edge():
         # Execute pipeline
         if rows:
             await pipe.execute()
+
+    if sticker_rows:
+        logger.info("Found %d sticker prices. Pushing to Edge Redis hash 'sticker_prices'...", len(sticker_rows))
+        mapping = {name: str(price) for name, price in sticker_rows}
+        await redis.hset("sticker_prices", mapping=mapping)
 
     logger.info("Edge Redis sync complete!")
     await redis.aclose()

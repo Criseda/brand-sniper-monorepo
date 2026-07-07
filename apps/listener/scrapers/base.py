@@ -23,6 +23,11 @@ class BaseScraper(ABC):
         """
         Secondary verification using the platform's historical data API.
         Default implementation returns False (fail-safe). Override in subclass for real verification.
+
+        .. note::
+           This method is currently unused/legacy. Real-time anomaly decisions are executed
+           against pre-computed baselines loaded in Edge Redis to guarantee <5ms hot-path latency.
+           Querying external platform APIs for every tick is bypassed to avoid hitting rate limits (429).
         """
         return False
 
