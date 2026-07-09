@@ -3,7 +3,7 @@ services:
   # EDGE CACHE LAYER: Volatile Sliding-Window Memory
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: sniper_edge_redis
     # CRITICAL PI 5 OPTIMIZATION: Disables both RDB snapshots and AOF logs.
     # Data stays entirely in RAM, preventing flash/SD-card wear and maximizing IOPS.
