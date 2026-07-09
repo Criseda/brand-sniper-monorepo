@@ -1,4 +1,3 @@
-import re
 import urllib.parse
 
 WEAR_SUFFIXES = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
@@ -63,12 +62,15 @@ def parse_version_from_name(name: str) -> tuple[str, str | None]:
         if name.endswith(wear):
             rest = name[: -len(wear)].strip()
             # Match parentheses at the end of the rest string, e.g. "(Phase 3)"
-            match = re.search(r"\(([^)]+)\)$", rest)
-            if match:
-                version = match.group(1)
-                base_name_without_wear = rest[: -len(match.group(0))].strip()
-                base_name = f"{base_name_without_wear} {wear}"
-                return base_name, version
+            if rest.endswith(")"):
+                open_idx = rest.rfind("(")
+                if open_idx != -1 and open_idx < len(rest) - 2:
+                    content = rest[open_idx + 1 : -1]
+                    if ")" not in content and "(" not in content:
+                        version = content
+                        base_name_without_wear = rest[:open_idx].strip()
+                        base_name = f"{base_name_without_wear} {wear}"
+                        return base_name, version
             break
     return name, None
 
