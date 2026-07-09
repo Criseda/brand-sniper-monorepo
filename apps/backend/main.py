@@ -5,7 +5,7 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
@@ -135,8 +135,11 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
                 )
                 session.add(trade)
     except Exception as e:
-        logger.error("Failed to log simulated trade: %s", e)
-        return {"status": "ERROR", "message": str(e)}
+        logger.error("Failed to log simulated trade: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to log simulated trade due to an internal error",
+        ) from e
     return {"status": "SUCCESS"}
 
 
