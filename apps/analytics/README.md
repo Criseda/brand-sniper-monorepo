@@ -22,13 +22,30 @@ cp .env.example .env
 ```
 Ensure `GROQ_API_KEY` is populated in the root `.env` or `apps/analytics/.env`.
 
-### 2. Run the Evaluation Flow
-The Prefect flow queries the latest simulated trades and orchestrates the Groq Agent to audit them.
+### 2. Run the Evaluation & Macro flows
 
+You can run the flows directly using `uv`, or inside the Docker container using `docker compose run` from the `deployments/server-stack/` directory.
+
+#### Running directly with uv:
 ```bash
 # Execute the Daily CFO Evaluation flow
 uv run python evaluate_performance.py
+
+# Execute the Long-Term Macro Trend Calculation & Edge Redis Sync
+uv run python long_term_macro.py
 ```
+
+#### Running via Docker Compose:
+```bash
+# Execute the Daily CFO Evaluation flow
+docker compose run --rm analytics
+
+# Execute the Long-Term Macro Trend Calculation & Edge Redis Sync
+docker compose run --rm analytics uv run python long_term_macro.py
+```
+
+For more details on deploying the analytics container as a scheduled daily cron job in production, see the central [deployment guide](../../docs/deployment.md#running-the-analytics-container-periodic-jobs).
+
 
 ### 3. Review Audits in MLflow
 Once the pipeline finishes, the CFO's Confidence Score (0-100) and its full reasoning are immutably logged.
