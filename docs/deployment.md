@@ -37,11 +37,52 @@ docker compose up -d
 
 | Service | Container Name | Notes |
 |---------|----------------|-------|
-| Redis 7 | `sniper_edge_redis` | Port 6380, `--save "" --appendonly no` (volatile RAM only) |
+| Redis 8 | `sniper_edge_redis` | Port 6380, `--save "" --appendonly no` (volatile RAM only) |
 | Listener | `sniper_listener` | Connects to a remote backend via `COMPUTE_NODE_URL` env var |
 
 The edge stack is designed for constrained environments (Raspberry Pi, low-power VPS).
 It contains only the hot-path services; the server node handles the cold path and infra.
+
+## Running the Analytics Container (Periodic Jobs)
+
+The Analytics container (`analytics`) is the cold-path evaluation and macro analysis system. It is configured with the `manual` profile to prevent it from running as a persistent daemon. Instead, it is designed to be executed periodically (typically daily) as scheduled batch jobs.
+
+### Why Periodic Runs are Required
+
+1. **Macro Baseline Updates**: The hot-path Deterministic Rules Engine (DRE) checks real-time prices against long-term baselines stored in the Edge Redis cache. If the macro pipeline does not run, these baselines become stale, leading to incorrect Z-score anomaly detection.
+2. **Adversarial CFO Audits**: The LLM-powered CFO audits recent trades to ensure decision quality, logging the confidence scores and structured reasoning traces to MLflow.
+
+### How to Run the Jobs
+
+Ensure you are in the server-stack directory:
+```bash
+cd deployments/server-stack
+```
+
+#### 1. Daily Macro Baseline Calculation & Edge Redis Sync
+This calculates the 30-day and 90-day rolling price averages, support floors, price drift, and volatility metrics based on historical database entries, and then pushes them to the Edge Redis cache.
+```bash
+docker compose run --rm analytics uv run python long_term_macro.py
+```
+
+#### 2. Daily CFO Performance Audit
+This triggers the LLM agent to audit the bot's logged simulated trades against live floors and macro news to check trade quality.
+```bash
+docker compose run --rm analytics
+```
+*(By default, the container runs `uv run python evaluate_performance.py` as its entrypoint command).*
+
+### Production Scheduling (Cron)
+
+In a production environment, schedule these jobs to run once a day. For example, using system cron:
+
+```text
+# Run macro baseline calculation at 00:00 every day
+0 0 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics uv run python long_term_macro.py >> /var/log/sniper_macro.log 2>&1
+
+# Run CFO performance evaluation at 01:00 every day
+0 1 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics >> /var/log/sniper_cfo.log 2>&1
+```
 
 ## Environment Variables
 
