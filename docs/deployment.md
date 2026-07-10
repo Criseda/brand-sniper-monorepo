@@ -59,15 +59,19 @@ Ensure you are in the server-stack directory:
 cd deployments/server-stack
 ```
 
-#### 1. Daily Macro Baseline Calculation & Edge Redis Sync
-This calculates the 30-day and 90-day rolling price averages, support floors, price drift, and volatility metrics based on historical database entries, and then pushes them to the Edge Redis cache.
-```bash
-# Default run (calculates baselines for first 100 items to save resources)
-docker compose run --rm analytics uv run python long_term_macro.py
+#### 1. Macro Baseline Calculation & Edge Redis Sync
 
-# Full run on all items (passes 0 or negative value to disable limit)
-docker compose run --rm analytics uv run python long_term_macro.py --limit 0
-```
+* **Initial Seeding**: On first setup (or after wiping Redis), run a full calculation to build the baseline database table and populate the Redis cache for all 22k+ skins:
+  ```bash
+  # Trigger full calculation in the background
+  docker compose run -d --rm analytics uv run python long_term_macro.py --limit 0
+  ```
+* **Daily Updates**: Because rolling averages (30d/90d averages, drift, and volatility) naturally shift as new daily transactions accrue, the pipeline must run periodically to update these metrics. A daily cron job (detailed below) recalculates baselines to keep Z-score anomaly detections accurate.
+* **Testing/Dev**: You can run the pipeline without flags to quickly process a small, safe default subset:
+  ```bash
+  # Calculates baselines for the first 100 items to check Stack functionality
+  docker compose run --rm analytics uv run python long_term_macro.py
+  ```
 
 #### 2. Daily CFO Performance Audit
 This triggers the LLM agent to audit the bot's logged simulated trades against live floors and macro news to check trade quality.
