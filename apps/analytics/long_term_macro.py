@@ -32,6 +32,9 @@ from shared_utils.db_connection import async_engine
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, MarketItem
 from sqlalchemy.dialects.postgresql import insert
 
+# Fields that are persisted to the DB or used in downstream logging.
+_PERSISTED_FIELDS = (set(ItemMacroBaseline.model_fields.keys()) | {"market_hash_name"}) - {"id", "updated_at"}
+
 
 @task(retries=3, retry_delay_seconds=10)
 async def fetch_tracked_items() -> list[dict]:
@@ -48,24 +51,38 @@ async def fetch_tracked_items() -> list[dict]:
 
 
 @task(retries=3, retry_delay_seconds=10)
-async def fetch_historical_prices(item_id: int, market_hash_name: str) -> list[dict]:
+async def fetch_all_historical_prices() -> dict[int, list[dict]]:
     """
-    Task to fetch long-term historical price data for a specific item.
+    Batch-fetch ALL historical prices in a single query to avoid N+1 round trips.
+    Returns dict[item_id, list[dict]].
     """
     logger = get_run_logger()
-    logger.info("Fetching historical prices for: %s (ID: %d)", market_hash_name, item_id)
+    logger.info("Batch-fetching all historical prices...")
 
     async with async_engine.connect() as conn:
-        stmt = (
-            select(HistoricalPrice.sale_date, HistoricalPrice.median_price_cents, HistoricalPrice.volume_sold)
-            .where(HistoricalPrice.item_id == item_id)
-            .order_by(HistoricalPrice.sale_date.asc())
-        )
+        stmt = select(
+            HistoricalPrice.item_id,
+            HistoricalPrice.sale_date,
+            HistoricalPrice.median_price_cents,
+            HistoricalPrice.volume_sold,
+        ).order_by(HistoricalPrice.item_id, HistoricalPrice.sale_date.asc())
         result = await conn.execute(stmt)
         rows = result.fetchall()
 
-    logger.info("Fetched %d historical records for '%s'.", len(rows), market_hash_name)
-    return [{"sale_date": r[0], "median_price_cents": r[1], "volume_sold": r[2]} for r in rows]
+    by_item: dict[int, list[dict]] = {}
+    for r in rows:
+        by_item.setdefault(r[0], []).append(
+            {
+                "sale_date": r[1],
+                "median_price_cents": r[2],
+                "volume_sold": r[3],
+            }
+        )
+
+    total_rows = len(rows)
+    total_items = len(by_item)
+    logger.info("Fetched %d historical records across %d items.", total_rows, total_items)
+    return by_item
 
 
 @task
@@ -222,13 +239,20 @@ async def analyze_long_term_macro(limit_items: int | None = 100):
         items_to_process = items
         logger.info("Processing all %d items.", len(items_to_process))
 
+    # Single batch-fetch for all historical prices (avoids N+1 round trips)
+    all_price_data = await fetch_all_historical_prices()
+
     results = []
     for item in items_to_process:
-        price_data = await fetch_historical_prices(item["id"], item["market_hash_name"])
+        price_data = all_price_data.get(item["id"], [])
         analysis = await calculate_macro_trends(item["id"], item["market_hash_name"], price_data)
         results.append(analysis)
 
-    await save_macro_baselines_to_db(results)
+    # Strip bulky unused fields (monthly_seasonality, coefficient_of_variation,
+    # total_points_analyzed) before passing to task to avoid Prefect EventTooLarge.
+    # Whitelist is derived from ItemMacroBaseline schema so it stays in sync.
+    slim_results = [{k: v for k, v in r.items() if k in _PERSISTED_FIELDS} for r in results if r]
+    await save_macro_baselines_to_db(slim_results)
     # Sync calculated baselines back to Edge Redis cache
     await run_sync_baselines_to_edge()
     logger.info("Long Term Macro Analysis Pipeline completed successfully.")

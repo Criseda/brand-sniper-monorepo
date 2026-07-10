@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import json
 import os
 import re
@@ -17,7 +18,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 load_dotenv(dotenv_path=PROJECT_ROOT / "apps" / "analytics" / ".env", override=True)
 
-import instructor
 import mlflow
 from mlflow.client import MlflowClient
 from openai import OpenAI
@@ -33,7 +33,13 @@ from tools import AVAILABLE_FUNCTIONS, TOOL_SCHEMAS
 
 logger = get_logger("analytics.evaluate")
 
-MODEL = "qwen/qwen3-32b"
+_MODELS = [
+    "qwen/qwen3-32b",
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
+]
+_model_index_var: contextvars.ContextVar[int] = contextvars.ContextVar("_model_index", default=0)
 _MAX_TOOL_ROUNDS = 5
 
 _tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -61,11 +67,9 @@ def get_experiment_id():
     return _experiment_id
 
 
-client = instructor.from_openai(
-    OpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
-        base_url="https://api.groq.com/openai/v1",
-    )
+openai_client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",
 )
 
 _SYSTEM_INSTRUCTION = """
@@ -81,14 +85,53 @@ macro trend, the bot made a bad trade.
 
 
 def _extract_retry_after(error_str: str) -> float:
-    match = re.search(r"(?:Please try again in|Retry after|retry after) ([0-9.]+)s?", error_str, re.IGNORECASE)
-    return float(match.group(1)) + 1 if match else 3.0
+    """Extract retry-after seconds from a Groq rate-limit error message.
+    Handles formats like '2m13.5744s' and '18.99s'."""
+    match = re.search(r"(?:Please try again in|Retry after|retry after) (?:(\d+)m)?([0-9.]+)s?", error_str, re.IGNORECASE)
+    if match:
+        minutes = float(match.group(1) or 0)
+        seconds = float(match.group(2))
+        return minutes * 60 + seconds + 1
+    return 3.0
+
+
+def _is_tpd_error(error_str: str) -> bool:
+    return "tpd" in error_str.lower() or "tokens per day" in error_str.lower()
+
+
+def _get_current_model() -> str:
+    return _MODELS[_model_index_var.get()]
+
+
+def _switch_to_next_model() -> str | None:
+    idx = _model_index_var.get()
+    if idx < len(_MODELS) - 1:
+        _model_index_var.set(idx + 1)
+        new_idx = _model_index_var.get()
+        logger.warning(
+            "TPD limit hit — switching to model %s (#%d/%d)",
+            _MODELS[new_idx],
+            new_idx + 1,
+            len(_MODELS),
+        )
+        return _MODELS[_model_index_var.get()]
+    logger.error("All %d models exhausted on TPD limit", len(_MODELS))
+    return None
+
+
+def _msg_dict(msg) -> dict:
+    entry = {"role": msg.role}
+    if msg.content is not None:
+        entry["content"] = msg.content
+    if msg.tool_calls:
+        entry["tool_calls"] = [tc.model_dump() for tc in msg.tool_calls]
+    return entry
 
 
 async def _call(messages, temperature=0.5, **kwargs):
     return await asyncio.to_thread(
-        client.chat.completions.create,
-        model=MODEL,
+        openai_client.chat.completions.create,
+        model=_get_current_model(),
         messages=messages,
         temperature=temperature,
         max_tokens=2048,
@@ -101,11 +144,11 @@ async def _tool_loop(messages):
         kwargs = {"tools": TOOL_SCHEMAS, "tool_choice": "auto"}
         response = await _call(messages, **kwargs)
 
+        msg = response.choices[0].message
+        messages.append(_msg_dict(msg))
+
         if response.choices[0].finish_reason != "tool_calls":
             return response
-
-        msg = response.choices[0].message
-        messages.append(msg)
 
         for tc in msg.tool_calls:
             fn_args = json.loads(tc.function.arguments)
@@ -128,7 +171,14 @@ async def _json_phase(messages):
         }
     )
 
-    result: CFOEvaluation = await _call(messages, temperature=0.3, response_model=CFOEvaluation)
+    response = await _call(messages, temperature=0.3, tools=TOOL_SCHEMAS, tool_choice="none")
+    raw = (response.choices[0].message.content or "").strip()
+    if not raw:
+        raise ValueError("Groq returned empty content in JSON phase")
+    if raw.startswith("```") and "\n" in raw:
+        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    data = json.loads(raw)
+    result = CFOEvaluation(**data)
     return result.confidence_score, result.reasoning
 
 
@@ -166,7 +216,12 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
     then call verify_float_value if a float value is available, and search_macro_trends at most twice.
     """
 
-    for attempt in range(3):
+    score = 0
+    reasoning = "Evaluation failed: no response from CFO"
+    eval_status = "ERROR"
+
+    attempt = 0
+    while attempt < 3:
         try:
             messages = [
                 {"role": "system", "content": _SYSTEM_INSTRUCTION},
@@ -175,36 +230,73 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
 
             await _tool_loop(messages)
             score, reasoning = await _json_phase(messages)
-
-            safe_reasoning = reasoning.encode("ascii", "ignore").decode("ascii")
-            logger.info("CFO Reasoning: %s", safe_reasoning)
-
-            with mlflow.start_run(experiment_id=get_experiment_id(), run_name=f"audit_{item_name}"):
-                mlflow.log_param("market_hash_name", item_name)
-                mlflow.log_param("purchase_price_cents", trade.purchase_price_cents)
-                mlflow.log_param("bot_estimated_profit", trade.estimated_profit_cents)
-                mlflow.log_metric("cfo_confidence_score", score)
-                mlflow.set_tag("eval_status", "APPROVED" if score >= 70 else "REJECTED")
-
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_path = os.path.join(temp_dir, "cfo_reasoning.txt")
-                    with open(temp_path, "w", encoding="utf-8") as f:
-                        f.write(safe_reasoning)
-                    mlflow.log_artifact(temp_path)
-
-            return
+            eval_status = "APPROVED" if score >= 70 else "REJECTED"
+            break
 
         except Exception as e:
-            if attempt < 2:
-                delay = _extract_retry_after(str(e))
-                logger.warning("Attempt %d/3 failed for %s (retry in %.1fs): %s", attempt + 1, item_name, delay, e)
+            error_str = str(e)
+            # TPD (tokens-per-day) is per-model — switch to the next model
+            # without counting this as a failed attempt.
+            if _is_tpd_error(error_str):
+                if _switch_to_next_model() is not None:
+                    continue
+                # All models exhausted on TPD — treat as final failure.
+                logger.error("All models TPD-exhausted for %s: %s", item_name, e)
+                score = 0
+                reasoning = f"All models TPD-exhausted: {e}"
+                eval_status = "ERROR"
+                break
+
+            attempt += 1
+            if attempt < 3:
+                delay = _extract_retry_after(error_str)
+                logger.warning(
+                    "Attempt %d/3 for %s with %s failed (retry in %.1fs): %s",
+                    attempt,
+                    item_name,
+                    _get_current_model(),
+                    delay,
+                    e,
+                )
                 await asyncio.sleep(delay)
             else:
-                logger.error("Groq CFO failed to evaluate trade after 3 attempts: %s", e)
+                logger.error("Groq CFO failed for %s after 3 attempts: %s", item_name, e)
+                score = 0
+                reasoning = f"Evaluation failed after 3 attempts: {e}"
+                eval_status = "ERROR"
+
+    safe_reasoning = reasoning.encode("ascii", "ignore").decode("ascii")
+    logger.info("CFO eval status=%s score=%d for %s", eval_status, score, item_name)
+
+    mlflow_client = MlflowClient(tracking_uri=_tracking_uri)
+    run = mlflow_client.create_run(experiment_id=get_experiment_id(), run_name=f"audit_{item_name}")
+    run_id = run.info.run_id
+    try:
+        mlflow_client.log_param(run_id, "market_hash_name", item_name)
+        mlflow_client.log_param(run_id, "purchase_price_cents", trade.purchase_price_cents)
+        mlflow_client.log_param(run_id, "bot_estimated_profit", trade.estimated_profit_cents)
+        mlflow_client.log_metric(run_id, "cfo_confidence_score", score)
+        mlflow_client.set_tag(run_id, "eval_status", eval_status)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = os.path.join(temp_dir, "cfo_reasoning.txt")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(safe_reasoning)
+            mlflow_client.log_artifact(run_id, temp_path)
+
+        final_status = "FAILED" if eval_status == "ERROR" else "FINISHED"
+        mlflow_client.set_terminated(run_id, status=final_status)
+    except Exception as e:
+        logger.error("MLflow logging failed for %s: %s", item_name, e)
+        try:
+            mlflow_client.set_terminated(run_id, status="FAILED")
+        except Exception:
+            pass
 
 
 @flow(name="Daily CFO Evaluation")
 async def run_cfo_evaluation_pipeline():
+    _model_index_var.set(0)
     trades = await fetch_daily_trades()
     logger.info("Found %d trades to evaluate.", len(trades))
 
