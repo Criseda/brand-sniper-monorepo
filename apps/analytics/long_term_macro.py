@@ -34,6 +34,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 # Fields that are persisted to the DB or used in downstream logging.
 _PERSISTED_FIELDS = (set(ItemMacroBaseline.model_fields.keys()) | {"market_hash_name"}) - {"id", "updated_at"}
+_CHUNK_SIZE = 500
 
 
 @task(retries=3, retry_delay_seconds=10)
@@ -51,21 +52,25 @@ async def fetch_tracked_items() -> list[dict]:
 
 
 @task(retries=3, retry_delay_seconds=10)
-async def fetch_all_historical_prices() -> dict[int, list[dict]]:
+async def fetch_historical_prices_chunk(item_ids: list[int]) -> dict[int, list[dict]]:
     """
-    Batch-fetch ALL historical prices in a single query to avoid N+1 round trips.
+    Fetch historical prices for a chunk of item IDs in a single query.
     Returns dict[item_id, list[dict]].
     """
     logger = get_run_logger()
-    logger.info("Batch-fetching all historical prices...")
+    logger.info("Fetching historical prices for %d items...", len(item_ids))
 
     async with async_engine.connect() as conn:
-        stmt = select(
-            HistoricalPrice.item_id,
-            HistoricalPrice.sale_date,
-            HistoricalPrice.median_price_cents,
-            HistoricalPrice.volume_sold,
-        ).order_by(HistoricalPrice.item_id, HistoricalPrice.sale_date.asc())
+        stmt = (
+            select(
+                HistoricalPrice.item_id,
+                HistoricalPrice.sale_date,
+                HistoricalPrice.median_price_cents,
+                HistoricalPrice.volume_sold,
+            )
+            .where(HistoricalPrice.item_id.in_(item_ids))
+            .order_by(HistoricalPrice.item_id, HistoricalPrice.sale_date.asc())
+        )
         result = await conn.execute(stmt)
         rows = result.fetchall()
 
@@ -79,9 +84,7 @@ async def fetch_all_historical_prices() -> dict[int, list[dict]]:
             }
         )
 
-    total_rows = len(rows)
-    total_items = len(by_item)
-    logger.info("Fetched %d historical records across %d items.", total_rows, total_items)
+    logger.info("Fetched %d records for %d items in chunk.", len(rows), len(by_item))
     return by_item
 
 
@@ -239,20 +242,27 @@ async def analyze_long_term_macro(limit_items: int | None = 100):
         items_to_process = items
         logger.info("Processing all %d items.", len(items_to_process))
 
-    # Single batch-fetch for all historical prices (avoids N+1 round trips)
-    all_price_data = await fetch_all_historical_prices()
+    # Fetch and process items in memory-bounded chunks.
+    # Each chunk fetches prices in a single query (avoids N+1 round trips)
+    # but keeps per-batch memory usage proportional to _CHUNK_SIZE items.
+    for chunk_start in range(0, len(items_to_process), _CHUNK_SIZE):
+        chunk = items_to_process[chunk_start : chunk_start + _CHUNK_SIZE]
+        logger.info("Processing items %d–%d of %d...", chunk_start + 1, chunk_start + len(chunk), len(items_to_process))
 
-    results = []
-    for item in items_to_process:
-        price_data = all_price_data.get(item["id"], [])
-        analysis = await calculate_macro_trends(item["id"], item["market_hash_name"], price_data)
-        results.append(analysis)
+        chunk_ids = [item["id"] for item in chunk]
+        price_data = await fetch_historical_prices_chunk(chunk_ids)
 
-    # Strip bulky unused fields (monthly_seasonality, coefficient_of_variation,
-    # total_points_analyzed) before passing to task to avoid Prefect EventTooLarge.
-    # Whitelist is derived from ItemMacroBaseline schema so it stays in sync.
-    slim_results = [{k: v for k, v in r.items() if k in _PERSISTED_FIELDS} for r in results if r]
-    await save_macro_baselines_to_db(slim_results)
+        chunk_results = []
+        for item in chunk:
+            analysis = await calculate_macro_trends(item["id"], item["market_hash_name"], price_data.get(item["id"], []))
+            if analysis:
+                # Strip bulky unused fields (monthly_seasonality, coefficient_of_variation,
+                # total_points_analyzed) before passing to task to avoid Prefect EventTooLarge.
+                # Whitelist is derived from ItemMacroBaseline schema so it stays in sync.
+                chunk_results.append({k: v for k, v in analysis.items() if k in _PERSISTED_FIELDS})
+
+        if chunk_results:
+            await save_macro_baselines_to_db(chunk_results)
     # Sync calculated baselines back to Edge Redis cache
     await run_sync_baselines_to_edge()
     logger.info("Long Term Macro Analysis Pipeline completed successfully.")
