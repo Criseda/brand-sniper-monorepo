@@ -206,7 +206,7 @@ async def run_sync_baselines_to_edge():
 
 
 @flow(name="long-term-macro-pipeline")
-async def analyze_long_term_macro(limit_items: int = 5):
+async def analyze_long_term_macro(limit_items: int | None = None):
     """
     Orchestration flow for analyzing macro price trends of tracked digital assets.
     """
@@ -215,9 +215,12 @@ async def analyze_long_term_macro(limit_items: int = 5):
 
     items = await fetch_tracked_items()
 
-    # Process up to limit_items to be resource-friendly during testing/dev
-    items_to_process = items[:limit_items]
-    logger.info("Processing a subset of %d items (Limit: %d).", len(items_to_process), limit_items)
+    if limit_items is not None:
+        items_to_process = items[:limit_items]
+        logger.info("Processing a subset of %d items (Limit: %d).", len(items_to_process), limit_items)
+    else:
+        items_to_process = items
+        logger.info("Processing all %d items.", len(items_to_process))
 
     results = []
     for item in items_to_process:
@@ -232,5 +235,11 @@ async def analyze_long_term_macro(limit_items: int = 5):
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Calculate macro baselines and sync to Redis.")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of items to process (default: all).")
+    args = parser.parse_args()
+
     # Allow running directly for development/testing
-    asyncio.run(analyze_long_term_macro())
+    asyncio.run(analyze_long_term_macro(limit_items=args.limit))
