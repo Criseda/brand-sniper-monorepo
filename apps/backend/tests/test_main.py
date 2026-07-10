@@ -86,3 +86,26 @@ def test_ingest_bulk_missing_source_returns_422(client):
         "/api/v1/ingest/bulk", json={"ticks": [{"market_hash_name": "Item", "price_cents": 100, "timestamp": 1700000000}]}
     )
     assert response.status_code == 422
+
+
+def test_cors_origin_allowed(client):
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_cors_origin_disallowed(client):
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://malicious.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") is None

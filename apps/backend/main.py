@@ -1,3 +1,4 @@
+import os
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -61,9 +62,28 @@ app = FastAPI(
     title="Algorithmic Market Sniper Engine", description="Core Compute REST API Node", version="1.0.0", lifespan=lifespan
 )
 
+# Configure allowed CORS origins
+cors_origins_raw = os.getenv("CORS_ORIGINS", "")
+if cors_origins_raw:
+    allow_origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
+else:
+    allow_origins = [
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://localhost:4200",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:4200",
+    ]
+
+if "*" in allow_origins:
+    logger.warning("[AGENT] CORS wildcard '*' is configured with credentials enabled. This is a security risk.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

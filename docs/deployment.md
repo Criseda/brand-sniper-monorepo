@@ -106,6 +106,12 @@ additional environment variables from the compose file for Docker-internal netwo
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
 
+### Configuration Variables
+
+| Variable | Description | Default (Local Dev) |
+|----------|-------------|---------------------|
+| `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. Used to explicitly whitelist domains since credentials are enabled (wildcards are not permitted with credentials). | `http://localhost:3000,http://localhost:8080` |
+
 ## Database Migrations
 
 The project uses **Alembic** with an async engine (`asyncpg`).
