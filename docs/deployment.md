@@ -105,6 +105,8 @@ additional environment variables from the compose file for Docker-internal netwo
 | `GROQ_API_KEY` | [Groq Console](https://console.groq.com/keys) |
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
+| `REDIS_PASSWORD` | Strong password used for securing the Edge Redis cache service |
+| `MLFLOW_DATABASE_URL` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |
 
 ### Configuration Variables
 
@@ -156,13 +158,13 @@ and take precedence over the root `.env` values.
 ## Monitoring
 
 - **Prometheus** — `http://localhost:9090` — scrapes `backend:8080/metrics`
-- **Grafana** — `http://localhost:3000` — pre-built dashboards (admin/admin)
+- **Grafana** — `http://localhost:3000` — pre-built dashboards (using credentials in `.env`)
 - **MLflow** — `http://localhost:5000` — model registry, CFO audit traces
 - **Prefect** — `http://localhost:4200` — pipeline runs and task logs
 
 ## Production Considerations
 
-- Replace the default Grafana admin password via `GRAFANA_ADMIN_PASSWORD` in `.env`
+- Configure Grafana admin credentials via `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD` in `.env`
 - Use a managed PostgreSQL (Azure, RDS) instead of the local postgres service
 - Set `MLFLOW_TRACKING_URI` and `PREFECT_API_URL` to reachable endpoints
 - Configure Prometheus retention and alerting rules for production uptime

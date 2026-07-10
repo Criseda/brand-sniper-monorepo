@@ -38,7 +38,7 @@ This starts 8 services:
 
 | Service | Port | Role |
 |---------|------|------|
-| Grafana | `3000` | Dashboards (admin/admin) |
+| Grafana | `3000` | Dashboards (configured in `.env`) |
 | Prometheus | `9090` | Metrics collection |
 | Prefect Server | `4200` | Pipeline orchestration |
 | MLflow | `5000` | Model registry & audit logs |
@@ -67,7 +67,7 @@ uv run alembic upgrade head
 - **Backend** — serving the API at `http://localhost:8080/docs`
 - **Analytics** (manual) — run `docker compose run --rm analytics` to trigger the Adversarial CFO (see [deployment.md](deployment.md#running-the-analytics-container-periodic-jobs) for details on periodic execution and macro sync)
 
-Check the Grafana dashboard at `http://localhost:3000` (admin/admin) and MLflow at `http://localhost:5000`.
+Check the Grafana dashboard at `http://localhost:3000` (using credentials configured in `.env`) and MLflow at `http://localhost:5000`.
 
 ## Running Outside Docker
 
