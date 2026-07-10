@@ -62,7 +62,11 @@ cd deployments/server-stack
 #### 1. Daily Macro Baseline Calculation & Edge Redis Sync
 This calculates the 30-day and 90-day rolling price averages, support floors, price drift, and volatility metrics based on historical database entries, and then pushes them to the Edge Redis cache.
 ```bash
+# Default run (calculates baselines for first 100 items to save resources)
 docker compose run --rm analytics uv run python long_term_macro.py
+
+# Full run on all items (passes 0 or negative value to disable limit)
+docker compose run --rm analytics uv run python long_term_macro.py --limit 0
 ```
 
 #### 2. Daily CFO Performance Audit
