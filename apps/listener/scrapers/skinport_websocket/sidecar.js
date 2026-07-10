@@ -7,12 +7,16 @@ const { createClient } = require('redis');
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 const cookie = process.env.CLOUDFLARE_COOKIE || '';
-const redisUrl = process.env.EDGE_REDIS_URL || 'redis://localhost:6380';
+let redisUrl = process.env.EDGE_REDIS_URL || 'redis://localhost:6380';
 
 console.log('[SKINPORT WS] Sidecar initializing...');
 console.log(`[SKINPORT WS] Target Redis Endpoint: ${redisUrl}`);
 
-const redisClient = createClient({ url: redisUrl });
+const redisClient = createClient({
+    url: redisUrl,
+    username: 'default',
+    password: process.env.REDIS_PASSWORD || undefined
+});
 
 redisClient.on('error', (err) => {
     console.error('[SKINPORT WS] Redis client error:', err);

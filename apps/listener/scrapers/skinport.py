@@ -221,10 +221,14 @@ class SkinportScraper(BaseScraper):
         Subscribes to the local Redis Pub/Sub channel 'skinport:live_listings'
         to ingest real-time listings relayed by the Node.js WebSocket sidecar.
         """
-        redis_host = os.getenv("REDIS_HOST", "localhost")
-        redis_port = int(os.getenv("REDIS_PORT", 6380))
-
-        cache = Redis(host=redis_host, port=redis_port, decode_responses=True)
+        edge_redis_url = os.getenv("EDGE_REDIS_URL")
+        redis_password = os.getenv("REDIS_PASSWORD")
+        if edge_redis_url:
+            cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
+        else:
+            redis_host = os.getenv("REDIS_HOST", "localhost")
+            redis_port = int(os.getenv("REDIS_PORT", 6380))
+            cache = Redis(host=redis_host, port=redis_port, username="default", password=redis_password, decode_responses=True)
         pubsub = cache.pubsub()
         await pubsub.subscribe("skinport:live_listings")
         logger.info("Subscribed to Redis channel 'skinport:live_listings'")

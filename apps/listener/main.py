@@ -278,7 +278,8 @@ async def evaluate_and_execute(
 async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
     """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
-    cache = Redis.from_url(edge_redis_url, decode_responses=True)
+    redis_password = os.getenv("REDIS_PASSWORD")
+    cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
     batch_buffer = []
     dedup_cache: OrderedDict[str, float] = OrderedDict()

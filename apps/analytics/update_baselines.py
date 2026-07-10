@@ -36,8 +36,8 @@ async def sync_baselines_to_edge():
     """
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     logger.info("Connecting to Edge Redis at %s", edge_redis_url)
-
-    redis = Redis.from_url(edge_redis_url)
+    redis_password = os.getenv("REDIS_PASSWORD")
+    redis = Redis.from_url(edge_redis_url, username="default", password=redis_password)
 
     logger.info("Fetching baselines from PostgreSQL...")
     async with async_engine.connect() as conn:

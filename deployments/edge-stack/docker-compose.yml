@@ -5,9 +5,11 @@ services:
   redis:
     image: redis:8-alpine
     container_name: sniper_edge_redis
+    env_file:
+      - ../../.env
     # CRITICAL PI 5 OPTIMIZATION: Disables both RDB snapshots and AOF logs.
     # Data stays entirely in RAM, preventing flash/SD-card wear and maximizing IOPS.
-    command: redis-server --save "" --appendonly no
+    command: ["sh", "-c", "redis-server --save '' --appendonly no --requirepass $$REDIS_PASSWORD"]
     ports:
       - "6380:6379"
     networks:
