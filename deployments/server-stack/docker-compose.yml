@@ -30,7 +30,9 @@ services:
   redis:
     image: redis:8-alpine
     container_name: sniper_edge_redis
-    command: redis-server --save "" --appendonly no
+    env_file:
+      - ../../.env
+    command: ["sh", "-c", "redis-server --save '' --appendonly no --requirepass $$REDIS_PASSWORD"]
     ports:
       - "6380:6379"
     networks:
@@ -59,9 +61,13 @@ services:
   # MLOPS LAYER: MLflow Metric Tracking & Model Registry
   # ---------------------------------------------------------------------------
   mlflow-server:
-    image: ghcr.io/mlflow/mlflow:v3.14.0
+    build:
+      context: ../../
+      dockerfile: deployments/server-stack/mlflow.Dockerfile
     container_name: sniper_mlflow_server
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --artifacts-destination /mlruns --serve-artifacts --allowed-hosts '*'
+    env_file:
+      - ../../.env
+    command: ["sh", "-c", "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$MLFLOW_DATABASE_URL --artifacts-destination /mlruns --serve-artifacts"]
     environment:
       - PYTHONWARNINGS=ignore:::mlflow.server.fastapi_app
     ports:
@@ -91,6 +97,8 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: sniper_grafana
+    env_file:
+      - ../../.env
     ports:
       - "3000:3000"
     volumes:
@@ -104,6 +112,8 @@ services:
   redis-exporter:
     image: oliver006/redis_exporter:latest
     container_name: sniper_redis_exporter
+    env_file:
+      - ../../.env
     environment:
       - REDIS_ADDR=redis://redis:6379
     ports:

@@ -59,11 +59,19 @@ Ensure you are in the server-stack directory:
 cd deployments/server-stack
 ```
 
-#### 1. Daily Macro Baseline Calculation & Edge Redis Sync
-This calculates the 30-day and 90-day rolling price averages, support floors, price drift, and volatility metrics based on historical database entries, and then pushes them to the Edge Redis cache.
-```bash
-docker compose run --rm analytics uv run python long_term_macro.py
-```
+#### 1. Macro Baseline Calculation & Edge Redis Sync
+
+* **Initial Seeding**: On first setup (or after wiping Redis), run a full calculation to build the baseline database table and populate the Redis cache for all 22k+ skins:
+  ```bash
+  # Trigger full calculation in the background
+  docker compose run -d --rm analytics uv run python long_term_macro.py --limit 0
+  ```
+* **Daily Updates**: Because rolling averages (30d/90d averages, drift, and volatility) naturally shift as new daily transactions accrue, the pipeline must run periodically to update these metrics. A daily cron job (detailed below) recalculates baselines to keep Z-score anomaly detections accurate.
+* **Testing/Dev**: You can run the pipeline without flags to quickly process a small, safe default subset:
+  ```bash
+  # Calculates baselines for the first 100 items to check Stack functionality
+  docker compose run --rm analytics uv run python long_term_macro.py
+  ```
 
 #### 2. Daily CFO Performance Audit
 This triggers the LLM agent to audit the bot's logged simulated trades against live floors and macro news to check trade quality.
@@ -105,6 +113,8 @@ additional environment variables from the compose file for Docker-internal netwo
 | `GROQ_API_KEY` | [Groq Console](https://console.groq.com/keys) |
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
+| `REDIS_PASSWORD` | Strong password used for securing the Edge Redis cache service |
+| `MLFLOW_DATABASE_URL` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |
 
 ### Configuration Variables
 
@@ -156,13 +166,13 @@ and take precedence over the root `.env` values.
 ## Monitoring
 
 - **Prometheus** — `http://localhost:9090` — scrapes `backend:8080/metrics`
-- **Grafana** — `http://localhost:3000` — pre-built dashboards (admin/admin)
+- **Grafana** — `http://localhost:3000` — pre-built dashboards (using credentials in `.env`)
 - **MLflow** — `http://localhost:5000` — model registry, CFO audit traces
 - **Prefect** — `http://localhost:4200` — pipeline runs and task logs
 
 ## Production Considerations
 
-- Replace the default Grafana admin password via `GRAFANA_ADMIN_PASSWORD` in `.env`
+- Configure Grafana admin credentials via `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD` in `.env`
 - Use a managed PostgreSQL (Azure, RDS) instead of the local postgres service
 - Set `MLFLOW_TRACKING_URI` and `PREFECT_API_URL` to reachable endpoints
 - Configure Prometheus retention and alerting rules for production uptime

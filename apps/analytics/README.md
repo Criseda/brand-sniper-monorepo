@@ -31,8 +31,11 @@ You can run the flows directly using `uv`, or inside the Docker container using 
 # Execute the Daily CFO Evaluation flow
 uv run python evaluate_performance.py
 
-# Execute the Long-Term Macro Trend Calculation & Edge Redis Sync
+# Execute the Long-Term Macro Trend Calculation & Edge Redis Sync (default: 100 items)
 uv run python long_term_macro.py
+
+# Execute the macro calculation on all database items
+uv run python long_term_macro.py --limit 0
 ```
 
 #### Running via Docker Compose:
@@ -40,8 +43,11 @@ uv run python long_term_macro.py
 # Execute the Daily CFO Evaluation flow
 docker compose run --rm analytics
 
-# Execute the Long-Term Macro Trend Calculation & Edge Redis Sync
+# Execute the Long-Term Macro Trend Calculation (default: 100 items)
 docker compose run --rm analytics uv run python long_term_macro.py
+
+# Execute the macro calculation on all database items in Docker
+docker compose run --rm analytics uv run python long_term_macro.py --limit 0
 ```
 
 For more details on deploying the analytics container as a scheduled daily cron job in production, see the central [deployment guide](../../docs/deployment.md#running-the-analytics-container-periodic-jobs).
