@@ -26,9 +26,13 @@ if _root_env.exists():
 # Override the database URL from the DATABASE_URL env var if set.
 # Apply the same SSL auto-enable logic used by the application engine.
 db_url = os.getenv("DATABASE_URL")
-if db_url:
-    db_url = apply_ssl_for_remote(db_url)
-    config.set_main_option("sqlalchemy.url", db_url)
+if not db_url:
+    raise ValueError(
+        "DATABASE_URL environment variable is not set. "
+        "Please configure DATABASE_URL in your environment or root .env file to run migrations."
+    )
+db_url = apply_ssl_for_remote(db_url)
+config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
