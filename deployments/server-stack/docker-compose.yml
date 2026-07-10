@@ -70,6 +70,7 @@ services:
     command: ["sh", "-c", "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$MLFLOW_DATABASE_URL --artifacts-destination /mlruns --serve-artifacts"]
     environment:
       - PYTHONWARNINGS=ignore:::mlflow.server.fastapi_app
+      - MLFLOW_SERVER_ALLOWED_HOSTS=mlflow-server:*,localhost:*
     ports:
       - "5000:5000"
     volumes:

@@ -6,15 +6,21 @@ import pytest
 
 os.environ["GROQ_API_KEY"] = "MOCK_API_KEY"
 
-from evaluate_performance import CFOEvaluation, evaluate_trade
+from evaluate_performance import evaluate_trade
 from shared_utils.models import SimulatedTrade
 
 
 @pytest.mark.asyncio
-@patch("evaluate_performance.client")
-@patch("evaluate_performance.mlflow")
+@patch("evaluate_performance.MlflowClient")
+@patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade(mock_get_experiment_id, mock_mlflow, mock_client):
+async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+    mock_client = MagicMock()
+    mock_run = MagicMock()
+    mock_run.info.run_id = "test_run_id"
+    mock_client.create_run.return_value = mock_run
+    mock_mlflow_client_cls.return_value = mock_client
+
     mock_trade = SimulatedTrade(item_id=1, purchase_price_cents=1000, estimated_profit_cents=500, trigger_z_score=-3.0)
 
     # Phase 1: no tool calls (stop)
@@ -25,32 +31,41 @@ async def test_evaluate_trade(mock_get_experiment_id, mock_mlflow, mock_client):
     mock_choice1.message.tool_calls = None
     mock_phase1.choices = [mock_choice1]
 
-    # Phase 2: instructor returns a validated CFOEvaluation
-    mock_phase2 = CFOEvaluation(
-        confidence_score=25,
-        reasoning="Live market floor is 900 cents, bots baseline of 1500 is stale.",
+    # Phase 2: raw JSON response (no instructor)
+    mock_phase2 = MagicMock()
+    mock_choice2 = MagicMock()
+    mock_choice2.message.content = json.dumps(
+        {"confidence_score": 25, "reasoning": "Live market floor is 900 cents, bots baseline of 1500 is stale."}
     )
+    mock_phase2.choices = [mock_choice2]
 
-    mock_client.chat.completions.create.side_effect = [mock_phase1, mock_phase2]
+    mock_openai_client.chat.completions.create.side_effect = [mock_phase1, mock_phase2]
 
     await evaluate_trade(mock_trade, "AK-47 | Redline (Field-Tested)", None)
 
-    assert mock_client.chat.completions.create.call_count == 2
-    assert mock_client.chat.completions.create.call_args_list[0][1]["model"] == "qwen/qwen3-32b"
+    assert mock_openai_client.chat.completions.create.call_count == 2
+    assert mock_openai_client.chat.completions.create.call_args_list[0][1]["model"] == "qwen/qwen3-32b"
 
-    mock_mlflow.start_run.assert_called_once()
-    mock_mlflow.log_metric.assert_called_with("cfo_confidence_score", 25)
-    mock_mlflow.set_tag.assert_called_with("eval_status", "REJECTED")
-    mock_mlflow.log_artifact.assert_called_once()
-    args, _ = mock_mlflow.log_artifact.call_args
-    assert args[0].endswith("cfo_reasoning.txt")
+    mock_client.log_metric.assert_called_with("test_run_id", "cfo_confidence_score", 25)
+    mock_client.set_tag.assert_called_with("test_run_id", "eval_status", "REJECTED")
+    mock_client.log_artifact.assert_called_once()
+    args, _ = mock_client.log_artifact.call_args
+    assert args[0] == "test_run_id"
+    assert args[1].endswith("cfo_reasoning.txt")
+    mock_client.set_terminated.assert_called_with("test_run_id", status="FINISHED")
 
 
 @pytest.mark.asyncio
-@patch("evaluate_performance.client")
-@patch("evaluate_performance.mlflow")
+@patch("evaluate_performance.MlflowClient")
+@patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_mlflow, mock_client):
+async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+    mock_client = MagicMock()
+    mock_run = MagicMock()
+    mock_run.info.run_id = "test_run_id"
+    mock_client.create_run.return_value = mock_run
+    mock_mlflow_client_cls.return_value = mock_client
+
     mock_trade = SimulatedTrade(item_id=1, purchase_price_cents=1000, estimated_profit_cents=500, trigger_z_score=-3.0)
 
     # First response: tool call
@@ -73,10 +88,13 @@ async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_mlflo
     mock_msg_response = MagicMock()
     mock_msg_response.choices = [mock_msg_choice]
 
-    # Third response: instructor returns a validated CFOEvaluation
-    mock_final = CFOEvaluation(confidence_score=50, reasoning="Evaluated after tool calls.")
+    # Third response: raw JSON (no instructor)
+    mock_final = MagicMock()
+    mock_final_choice = MagicMock()
+    mock_final_choice.message.content = json.dumps({"confidence_score": 50, "reasoning": "Evaluated after tool calls."})
+    mock_final.choices = [mock_final_choice]
 
-    mock_client.chat.completions.create.side_effect = [
+    mock_openai_client.chat.completions.create.side_effect = [
         mock_tool_response,
         mock_msg_response,
         mock_final,
@@ -84,8 +102,8 @@ async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_mlflo
 
     await evaluate_trade(mock_trade, "AK-47 | Redline (Field-Tested)", None)
 
-    assert mock_client.chat.completions.create.call_count == 3
-    mock_mlflow.log_metric.assert_called_with("cfo_confidence_score", 50)
+    assert mock_openai_client.chat.completions.create.call_count == 3
+    mock_client.log_metric.assert_called_with("test_run_id", "cfo_confidence_score", 50)
 
 
 def test_verify_float_value():
