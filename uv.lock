@@ -392,7 +392,7 @@ requires-dist = [
     { name = "mlflow", specifier = ">=3.14.0" },
     { name = "prometheus-client", specifier = ">=0.25.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.50.2" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0" },
 ]
 
 [package.metadata.requires-dev]
