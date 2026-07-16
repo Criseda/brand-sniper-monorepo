@@ -1,0 +1,61 @@
+# Copy this file to docker-compose.override.yml for local-only server stack changes.
+# Docker Compose automatically merges docker-compose.yml with docker-compose.override.yml.
+
+services:
+  # Optional local PostgreSQL for development. Use this when DATABASE_URL should
+  # point at a local container instead of an external PostgreSQL instance.
+  postgres:
+    image: postgres:18-alpine
+    container_name: sniper_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-brand_sniper}
+    ports:
+      - "${LOCAL_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sniper_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    environment:
+      DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/brand_sniper}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    # Uncomment for live-editing backend code from the host.
+    # volumes:
+    #   - ../../apps/backend:/app/apps/backend
+    #   - ../../packages/shared_utils:/app/packages/shared_utils
+
+  listener:
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    # Uncomment for live-editing listener code from the host.
+    # If the Node sidecar needs local dependencies, run npm install in
+    # apps/listener/scrapers/skinport_websocket before mounting this directory.
+    # volumes:
+    #   - ../../apps/listener:/app/apps/listener
+    #   - ../../packages/shared_utils:/app/packages/shared_utils
+
+  analytics:
+    environment:
+      DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/brand_sniper}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    # Uncomment for live-editing analytics code from the host.
+    # volumes:
+    #   - ../../apps/analytics:/app/apps/analytics
+    #   - ../../packages/shared_utils:/app/packages/shared_utils
+
+volumes:
+  postgres_data:
