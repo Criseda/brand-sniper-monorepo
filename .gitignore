@@ -33,3 +33,6 @@ yarn-debug.log*
 yarn-error.log*
 # Database dumps
 *.dump
+
+# Local Docker Compose overrides
+deployments/*/docker-compose.override.yml
