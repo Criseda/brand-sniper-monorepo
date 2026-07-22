@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "redis>=5.0.0",
-    "aiohttp>=3.9.0",
+    "aiohttp>=3.14.2",
     "pydantic>=2.0.0",
     "brotli>=1.1.0", # for Skinport
     "python-dotenv>=1.0.0",
