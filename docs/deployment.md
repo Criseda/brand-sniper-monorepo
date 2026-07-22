@@ -43,6 +43,61 @@ docker compose up -d
 The edge stack is designed for constrained environments (Raspberry Pi, low-power VPS).
 It contains only the hot-path services; the server node handles the cold path and infra.
 
+## Local Docker Compose Overrides
+
+Do not edit the committed `docker-compose.yml` files for personal local settings. Each stack has a tracked example override you can copy to a local file that Git ignores:
+
+```bash
+cd deployments/server-stack
+cp docker-compose.override.example.yml docker-compose.override.yml
+```
+
+Docker Compose automatically merges `docker-compose.yml` and `docker-compose.override.yml` when both files are in the same directory:
+
+```bash
+docker compose up -d
+```
+
+Use the same workflow for the edge stack:
+
+```bash
+cd deployments/edge-stack
+cp docker-compose.override.example.yml docker-compose.override.yml
+docker compose up -d
+```
+
+The override file is for local-only changes such as adding a local PostgreSQL service, setting development environment variables, or adding bind mounts while working on app code. To be explicit about the files Compose should use, run:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+```
+
+To ignore the local override and run only the committed base stack:
+
+```bash
+docker compose -f docker-compose.yml up -d
+```
+
+Stop containers without removing them:
+
+```bash
+docker compose stop
+```
+
+Stop and remove containers and networks:
+
+```bash
+docker compose down
+```
+
+Stop and remove containers, networks, and named volumes:
+
+```bash
+docker compose down -v
+```
+
+If you need a completely separate local stack, create a full Compose file such as `docker-compose.local.yml` and run it explicitly with `docker compose -f docker-compose.local.yml up -d`. A partial override file usually cannot run by itself because it depends on services defined in the base file.
+
 ## Running the Analytics Container (Periodic Jobs)
 
 The Analytics container (`analytics`) is the cold-path evaluation and macro analysis system. It is configured with the `manual` profile to prevent it from running as a persistent daemon. Instead, it is designed to be executed periodically (typically daily) as scheduled batch jobs.
