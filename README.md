@@ -41,6 +41,10 @@ See [docs/getting-started.md](docs/getting-started.md) for the full walkthrough.
 
 ---
 
+See [Local Docker Compose Overrides](docs/deployment.md#local-docker-compose-overrides) for how to customize stacks locally.
+
+---
+
 ## Tech Stack
 
 | Category | Technology |
