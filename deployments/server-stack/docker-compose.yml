@@ -43,7 +43,7 @@ services:
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
   # ---------------------------------------------------------------------------
   prefect-server:
-    image: prefecthq/prefect:3.7.6-python3.12
+    image: prefecthq/prefect:3.7.9.dev6-python3.12
     container_name: sniper_prefect_server
     command: prefect server start --host 0.0.0.0
     environment:
