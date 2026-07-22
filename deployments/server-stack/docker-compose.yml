@@ -28,7 +28,7 @@ services:
   # EDGE CACHE LAYER: Volatile Sliding-Window Memory (port 6380)
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:8-alpine
+    image: redis:8.8.0-alpine
     container_name: sniper_edge_redis
     env_file:
       - ../../.env
@@ -43,7 +43,7 @@ services:
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
   # ---------------------------------------------------------------------------
   prefect-server:
-    image: prefecthq/prefect:3-python3.12
+    image: prefecthq/prefect:3.7.6-python3.12
     container_name: sniper_prefect_server
     command: prefect server start --host 0.0.0.0
     environment:
@@ -83,7 +83,7 @@ services:
   # OBSERVABILITY LAYER: Metrics and Dashboards
   # ---------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.13.1
     container_name: sniper_prometheus
     ports:
       - "9090:9090"
@@ -96,7 +96,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.1.1
     container_name: sniper_grafana
     env_file:
       - ../../.env
@@ -111,7 +111,7 @@ services:
     restart: unless-stopped
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.87.0
     container_name: sniper_redis_exporter
     env_file:
       - ../../.env
