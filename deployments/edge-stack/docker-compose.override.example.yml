@@ -1,0 +1,21 @@
+# Copy this file to docker-compose.override.yml for local-only edge stack changes.
+# Docker Compose automatically merges docker-compose.yml with docker-compose.override.yml.
+
+services:
+  listener:
+    environment:
+      COMPUTE_NODE_IP: ${COMPUTE_NODE_IP:-host.docker.internal}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    # Makes host.docker.internal available on Linux Docker engines.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Uncomment for live-editing listener code from the host.
+    # If the Node sidecar needs local dependencies, run npm install in
+    # apps/listener/scrapers/skinport_websocket before mounting this directory.
+    # volumes:
+    #   - ../../apps/listener:/app/apps/listener
+    #   - ../../packages/shared_utils:/app/packages/shared_utils
+
+# The base stack already exposes Redis on 6380. To change that host port without
+# also publishing 6380, use an explicit full Compose file set rather than a
+# partial override that only appends another ports entry.
