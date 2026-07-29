@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.5",
-    "gitpython>=3.1.55",
+    "gitpython>=3.1.57",
 ]
 
 [tool.uv.workspace]

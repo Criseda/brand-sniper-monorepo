@@ -439,7 +439,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.18.5" },
-    { name = "gitpython", specifier = ">=3.1.55" },
+    { name = "gitpython", specifier = ">=3.1.57" },
 ]
 
 [package.metadata.requires-dev]
