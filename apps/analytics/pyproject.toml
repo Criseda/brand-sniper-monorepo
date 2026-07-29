@@ -7,12 +7,12 @@ requires-python = ">=3.12"
 dependencies = [
     "shared-utils",
     "pandas>=2.2.0",
-    "prefect>=3.7.7",
+    "prefect>=3.8.0",
     "mlflow>=3.14.0",
     "redis>=5.0.0",
     "aiohttp>=3.14.2",
     "python-dotenv>=1.0.0",
-    "openai>=2.46.0",
+    "openai>=2.50.0",
     "instructor>=1.15.4",
 ]
 
