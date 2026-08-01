@@ -3,12 +3,11 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 _test_engine = create_async_engine("sqlite+aiosqlite://", echo=False)
-_test_session_maker = sessionmaker(bind=_test_engine, class_=AsyncSession, expire_on_commit=False)
+_test_session_maker = async_sessionmaker(bind=_test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 @pytest.fixture(name="client")
