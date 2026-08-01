@@ -218,12 +218,12 @@ class TestGetItemMarketContext:
             "market_page": "https://skinport.com/market",
         }
 
-    async def test_unknown_item_returns_empty_context(self, db_maker, mocker):
+    async def test_unknown_item_returns_none(self, db_maker, mocker):
         maker, engine = db_maker
         await _create_tables(engine)
         mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
 
-        assert await get_item_market_context("Not A Real Item") == {}
+        assert await get_item_market_context("Not A Real Item") is None
 
     async def test_missing_macro_baseline_uses_defaults(self, db_maker, mocker):
         maker, engine = db_maker
@@ -324,7 +324,7 @@ class TestGetItemMarketContext:
         assert context["snipe_threshold_cents"] == 5525
         assert context["item_page"] is None
 
-    async def test_db_failure_returns_empty_context_without_raising(self, db_maker, mocker):
+    async def test_db_failure_returns_none_without_raising(self, db_maker, mocker):
         class ExplodingSession:
             async def __aenter__(self):
                 return self
@@ -337,7 +337,7 @@ class TestGetItemMarketContext:
 
         mocker.patch.object(queries, "AsyncSessionLocal", return_value=ExplodingSession())
 
-        assert await get_item_market_context(VERSIONED_NAME) == {}
+        assert await get_item_market_context(VERSIONED_NAME) is None
 
 
 @pytest.mark.asyncio

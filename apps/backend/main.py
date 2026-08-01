@@ -99,6 +99,11 @@ async def health_check():
 @app.get("/api/v1/market/context/{market_hash_name:path}")
 async def market_context(market_hash_name: str):
     context = await get_item_market_context(market_hash_name)
+    if context is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found or market context unavailable",
+        )
     return context
 
 

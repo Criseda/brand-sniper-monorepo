@@ -20,6 +20,10 @@ def client_fixture():
     backend_main.engine = _test_engine
     backend_main.AsyncSessionLocal = _test_session_maker
 
+    import queries as queries_module
+
+    queries_module.AsyncSessionLocal = _test_session_maker
+
     from main import app
 
     with TestClient(app) as client:
@@ -87,6 +91,13 @@ def test_ingest_bulk_missing_source_returns_422(client):
         "/api/v1/ingest/bulk", json={"ticks": [{"market_hash_name": "Item", "price_cents": 100, "timestamp": 1700000000}]}
     )
     assert response.status_code == 422
+
+
+def test_market_context_unknown_item_returns_404(client):
+    response = client.get("/api/v1/market/context/Not A Real Item")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Item not found or market context unavailable"
 
 
 @pytest.mark.parametrize(
