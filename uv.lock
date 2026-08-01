@@ -371,7 +371,6 @@ source = { virtual = "apps/backend" }
 dependencies = [
     { name = "brotli" },
     { name = "fastapi" },
-    { name = "mlflow" },
     { name = "prometheus-client" },
     { name = "shared-utils" },
     { name = "uvicorn", extra = ["standard"] },
@@ -389,7 +388,6 @@ dev = [
 requires-dist = [
     { name = "brotli", specifier = ">=1.1.0" },
     { name = "fastapi", specifier = ">=0.140.13" },
-    { name = "mlflow", specifier = ">=3.14.0" },
     { name = "prometheus-client", specifier = ">=0.26.0" },
     { name = "shared-utils", editable = "packages/shared_utils" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.0" },
@@ -2495,8 +2493,8 @@ name = "pendulum"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil", marker = "python_full_version < '3.13'" },
-    { name = "tzdata", marker = "python_full_version < '3.13'" },
+    { name = "python-dateutil" },
+    { name = "tzdata" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/72/9a51afa0a822b09e286c4cb827ed7b00bc818dac7bd11a5f161e493a217d/pendulum-3.2.0.tar.gz", hash = "sha256:e80feda2d10fa3ff8b1526715f7d33dcb7e08494b3088f2c8a3ac92d4a4331ce", size = 86912, upload-time = "2026-01-30T11:22:24.093Z" }
 wheels = [
@@ -4179,8 +4177,8 @@ name = "whenever"
 version = "0.10.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "python_full_version >= '3.13' and sys_platform == 'win32'" },
-    { name = "tzlocal", marker = "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+    { name = "tzlocal", marker = "sys_platform != 'darwin' and sys_platform != 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ae/64/22639d6118d936c26e7e8c38ec35956b8a7bb71a46d206cca86090fcd5af/whenever-0.10.2.tar.gz", hash = "sha256:1487adb419cddf6284c6923a1a342ed9ad28ae82e67d3970e3d23952bdd9e917", size = 434850, upload-time = "2026-07-06T20:52:42.774Z" }
 wheels = [
