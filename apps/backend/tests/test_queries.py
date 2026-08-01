@@ -2,8 +2,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import aiohttp
 import pytest
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -300,30 +302,26 @@ class TestGetItemMarketContext:
         assert context["cash_equivalent_avg_cents"] is None
         assert context["snipe_threshold_cents"] is None
 
-    async def test_api_failure_degrades_to_db_baselines(self, db_maker, mocker):
+    async def test_api_empty_response_falls_back_to_skinport_ticks(self, db_maker, mocker):
         maker, engine = db_maker
         await _create_tables(engine)
         await _seed(
             maker,
             [
                 MarketItem(id=3, market_hash_name="AK-47 | Redline (Field-Tested)", item_type="Rifle"),
-                HistoricalPrice(
-                    item_id=3,
-                    sale_date=datetime(2025, 1, 1),
-                    median_price_cents=10000,
-                    volume_sold=50,
-                ),
-                LiveMarketTick(item_id=3, price_cents=7000, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=3, price_cents=6500, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=3, price_cents=6500, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
             ],
         )
-        mocker.patch.object(queries, "fetch_skinport_sales_history", side_effect=RuntimeError("skinport down"))
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
 
         context = await get_item_market_context("AK-47 | Redline (Field-Tested)")
 
         assert context["real_time_skinport_median_cents"] is None
         assert context["downtrend_detected"] is False
-        assert context["cash_equivalent_avg_cents"] == 7000
-        assert context["snipe_threshold_cents"] == 5950
+        assert context["historical_steam_avg_cents"] is None
+        assert context["cash_equivalent_avg_cents"] == 6500
+        assert context["snipe_threshold_cents"] == 5525
         assert context["item_page"] is None
 
     async def test_db_failure_returns_empty_context_without_raising(self, db_maker, mocker):
@@ -335,8 +333,80 @@ class TestGetItemMarketContext:
                 pass
 
             async def execute(self, *args, **kwargs):
-                raise RuntimeError("database down")
+                raise SQLAlchemyError("database down")
 
         mocker.patch.object(queries, "AsyncSessionLocal", return_value=ExplodingSession())
 
         assert await get_item_market_context(VERSIONED_NAME) == {}
+
+
+@pytest.mark.asyncio
+class TestFetchSkinportSalesHistory:
+    @pytest.fixture(autouse=True)
+    def clear_cache(self):
+        queries.sales_history_cache.clear()
+
+    class _Client:
+        def __init__(self, response):
+            self.response = response
+
+        def get(self, *args, **kwargs):
+            return self.response
+
+    class _OkResponse:
+        status = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def json(self):
+            return self.payload
+
+    class _ErrorResponse:
+        status = 500
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    class _FailingResponse:
+        async def __aenter__(self):
+            raise aiohttp.ClientError("connection refused")
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+    async def test_client_error_returns_empty_dict(self, mocker):
+        mocker.patch.object(queries, "_get_session", return_value=self._Client(self._FailingResponse()))
+
+        assert await queries.fetch_skinport_sales_history("Boundary Item") == {}
+
+    async def test_non_200_returns_empty_dict(self, mocker):
+        mocker.patch.object(queries, "_get_session", return_value=self._Client(self._ErrorResponse()))
+
+        assert await queries.fetch_skinport_sales_history("Boundary Item Two") == {}
+
+    async def test_success_returns_first_entry(self, mocker):
+        payload = [{"last_24_hours": {"median": 2.0, "volume": 5}}]
+        mocker.patch.object(queries, "_get_session", return_value=self._Client(self._OkResponse(payload)))
+
+        assert await queries.fetch_skinport_sales_history("Boundary Item Three") == payload[0]
+
+    async def test_version_filter_selects_matching_entry(self, mocker):
+        payload = [
+            {"version": "Factory New", "last_24_hours": {"median": 1.0, "volume": 1}},
+            {"version": "Minimal Wear", "last_24_hours": {"median": 2.0, "volume": 1}},
+        ]
+        mocker.patch.object(queries, "_get_session", return_value=self._Client(self._OkResponse(payload)))
+
+        result = await queries.fetch_skinport_sales_history("Boundary Item Four", version="Minimal Wear")
+
+        assert result["version"] == "Minimal Wear"

@@ -1,12 +1,12 @@
 import time
 from typing import TypedDict
-from typing import cast as typecast
 
 import aiohttp
 from database import AsyncSessionLocal
 from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy import Integer, String, cast, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger("backend.queries")
@@ -128,8 +128,13 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
     return None
 
 
-class MarketContext(TypedDict):
-    """Typed shape of the market context returned to clients."""
+class MarketContext(TypedDict, total=False):
+    """
+    Typed shape of the market context returned to clients.
+
+    All keys are present when the item resolves; any key may be absent
+    when the item cannot be resolved (the endpoint then returns `{}`).
+    """
 
     historical_steam_avg_cents: int | None
     historical_skinport_avg_cents: int | None
@@ -150,67 +155,94 @@ class MarketContext(TypedDict):
 
 
 # Returned when the requested item cannot be resolved (unknown or DB failure)
-_EMPTY_MARKET_CONTEXT: MarketContext = typecast(MarketContext, {})
+_EMPTY_MARKET_CONTEXT: MarketContext = {}
 
 
 async def _resolve_item(
     session: AsyncSession,
-    base_name: str,
     market_hash_name: str,
+    base_name: str,
     version: str | None,
 ) -> tuple[int, str, int] | None:
     """
     Resolves the base item row (id + type) and the versioned item id.
     Falls back to the base item id when no versioned row exists.
-    """
-    item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
-        cast(MarketItem.market_hash_name, String) == base_name
-    )
-    item_res = await session.execute(item_stmt)
-    item_row = item_res.fetchone()
 
-    if not item_row:
+    Returns None when the item is unknown or the lookup fails (logged).
+    """
+    try:
+        item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
+            cast(MarketItem.market_hash_name, String) == base_name
+        )
+        item_res = await session.execute(item_stmt)
+        item_row = item_res.fetchone()
+
+        if not item_row:
+            return None
+
+        base_item_id, item_type = item_row
+
+        versioned_item_id = base_item_id
+        if version:
+            versioned_stmt = select(cast(MarketItem.id, Integer)).where(
+                cast(MarketItem.market_hash_name, String) == market_hash_name
+            )
+            versioned_res = await session.execute(versioned_stmt)
+            versioned_row = versioned_res.fetchone()
+            if versioned_row:
+                versioned_item_id = versioned_row[0]
+
+        return base_item_id, item_type, versioned_item_id
+    except SQLAlchemyError as e:
+        logger.error("Error resolving item '%s': %s", market_hash_name, e)
         return None
 
-    base_item_id, item_type = item_row
 
-    versioned_item_id = base_item_id
-    if version:
-        versioned_stmt = select(cast(MarketItem.id, Integer)).where(
-            cast(MarketItem.market_hash_name, String) == market_hash_name
+async def _fetch_steam_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> float | None:
+    """
+    Fetches the long-term Steam baseline from historical Kaggle aggregates.
+    Returns None when no data exists or the query fails (logged).
+    """
+    try:
+        stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(cast(HistoricalPrice.item_id, Integer) == item_id)
+        res = await session.execute(stmt)
+        raw = res.scalar()
+        return float(raw) if raw is not None else None
+    except SQLAlchemyError as e:
+        logger.error("Error fetching Steam baseline for '%s': %s", market_hash_name, e)
+        return None
+
+
+async def _fetch_skinport_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> float | None:
+    """
+    Fetches the recent stable Skinport cash baseline from live market ticks.
+    Returns None when no data exists or the query fails (logged).
+    """
+    try:
+        stmt = select(func.avg(LiveMarketTick.price_cents)).where(
+            cast(LiveMarketTick.item_id, Integer) == item_id,
+            cast(LiveMarketTick.marketplace_source, String) == "skinport",
         )
-        versioned_res = await session.execute(versioned_stmt)
-        versioned_row = versioned_res.fetchone()
-        if versioned_row:
-            versioned_item_id = versioned_row[0]
-
-    return base_item_id, item_type, versioned_item_id
-
-
-async def _fetch_steam_baseline(session: AsyncSession, item_id: int) -> float | None:
-    """Fetches the long-term Steam baseline from historical Kaggle aggregates."""
-    stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(cast(HistoricalPrice.item_id, Integer) == item_id)
-    res = await session.execute(stmt)
-    raw = res.scalar()
-    return float(raw) if raw is not None else None
+        res = await session.execute(stmt)
+        raw = res.scalar()
+        return float(raw) if raw is not None else None
+    except SQLAlchemyError as e:
+        logger.error("Error fetching Skinport baseline for '%s': %s", market_hash_name, e)
+        return None
 
 
-async def _fetch_skinport_baseline(session: AsyncSession, item_id: int) -> float | None:
-    """Fetches the recent stable Skinport cash baseline from live market ticks."""
-    stmt = select(func.avg(LiveMarketTick.price_cents)).where(
-        cast(LiveMarketTick.item_id, Integer) == item_id,
-        cast(LiveMarketTick.marketplace_source, String) == "skinport",
-    )
-    res = await session.execute(stmt)
-    raw = res.scalar()
-    return float(raw) if raw is not None else None
-
-
-async def _fetch_macro_baseline(session: AsyncSession, item_id: int) -> ItemMacroBaseline | None:
-    """Fetches the persisted macro baseline metrics for an item."""
-    stmt = select(ItemMacroBaseline).where(cast(ItemMacroBaseline.item_id, Integer) == item_id)
-    res = await session.execute(stmt)
-    return res.scalar_one_or_none()
+async def _fetch_macro_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> ItemMacroBaseline | None:
+    """
+    Fetches the persisted macro baseline metrics for an item.
+    Returns None when no baseline exists or the query fails (logged).
+    """
+    try:
+        stmt = select(ItemMacroBaseline).where(cast(ItemMacroBaseline.item_id, Integer) == item_id)
+        res = await session.execute(stmt)
+        return res.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("Error fetching macro baseline for '%s': %s", market_hash_name, e)
+        return None
 
 
 def _compute_discount_corridor(item_type: str) -> float:
@@ -319,41 +351,17 @@ async def get_item_market_context(market_hash_name: str) -> MarketContext:
     base_name, version = parse_version_from_name(market_hash_name)
 
     async with AsyncSessionLocal() as session:
-        try:
-            resolved = await _resolve_item(session, base_name, market_hash_name, version)
-        except Exception as e:
-            logger.error("Error resolving item '%s': %s", market_hash_name, e)
-            return _EMPTY_MARKET_CONTEXT
-
+        resolved = await _resolve_item(session, market_hash_name, base_name, version)
         if resolved is None:
             return _EMPTY_MARKET_CONTEXT
 
         base_item_id, item_type, versioned_item_id = resolved
 
-        avg_steam = None
-        avg_skinport = None
-        macro_baseline = None
+        avg_steam = await _fetch_steam_baseline(session, market_hash_name, base_item_id)
+        avg_skinport = await _fetch_skinport_baseline(session, market_hash_name, versioned_item_id)
+        macro_baseline = await _fetch_macro_baseline(session, market_hash_name, versioned_item_id)
 
-        try:
-            avg_steam = await _fetch_steam_baseline(session, base_item_id)
-        except Exception as e:
-            logger.error("Error fetching Steam baseline for '%s': %s", market_hash_name, e)
-
-        try:
-            avg_skinport = await _fetch_skinport_baseline(session, versioned_item_id)
-        except Exception as e:
-            logger.error("Error fetching Skinport baseline for '%s': %s", market_hash_name, e)
-
-        try:
-            macro_baseline = await _fetch_macro_baseline(session, versioned_item_id)
-        except Exception as e:
-            logger.error("Error fetching macro baseline for '%s': %s", market_hash_name, e)
-
-    try:
-        skinport_history = await fetch_skinport_sales_history(base_name, version)
-    except Exception as e:
-        logger.error("Error fetching real-time sales history for '%s': %s", market_hash_name, e)
-        skinport_history = {}
+    skinport_history = await fetch_skinport_sales_history(base_name, version)
     real_time_median_cents, downtrend_detected, downtrend_severity = _analyze_real_time_history(skinport_history)
 
     discount_factor = _compute_discount_corridor(item_type)
