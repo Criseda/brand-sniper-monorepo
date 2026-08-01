@@ -128,13 +128,8 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
     return None
 
 
-class MarketContext(TypedDict, total=False):
-    """
-    Typed shape of the market context returned to clients.
-
-    All keys are present when the item resolves; any key may be absent
-    when the item cannot be resolved (the endpoint then returns `{}`).
-    """
+class MarketContext(TypedDict):
+    """Typed shape of the market context returned to clients for a resolved item."""
 
     historical_steam_avg_cents: int | None
     historical_skinport_avg_cents: int | None
@@ -152,10 +147,6 @@ class MarketContext(TypedDict, total=False):
     downtrend_severity: float
     item_page: str | None
     market_page: str | None
-
-
-# Returned when the requested item cannot be resolved (unknown or DB failure)
-_EMPTY_MARKET_CONTEXT: MarketContext = {}
 
 
 async def _resolve_item(
@@ -338,22 +329,25 @@ def _compute_snipe_threshold(
     return round(cash_equivalent_avg_cents * applied_discount)
 
 
-async def get_item_market_context(market_hash_name: str) -> MarketContext:
+async def get_item_market_context(market_hash_name: str) -> MarketContext | None:
     """
     Queries historical data, macro baselines, and live API sales history,
     applying liquidity checks, cash corridors, and active downtrend penalties
     to protect trading capital from structural price crashes (e.g. 2025 updates).
 
-    Each data-fetch sub-step degrades gracefully: a failed query or API call is
-    logged and the remaining sources still produce a partial context, so a
-    downstream outage never results in a 500 for the caller.
+    Returns None when the item cannot be resolved (unknown item or lookup
+    failure) so callers can surface a not-found response instead of silently
+    reading an empty context. Each data-fetch sub-step degrades gracefully:
+    failures are logged inside the step and the remaining sources still
+    produce a partial context, so a downstream outage never results in a 500
+    for the caller.
     """
     base_name, version = parse_version_from_name(market_hash_name)
 
     async with AsyncSessionLocal() as session:
         resolved = await _resolve_item(session, market_hash_name, base_name, version)
         if resolved is None:
-            return _EMPTY_MARKET_CONTEXT
+            return None
 
         base_item_id, item_type, versioned_item_id = resolved
 
