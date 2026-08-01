@@ -3,6 +3,27 @@ Shared pricing analysis utilities used by both the edge listener and backend com
 Consolidates duplicated median resolution, downtrend detection, and unit conversion logic.
 """
 
+from typing import NamedTuple
+
+
+class _HistoryWindows(NamedTuple):
+    """Median price windows extracted from a Skinport sales history entry."""
+
+    h24: dict
+    h7: dict
+    h30: dict
+    h90: dict
+
+
+def _parse_history_windows(history_entry: dict) -> _HistoryWindows:
+    """Extracts the four median price windows, missing keys default to {}."""
+    return _HistoryWindows(
+        h24=history_entry.get("last_24_hours") or {},
+        h7=history_entry.get("last_7_days") or {},
+        h30=history_entry.get("last_30_days") or {},
+        h90=history_entry.get("last_90_days") or {},
+    )
+
 
 def to_cents(val: float | None) -> int | None:
     """Converts a USD float value to integer cents, returning None if input is None."""
@@ -16,10 +37,7 @@ def resolve_recent_median(history_entry: dict) -> float | None:
 
     Returns the median as a USD float, or None if no valid data is available.
     """
-    h24 = history_entry.get("last_24_hours") or {}
-    h7 = history_entry.get("last_7_days") or {}
-    h30 = history_entry.get("last_30_days") or {}
-    h90 = history_entry.get("last_90_days") or {}
+    h24, h7, h30, h90 = _parse_history_windows(history_entry)
 
     m24 = h24.get("median")
     m7 = h7.get("median")
@@ -47,10 +65,7 @@ def detect_downtrend(history_entry: dict) -> tuple[bool, float]:
         (downtrend_detected, downtrend_severity)
         where severity is a float representing the cumulative percentage decline.
     """
-    h24 = history_entry.get("last_24_hours") or {}
-    h7 = history_entry.get("last_7_days") or {}
-    h30 = history_entry.get("last_30_days") or {}
-    h90 = history_entry.get("last_90_days") or {}
+    h24, h7, h30, h90 = _parse_history_windows(history_entry)
 
     m24 = h24.get("median")
     m7 = h7.get("median")
