@@ -40,21 +40,23 @@ def test_ingest_simulated_trade_success(client):
     assert response.json()["status"] == "SUCCESS"
 
 
-def test_ingest_trade_missing_field_returns_422(client):
-    response = client.post("/api/v1/ingest/trade", json={"market_hash_name": "Test Item"})
-    assert response.status_code == 422
-
-
-def test_ingest_trade_invalid_z_score_type_returns_422(client):
-    response = client.post(
-        "/api/v1/ingest/trade",
-        json={
-            "market_hash_name": "Test Item",
-            "purchase_price_cents": 1000,
-            "estimated_profit_cents": 500,
-            "trigger_z_score": "not-a-number",
-        },
-    )
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"market_hash_name": "Test Item"}, id="missing_field"),
+        pytest.param(
+            {
+                "market_hash_name": "Test Item",
+                "purchase_price_cents": 1000,
+                "estimated_profit_cents": 500,
+                "trigger_z_score": "not-a-number",
+            },
+            id="invalid_z_score_type",
+        ),
+    ],
+)
+def test_ingest_trade_invalid_payload_returns_422(client, payload):
+    response = client.post("/api/v1/ingest/trade", json=payload)
     assert response.status_code == 422
 
 
@@ -87,24 +89,21 @@ def test_ingest_bulk_missing_source_returns_422(client):
     assert response.status_code == 422
 
 
-def test_cors_origin_allowed(client):
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        pytest.param("http://localhost:3000", "http://localhost:3000", id="origin_allowed"),
+        pytest.param("http://malicious.com", None, id="origin_disallowed"),
+    ],
+)
+def test_cors_origin(client, origin, expected):
     response = client.options(
         "/health",
         headers={
-            "Origin": "http://localhost:3000",
+            "Origin": origin,
             "Access-Control-Request-Method": "GET",
         },
     )
-    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
-    assert response.headers.get("access-control-allow-credentials") == "true"
-
-
-def test_cors_origin_disallowed(client):
-    response = client.options(
-        "/health",
-        headers={
-            "Origin": "http://malicious.com",
-            "Access-Control-Request-Method": "GET",
-        },
-    )
-    assert response.headers.get("access-control-allow-origin") is None
+    assert response.headers.get("access-control-allow-origin") == expected
+    if expected is not None:
+        assert response.headers.get("access-control-allow-credentials") == "true"
