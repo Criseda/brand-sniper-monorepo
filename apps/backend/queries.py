@@ -4,7 +4,7 @@ import aiohttp
 from database import AsyncSessionLocal
 from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
-from sqlalchemy import func, select
+from sqlalchemy import Integer, String, cast, func, select
 
 logger = get_logger("backend.queries")
 
@@ -52,7 +52,7 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
             return cached_entry
 
     url = "https://api.skinport.com/v1/sales/history"
-    params = {"app_id": 730, "currency": "USD", "market_hash_name": market_hash_name}
+    params: dict[str, str | int] = {"app_id": 730, "currency": "USD", "market_hash_name": market_hash_name}
     try:
         session = await _get_session()
         async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=5, connect=2)) as response:
@@ -95,7 +95,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
     try:
         async with AsyncSessionLocal() as session:
             # Resolve item_id for the sticker
-            item_stmt = select(MarketItem.id).where(MarketItem.market_hash_name == sticker_name)
+            item_stmt = select(cast(MarketItem.id, Integer)).where(cast(MarketItem.market_hash_name, String) == sticker_name)
             item_res = await session.execute(item_stmt)
             item_row = item_res.fetchone()
             if not item_row:
@@ -103,14 +103,18 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
             sticker_item_id = item_row[0]
 
             # Query historical average price
-            hist_stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(HistoricalPrice.item_id == sticker_item_id)
+            hist_stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(
+                cast(HistoricalPrice.item_id, Integer) == sticker_item_id
+            )
             hist_res = await session.execute(hist_stmt)
             avg_hist = hist_res.scalar()
             if avg_hist is not None:
                 return round(float(avg_hist))
 
             # Query live ticks average price
-            live_stmt = select(func.avg(LiveMarketTick.price_cents)).where(LiveMarketTick.item_id == sticker_item_id)
+            live_stmt = select(func.avg(LiveMarketTick.price_cents)).where(
+                cast(LiveMarketTick.item_id, Integer) == sticker_item_id
+            )
             live_res = await session.execute(live_stmt)
             avg_live = live_res.scalar()
             if avg_live is not None:
@@ -131,7 +135,9 @@ async def get_item_market_context(market_hash_name: str) -> dict:
 
     async with AsyncSessionLocal() as session:
         # 1. Resolve the item_id and type first (query base name for metadata/steam defaults)
-        item_stmt = select(MarketItem.id, MarketItem.item_type).where(MarketItem.market_hash_name == base_name)
+        item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
+            cast(MarketItem.market_hash_name, String) == base_name
+        )
         item_res = await session.execute(item_stmt)
         item_row = item_res.fetchone()
 
@@ -143,22 +149,27 @@ async def get_item_market_context(market_hash_name: str) -> dict:
         # Resolve specific versioned item_id if it exists, to leverage clean versioned ticks and baselines
         versioned_item_id = base_item_id
         if version:
-            versioned_stmt = select(MarketItem.id).where(MarketItem.market_hash_name == market_hash_name)
+            versioned_stmt = select(cast(MarketItem.id, Integer)).where(
+                cast(MarketItem.market_hash_name, String) == market_hash_name
+            )
             versioned_res = await session.execute(versioned_stmt)
             versioned_row = versioned_res.fetchone()
             if versioned_row:
                 versioned_item_id = versioned_row[0]
 
         # 2. Fetch the long-term Steam baseline from historical Kaggle aggregates (using base_item_id)
-        steam_stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(HistoricalPrice.item_id == base_item_id)
+        steam_stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(
+            cast(HistoricalPrice.item_id, Integer) == base_item_id
+        )
 
         # 3. Fetch the recent stable Skinport cash baseline from live market ticks (using versioned_item_id)
         skinport_stmt = select(func.avg(LiveMarketTick.price_cents)).where(
-            LiveMarketTick.item_id == versioned_item_id, LiveMarketTick.marketplace_source == "skinport"
+            cast(LiveMarketTick.item_id, Integer) == versioned_item_id,
+            cast(LiveMarketTick.marketplace_source, String) == "skinport",
         )
 
         # 4. Fetch the persisted macro baseline metrics (using versioned_item_id)
-        macro_stmt = select(ItemMacroBaseline).where(ItemMacroBaseline.item_id == versioned_item_id)
+        macro_stmt = select(ItemMacroBaseline).where(cast(ItemMacroBaseline.item_id, Integer) == versioned_item_id)
 
         steam_res = await session.execute(steam_stmt)
         skinport_res = await session.execute(skinport_stmt)
@@ -284,9 +295,13 @@ async def search_macro_trends(query: str) -> list[dict]:
 
     async with AsyncSessionLocal() as session:
         stmt = (
-            select(MarketItem.market_hash_name, ItemMacroBaseline)
-            .join(ItemMacroBaseline, MarketItem.id == ItemMacroBaseline.item_id, isouter=True)
-            .where(func.lower(MarketItem.market_hash_name).contains(query.lower()))
+            select(cast(MarketItem.market_hash_name, String), ItemMacroBaseline)
+            .join(
+                ItemMacroBaseline,
+                cast(MarketItem.id, Integer) == cast(ItemMacroBaseline.item_id, Integer),
+                isouter=True,
+            )
+            .where(func.lower(cast(MarketItem.market_hash_name, String)).contains(query.lower()))
             .limit(10)
         )
         result = await session.execute(stmt)

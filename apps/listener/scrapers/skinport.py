@@ -76,7 +76,7 @@ class SkinportScraper(BaseScraper):
         while True:
             try:
                 # Target CS2 inventory items denominated in USD
-                params = {"app_id": 730, "currency": "USD", "tradable": 0}
+                params: dict[str, str | int] = {"app_id": 730, "currency": "USD", "tradable": 0}
 
                 logger.info("Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
                 async with session.get(self.api_url, params=params) as response:
@@ -147,7 +147,7 @@ class SkinportScraper(BaseScraper):
 
             if not target_entry:
                 url = "https://api.skinport.com/v1/sales/history"
-                params = {"app_id": 730, "currency": "USD", "market_hash_name": base_name}
+                params: dict[str, str | int] = {"app_id": 730, "currency": "USD", "market_hash_name": base_name}
                 session = await self._get_session()
 
                 async with session.get(

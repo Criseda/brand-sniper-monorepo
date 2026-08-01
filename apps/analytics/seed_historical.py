@@ -70,6 +70,8 @@ async def seed_historical_data(truncate: bool = False):
         async with async_engine.connect() as conn:
             raw_connection = await conn.get_raw_connection()
             asyncpg_conn = raw_connection.driver_connection
+            if asyncpg_conn is None:
+                raise RuntimeError("Failed to acquire raw asyncpg connection for bulk seeding")
 
             for idx, file_path in enumerate(csv_files, start=1):
                 market_hash_name, item_type = parse_item_meta(file_path.name)

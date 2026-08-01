@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
-from sqlalchemy import select
+from sqlalchemy import DateTime, Integer, String, cast, select
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -45,7 +45,13 @@ async def fetch_tracked_items() -> list[dict]:
     logger = get_run_logger()
     logger.info("Fetching market items from database...")
     async with async_engine.connect() as conn:
-        result = await conn.execute(select(MarketItem.id, MarketItem.market_hash_name, MarketItem.item_type))
+        result = await conn.execute(
+            select(
+                cast(MarketItem.id, Integer),
+                cast(MarketItem.market_hash_name, String),
+                cast(MarketItem.item_type, String),
+            )
+        )
         items = [{"id": r[0], "market_hash_name": r[1], "item_type": r[2]} for r in result.fetchall()]
     logger.info("Retrieved %d market items from database.", len(items))
     return items
@@ -63,13 +69,16 @@ async def fetch_historical_prices_chunk(item_ids: list[int]) -> dict[int, list[d
     async with async_engine.connect() as conn:
         stmt = (
             select(
-                HistoricalPrice.item_id,
-                HistoricalPrice.sale_date,
-                HistoricalPrice.median_price_cents,
-                HistoricalPrice.volume_sold,
+                cast(HistoricalPrice.item_id, Integer),
+                cast(HistoricalPrice.sale_date, DateTime),
+                cast(HistoricalPrice.median_price_cents, Integer),
+                cast(HistoricalPrice.volume_sold, Integer),
             )
-            .where(HistoricalPrice.item_id.in_(item_ids))
-            .order_by(HistoricalPrice.item_id, HistoricalPrice.sale_date.asc())
+            .where(cast(HistoricalPrice.item_id, Integer).in_(item_ids))
+            .order_by(
+                cast(HistoricalPrice.item_id, Integer),
+                cast(HistoricalPrice.sale_date, DateTime).asc(),
+            )
         )
         result = await conn.execute(stmt)
         rows = result.fetchall()
