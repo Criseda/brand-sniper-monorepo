@@ -1,10 +1,13 @@
 import time
+from typing import TypedDict
 
 import aiohttp
 from database import AsyncSessionLocal
 from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy import Integer, String, cast, func, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger("backend.queries")
 
@@ -125,16 +128,49 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
     return None
 
 
-async def get_item_market_context(market_hash_name: str) -> dict:
+class MarketContext(TypedDict, total=False):
     """
-    Queries historical data, macro baselines, and live API sales history,
-    applying liquidity checks, cash corridors, and active downtrend penalties
-    to protect trading capital from structural price crashes (e.g. 2025 updates).
-    """
-    base_name, version = parse_version_from_name(market_hash_name)
+    Typed shape of the market context returned to clients.
 
-    async with AsyncSessionLocal() as session:
-        # 1. Resolve the item_id and type first (query base name for metadata/steam defaults)
+    All keys are present when the item resolves; any key may be absent
+    when the item cannot be resolved (the endpoint then returns `{}`).
+    """
+
+    historical_steam_avg_cents: int | None
+    historical_skinport_avg_cents: int | None
+    real_time_skinport_median_cents: int | None
+    cash_equivalent_avg_cents: int | None
+    snipe_threshold_cents: int | None
+    item_type: str
+    is_liquid: bool
+    avg_volume_30d: float | None
+    drift_percent: float
+    volatility_cents: int
+    support_floor_cents: int | None
+    regime_shift_detected: bool
+    downtrend_detected: bool
+    downtrend_severity: float
+    item_page: str | None
+    market_page: str | None
+
+
+# Returned when the requested item cannot be resolved (unknown or DB failure)
+_EMPTY_MARKET_CONTEXT: MarketContext = {}
+
+
+async def _resolve_item(
+    session: AsyncSession,
+    market_hash_name: str,
+    base_name: str,
+    version: str | None,
+) -> tuple[int, str, int] | None:
+    """
+    Resolves the base item row (id + type) and the versioned item id.
+    Falls back to the base item id when no versioned row exists.
+
+    Returns None when the item is unknown or the lookup fails (logged).
+    """
+    try:
         item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
             cast(MarketItem.market_hash_name, String) == base_name
         )
@@ -142,11 +178,10 @@ async def get_item_market_context(market_hash_name: str) -> dict:
         item_row = item_res.fetchone()
 
         if not item_row:
-            return {}
+            return None
 
         base_item_id, item_type = item_row
 
-        # Resolve specific versioned item_id if it exists, to leverage clean versioned ticks and baselines
         versioned_item_id = base_item_id
         if version:
             versioned_stmt = select(cast(MarketItem.id, Integer)).where(
@@ -157,133 +192,218 @@ async def get_item_market_context(market_hash_name: str) -> dict:
             if versioned_row:
                 versioned_item_id = versioned_row[0]
 
-        # 2. Fetch the long-term Steam baseline from historical Kaggle aggregates (using base_item_id)
-        steam_stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(
-            cast(HistoricalPrice.item_id, Integer) == base_item_id
-        )
+        return base_item_id, item_type, versioned_item_id
+    except SQLAlchemyError as e:
+        logger.error("Error resolving item '%s': %s", market_hash_name, e)
+        return None
 
-        # 3. Fetch the recent stable Skinport cash baseline from live market ticks (using versioned_item_id)
-        skinport_stmt = select(func.avg(LiveMarketTick.price_cents)).where(
-            cast(LiveMarketTick.item_id, Integer) == versioned_item_id,
+
+async def _fetch_steam_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> float | None:
+    """
+    Fetches the long-term Steam baseline from historical Kaggle aggregates.
+    Returns None when no data exists or the query fails (logged).
+    """
+    try:
+        stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(cast(HistoricalPrice.item_id, Integer) == item_id)
+        res = await session.execute(stmt)
+        raw = res.scalar()
+        return float(raw) if raw is not None else None
+    except SQLAlchemyError as e:
+        logger.error("Error fetching Steam baseline for '%s': %s", market_hash_name, e)
+        return None
+
+
+async def _fetch_skinport_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> float | None:
+    """
+    Fetches the recent stable Skinport cash baseline from live market ticks.
+    Returns None when no data exists or the query fails (logged).
+    """
+    try:
+        stmt = select(func.avg(LiveMarketTick.price_cents)).where(
+            cast(LiveMarketTick.item_id, Integer) == item_id,
             cast(LiveMarketTick.marketplace_source, String) == "skinport",
         )
+        res = await session.execute(stmt)
+        raw = res.scalar()
+        return float(raw) if raw is not None else None
+    except SQLAlchemyError as e:
+        logger.error("Error fetching Skinport baseline for '%s': %s", market_hash_name, e)
+        return None
 
-        # 4. Fetch the persisted macro baseline metrics (using versioned_item_id)
-        macro_stmt = select(ItemMacroBaseline).where(cast(ItemMacroBaseline.item_id, Integer) == versioned_item_id)
 
-        steam_res = await session.execute(steam_stmt)
-        skinport_res = await session.execute(skinport_stmt)
-        macro_res = await session.execute(macro_stmt)
+async def _fetch_macro_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> ItemMacroBaseline | None:
+    """
+    Fetches the persisted macro baseline metrics for an item.
+    Returns None when no baseline exists or the query fails (logged).
+    """
+    try:
+        stmt = select(ItemMacroBaseline).where(cast(ItemMacroBaseline.item_id, Integer) == item_id)
+        res = await session.execute(stmt)
+        return res.scalar_one_or_none()
+    except SQLAlchemyError as e:
+        logger.error("Error fetching macro baseline for '%s': %s", market_hash_name, e)
+        return None
 
-        raw_steam = steam_res.scalar()
-        raw_skinport = skinport_res.scalar()
-        macro_baseline = macro_res.scalar_one_or_none()
 
-        avg_steam = float(raw_steam) if raw_steam is not None else None
-        avg_skinport = float(raw_skinport) if raw_skinport is not None else None
+def _compute_discount_corridor(item_type: str) -> float:
+    """Returns the market-specific cash discount factor relative to Steam list price."""
+    if item_type in ["Knife", "Glove"]:
+        return 0.25  # Knives/Gloves trade at lower cash discounts
+    if item_type in ["Sticker", "Patch"]:
+        return 0.35  # Cosmetic items carry higher cash discounts
+    return 0.30  # Default baseline discount
 
-        # 5. Fetch real-time sales history from Skinport API (using base name and version)
-        skinport_history = await fetch_skinport_sales_history(base_name, version)
 
-        # 6. Analyze real-time sales history for active downtrends or values
-        real_time_median_cents = None
-        downtrend_detected = False
-        downtrend_severity = 0.0
+def _apply_liquidity_guardrails(macro_baseline: ItemMacroBaseline | None, item_type: str) -> tuple[bool, float | None]:
+    """
+    Applies the liquidity guardrail (scaled by asset value / class).
 
-        if skinport_history:
-            median_usd = resolve_recent_median(skinport_history)
-            if median_usd is not None:
-                real_time_median_cents = to_cents(median_usd)
+    High-tier items/Knives/Gloves (> $150 or type Knives/Gloves) only require
+    a 0.05 daily sales floor (1 sale every 20 days). Low-tier items (< $150)
+    must be actively traded and require at least a 0.5 sales/day floor.
+    """
+    if macro_baseline is None:
+        return True, None
 
-            downtrend_detected, downtrend_severity = detect_downtrend(skinport_history)
+    avg_volume_30d = macro_baseline.avg_volume_30d
+    latest_price = macro_baseline.latest_price_cents
 
-        # 7. Apply market-specific cash discount corridors (relative to Steam list price)
-        if item_type in ["Knife", "Glove"]:
-            discount_factor = 0.25  # Knives/Gloves trade at lower cash discounts
-        elif item_type in ["Sticker", "Patch"]:
-            discount_factor = 0.35  # Cosmetic items carry higher cash discounts
-        else:
-            discount_factor = 0.30  # Default baseline discount
+    if latest_price > 15000 or item_type in ["Knife", "Glove"]:
+        liquidity_floor = 0.05
+    else:
+        liquidity_floor = 0.5
 
-        cash_equivalent_avg_cents = None
-        snipe_threshold_cents = None
+    is_liquid = not (avg_volume_30d is not None and avg_volume_30d < liquidity_floor)
+    return is_liquid, avg_volume_30d
 
-        # Liquidity guardrail (scaled by asset value / class)
-        is_liquid = True
-        avg_volume_30d = None
-        if macro_baseline is not None:
-            avg_volume_30d = macro_baseline.avg_volume_30d
-            latest_price = macro_baseline.latest_price_cents
 
-            # High-tier items/Knives/Gloves (> $150 or type Knives/Gloves)
-            # only require a 0.05 daily sales floor (1 sale every 20 days).
-            # Low-tier items (< $150) must be actively traded and require
-            # at least a 0.5 sales/day floor.
-            if latest_price > 15000 or item_type in ["Knife", "Glove"]:
-                liquidity_floor = 0.05
-            else:
-                liquidity_floor = 0.5
+def _detect_regime_shift(
+    avg_steam: float | None,
+    baseline_comparison: float | None,
+    discount_factor: float,
+) -> tuple[bool, bool]:
+    """
+    Concept drift guardrail (regime shift detection, e.g., 2025 knife trade-ups update).
 
-            if avg_volume_30d is not None and avg_volume_30d < liquidity_floor:
-                is_liquid = False
+    Returns (regime_shift_detected, use_steam_baseline). If the historical Steam
+    baseline cash-value deviates from recent prices by >35%, assume historical
+    averages are drift-corrupted and fall back.
+    """
+    if avg_steam is None or baseline_comparison is None:
+        return False, True
 
-        # Concept drift guardrail (regime shift detection, e.g., 2025 knife trade-ups update)
-        regime_shift_detected = False
-        use_steam_baseline = True
+    expected_cash_steam = avg_steam * (1.0 - discount_factor)
+    deviation = abs(expected_cash_steam - baseline_comparison) / baseline_comparison if baseline_comparison > 0 else 0
 
-        # Compare Steam cash-equivalent against active live averages
-        baseline_comparison = real_time_median_cents if real_time_median_cents is not None else avg_skinport
+    if deviation > 0.35:
+        return True, False
+    return False, True
 
-        if avg_steam is not None and baseline_comparison is not None:
-            expected_cash_steam = avg_steam * (1.0 - discount_factor)
-            deviation = abs(expected_cash_steam - baseline_comparison) / baseline_comparison if baseline_comparison > 0 else 0
 
-            # If the historical Steam baseline cash-value deviates from recent prices by >35%,
-            # assume historical averages are drift-corrupted and fall back.
-            if deviation > 0.35:
-                regime_shift_detected = True
-                use_steam_baseline = False
+def _analyze_real_time_history(history: dict) -> tuple[int | None, bool, float]:
+    """
+    Extracts the real-time Skinport median and active downtrend signal
+    from a sales history entry.
+    """
+    real_time_median_cents = None
+    downtrend_detected = False
+    downtrend_severity = 0.0
 
-        # Calculate final baselines and purchase thresholds
-        if is_liquid:
-            if real_time_median_cents is not None:
-                # Real-time Skinport median is our most accurate cash baseline reference
-                cash_equivalent_avg_cents = real_time_median_cents
-            elif avg_steam is not None and use_steam_baseline:
-                cash_equivalent_avg_cents = round(avg_steam * (1.0 - discount_factor))
-            elif avg_skinport is not None:
-                cash_equivalent_avg_cents = round(avg_skinport)
+    if history:
+        median_usd = resolve_recent_median(history)
+        if median_usd is not None:
+            real_time_median_cents = to_cents(median_usd)
 
-            if cash_equivalent_avg_cents is not None:
-                # Base is 15% discount (factor of 0.85)
-                # If price is actively downtrending, require a steeper discount corridor (up to 30% discount / 0.70 factor)
-                base_discount = 0.85
-                if downtrend_detected:
-                    penalty = min(0.15, downtrend_severity)
-                    applied_discount = base_discount - penalty
-                else:
-                    applied_discount = base_discount
+        downtrend_detected, downtrend_severity = detect_downtrend(history)
 
-                snipe_threshold_cents = round(cash_equivalent_avg_cents * applied_discount)
+    return real_time_median_cents, downtrend_detected, downtrend_severity
 
-        return {
-            "historical_steam_avg_cents": round(avg_steam) if avg_steam is not None else None,
-            "historical_skinport_avg_cents": round(avg_skinport) if avg_skinport is not None else None,
-            "real_time_skinport_median_cents": real_time_median_cents,
-            "cash_equivalent_avg_cents": cash_equivalent_avg_cents,
-            "snipe_threshold_cents": snipe_threshold_cents,
-            "item_type": item_type,
-            "is_liquid": is_liquid,
-            "avg_volume_30d": avg_volume_30d,
-            "drift_percent": macro_baseline.drift_percent if macro_baseline else 0.0,
-            "volatility_cents": macro_baseline.volatility_cents if macro_baseline else 0,
-            "support_floor_cents": macro_baseline.support_floor_cents if macro_baseline else None,
-            "regime_shift_detected": regime_shift_detected,
-            "downtrend_detected": downtrend_detected,
-            "downtrend_severity": downtrend_severity,
-            "item_page": skinport_history.get("item_page") if skinport_history else None,
-            "market_page": skinport_history.get("market_page") if skinport_history else None,
-        }
+
+def _compute_snipe_threshold(
+    cash_equivalent_avg_cents: int,
+    downtrend_detected: bool,
+    downtrend_severity: float,
+) -> int:
+    """
+    Computes the snipe threshold. Base is 15% discount (factor of 0.85).
+    If price is actively downtrending, require a steeper discount corridor
+    (up to 30% discount / 0.70 factor).
+    """
+    base_discount = 0.85
+    if downtrend_detected:
+        penalty = min(0.15, downtrend_severity)
+        applied_discount = base_discount - penalty
+    else:
+        applied_discount = base_discount
+    return round(cash_equivalent_avg_cents * applied_discount)
+
+
+async def get_item_market_context(market_hash_name: str) -> MarketContext:
+    """
+    Queries historical data, macro baselines, and live API sales history,
+    applying liquidity checks, cash corridors, and active downtrend penalties
+    to protect trading capital from structural price crashes (e.g. 2025 updates).
+
+    Each data-fetch sub-step degrades gracefully: a failed query or API call is
+    logged and the remaining sources still produce a partial context, so a
+    downstream outage never results in a 500 for the caller.
+    """
+    base_name, version = parse_version_from_name(market_hash_name)
+
+    async with AsyncSessionLocal() as session:
+        resolved = await _resolve_item(session, market_hash_name, base_name, version)
+        if resolved is None:
+            return _EMPTY_MARKET_CONTEXT
+
+        base_item_id, item_type, versioned_item_id = resolved
+
+        avg_steam = await _fetch_steam_baseline(session, market_hash_name, base_item_id)
+        avg_skinport = await _fetch_skinport_baseline(session, market_hash_name, versioned_item_id)
+        macro_baseline = await _fetch_macro_baseline(session, market_hash_name, versioned_item_id)
+
+    skinport_history = await fetch_skinport_sales_history(base_name, version)
+    real_time_median_cents, downtrend_detected, downtrend_severity = _analyze_real_time_history(skinport_history)
+
+    discount_factor = _compute_discount_corridor(item_type)
+    is_liquid, avg_volume_30d = _apply_liquidity_guardrails(macro_baseline, item_type)
+
+    # Compare Steam cash-equivalent against active live averages
+    baseline_comparison = real_time_median_cents if real_time_median_cents is not None else avg_skinport
+    regime_shift_detected, use_steam_baseline = _detect_regime_shift(avg_steam, baseline_comparison, discount_factor)
+
+    cash_equivalent_avg_cents = None
+    snipe_threshold_cents = None
+
+    if is_liquid:
+        if real_time_median_cents is not None:
+            # Real-time Skinport median is our most accurate cash baseline reference
+            cash_equivalent_avg_cents = real_time_median_cents
+        elif avg_steam is not None and use_steam_baseline:
+            cash_equivalent_avg_cents = round(avg_steam * (1.0 - discount_factor))
+        elif avg_skinport is not None:
+            cash_equivalent_avg_cents = round(avg_skinport)
+
+        if cash_equivalent_avg_cents is not None:
+            snipe_threshold_cents = _compute_snipe_threshold(cash_equivalent_avg_cents, downtrend_detected, downtrend_severity)
+
+    return {
+        "historical_steam_avg_cents": round(avg_steam) if avg_steam is not None else None,
+        "historical_skinport_avg_cents": round(avg_skinport) if avg_skinport is not None else None,
+        "real_time_skinport_median_cents": real_time_median_cents,
+        "cash_equivalent_avg_cents": cash_equivalent_avg_cents,
+        "snipe_threshold_cents": snipe_threshold_cents,
+        "item_type": item_type,
+        "is_liquid": is_liquid,
+        "avg_volume_30d": avg_volume_30d,
+        "drift_percent": macro_baseline.drift_percent if macro_baseline else 0.0,
+        "volatility_cents": macro_baseline.volatility_cents if macro_baseline else 0,
+        "support_floor_cents": macro_baseline.support_floor_cents if macro_baseline else None,
+        "regime_shift_detected": regime_shift_detected,
+        "downtrend_detected": downtrend_detected,
+        "downtrend_severity": downtrend_severity,
+        "item_page": skinport_history.get("item_page") if skinport_history else None,
+        "market_page": skinport_history.get("market_page") if skinport_history else None,
+    }
 
 
 async def search_macro_trends(query: str) -> list[dict]:
