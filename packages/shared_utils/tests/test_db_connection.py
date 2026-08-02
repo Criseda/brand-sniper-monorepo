@@ -1,9 +1,12 @@
 import pytest
 from shared_utils.db_connection import (
+    DatabaseConnectionError,
     MissingDatabaseURLError,
     MissingDatabaseURLSentinel,
     apply_ssl_for_remote,
+    session_scope,
 )
+from sqlalchemy.exc import SQLAlchemyError
 
 
 @pytest.mark.parametrize(
@@ -84,3 +87,80 @@ def test_sentinel_raises_on_call():
 def test_sentinel_bool_evaluation():
     sentinel = MissingDatabaseURLSentinel("test_sentinel")
     assert not sentinel
+
+
+@pytest.mark.asyncio
+async def test_session_scope_raises_when_database_url_missing(monkeypatch):
+    monkeypatch.setattr("shared_utils.db_connection.async_session_maker", MissingDatabaseURLSentinel("async_session_maker"))
+
+    with pytest.raises(MissingDatabaseURLError):
+        async with session_scope():
+            pass
+
+
+@pytest.mark.asyncio
+async def test_session_scope_wraps_session_acquisition_failure(monkeypatch):
+    def exploding_maker():
+        raise SQLAlchemyError("connection refused")
+
+    monkeypatch.setattr("shared_utils.db_connection.async_session_maker", exploding_maker)
+
+    with pytest.raises(DatabaseConnectionError) as exc_info:
+        async with session_scope():
+            pass
+    assert "Could not acquire a database session" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_session_scope_wraps_operation_failure_and_rolls_back(monkeypatch):
+    rolled_back = False
+
+    class ExplodingSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def commit(self):
+            raise SQLAlchemyError("transaction deadlocked")
+
+        async def rollback(self):
+            nonlocal rolled_back
+            rolled_back = True
+
+    def exploding_maker():
+        return ExplodingSession()
+
+    monkeypatch.setattr("shared_utils.db_connection.async_session_maker", exploding_maker)
+
+    with pytest.raises(DatabaseConnectionError) as exc_info:
+        async with session_scope():
+            pass
+    assert "Database operation failed" in str(exc_info.value)
+    assert rolled_back
+
+
+@pytest.mark.asyncio
+async def test_session_scope_commits_on_success(monkeypatch):
+    committed = False
+
+    class GoodSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        async def commit(self):
+            nonlocal committed
+            committed = True
+
+    def good_maker():
+        return GoodSession()
+
+    monkeypatch.setattr("shared_utils.db_connection.async_session_maker", good_maker)
+
+    async with session_scope() as session:
+        assert isinstance(session, GoodSession)
+    assert committed

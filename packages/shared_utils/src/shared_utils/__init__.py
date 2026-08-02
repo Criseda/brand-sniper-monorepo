@@ -1,4 +1,4 @@
-from .db_connection import async_engine, get_async_session
+from .db_connection import async_engine, session_scope
 from .item_classifier import build_versioned_name, parse_item_meta, parse_version_from_name
 from .logging_utils import get_logger
 from .models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem, SimulatedTrade
@@ -11,7 +11,7 @@ __all__ = [
     "ItemMacroBaseline",
     "SimulatedTrade",
     "async_engine",
-    "get_async_session",
+    "session_scope",
     "get_logger",
     "parse_item_meta",
     "parse_version_from_name",

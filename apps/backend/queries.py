@@ -2,7 +2,7 @@ import time
 from typing import TypedDict
 
 import aiohttp
-from database import AsyncSessionLocal
+from database import session_scope
 from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy import Integer, String, cast, func, select
@@ -96,7 +96,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
     # 2. Database Fallback (if API is rate-limited or offline)
     logger.info("Fallback to database lookup for sticker '%s'", sticker_name)
     try:
-        async with AsyncSessionLocal() as session:
+        async with session_scope() as session:
             # Resolve item_id for the sticker
             item_stmt = select(cast(MarketItem.id, Integer)).where(cast(MarketItem.market_hash_name, String) == sticker_name)
             item_res = await session.execute(item_stmt)
@@ -344,7 +344,7 @@ async def get_item_market_context(market_hash_name: str) -> MarketContext | None
     """
     base_name, version = parse_version_from_name(market_hash_name)
 
-    async with AsyncSessionLocal() as session:
+    async with session_scope() as session:
         resolved = await _resolve_item(session, market_hash_name, base_name, version)
         if resolved is None:
             return None
@@ -407,7 +407,7 @@ async def search_macro_trends(query: str) -> list[dict]:
     if not query:
         return []
 
-    async with AsyncSessionLocal() as session:
+    async with session_scope() as session:
         stmt = (
             select(cast(MarketItem.market_hash_name, String), ItemMacroBaseline)
             .join(

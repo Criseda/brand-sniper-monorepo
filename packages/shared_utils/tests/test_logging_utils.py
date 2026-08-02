@@ -43,3 +43,10 @@ def test_get_logger_does_not_duplicate_handlers(monkeypatch):
     assert len(logger.handlers) == 1
     get_logger("test.handlers")
     assert len(logger.handlers) == 1
+
+
+def test_get_logger_rejects_non_string_name():
+    with pytest.raises(TypeError):
+        get_logger(None)
+    with pytest.raises(TypeError):
+        get_logger(123)
