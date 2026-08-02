@@ -19,6 +19,7 @@ members = [
 dev = [
     "ruff>=0.16.0",
     "mypy>=2.3.0",
+    "coverage>=7.15.2",
 ]
 
 [tool.pytest.ini_options]
@@ -42,5 +43,23 @@ ignore = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.coverage.run]
+branch = true
+source = [
+    "apps/backend",
+    "apps/listener",
+    "apps/analytics",
+    "packages/shared_utils/src",
+]
+omit = [
+    "*/tests/*",
+    "*/main.py",
+    "deployments/migrations/*",
+]
+
+[tool.coverage.report]
+fail_under = 45
+show_missing = true
 
 
