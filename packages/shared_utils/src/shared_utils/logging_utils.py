@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 
 _LOG_LEVEL_MAP: dict[str, int] = {
@@ -10,13 +11,17 @@ _LOG_LEVEL_MAP: dict[str, int] = {
 }
 
 
+def _resolve_log_level() -> int:
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    return _LOG_LEVEL_MAP.get(level_name, logging.INFO)
+
+
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
 
     if not logger.handlers:
-        level_name = logging.getLevelName(logger.level)
-        if level_name == "NOTSET":
-            logger.setLevel(logging.INFO)
+        if logger.level == logging.NOTSET:
+            logger.setLevel(_resolve_log_level())
 
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(
