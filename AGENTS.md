@@ -9,6 +9,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Add dep**: run `uv add <pkg>` inside the target `apps/*` or `packages/*` directory, then `uv sync --all-packages` from root
 - **Run app**: `uv run python main.py` from the app's directory (e.g. `apps/backend`, `apps/listener`)
 - **Run tests**: `uv run pytest` from any app/package directory (or root); tests use `pytest` + `pytest-asyncio`
+- **Run coverage**: `uv run coverage run -m pytest && uv run coverage report` from root; `fail_under` in `pyproject.toml` is enforced in CI
 - **Lint**: `uv run ruff check` from root
 - **Format**: `uv run ruff format` from root
 - **Typecheck**: `uv run mypy apps/backend/ apps/listener/ apps/analytics/` from root

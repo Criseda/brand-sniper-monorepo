@@ -22,8 +22,9 @@
    uv run ruff format --check
    uv run mypy apps/backend/ apps/listener/ apps/analytics/
    uv run pytest
+   uv run coverage run -m pytest && uv run coverage report
    ```
-   Fix any issues before committing.
+   Fix any issues before committing. Coverage commands run from the repo root; CI fails if the project-wide coverage drops below the `fail_under` threshold in `pyproject.toml`.
 
 4. **Commit your changes** with a conventional commit message:
    ```

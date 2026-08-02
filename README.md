@@ -20,6 +20,9 @@
   <a href="https://mypy-lang.org/">
     <img src="https://img.shields.io/badge/types-mypy-blue" alt="Mypy">
   </a>
+  <a href="https://app.codecov.io/gh/Criseda/brand-sniper-monorepo">
+    <img src="https://codecov.io/gh/Criseda/brand-sniper-monorepo/graph/badge.svg" alt="Coverage">
+  </a>
 </p>
 
 ---
@@ -97,7 +100,11 @@ uv run ruff check
 uv run ruff format --check
 uv run mypy apps/backend/ apps/listener/ apps/analytics/
 uv run pytest
+uv run coverage run -m pytest   # runs tests and collects coverage
+uv run coverage report          # prints the per-module coverage table
 ```
+
+Coverage commands run from the repo root. The project-wide threshold (`fail_under` in `pyproject.toml`) is enforced in CI; coverage is uploaded to [Codecov](https://app.codecov.io/gh/Criseda/brand-sniper-monorepo) after every push.
 
 All checks run via GitHub Actions on every push/PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
 
