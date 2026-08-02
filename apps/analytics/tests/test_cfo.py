@@ -1,23 +1,10 @@
 import json
-import os
 from unittest.mock import MagicMock, patch
 
+import evaluate_performance
 import pytest
-from prefect.testing.utilities import prefect_test_harness
-
-os.environ["GROQ_API_KEY"] = "MOCK_API_KEY"
-
 from evaluate_performance import evaluate_trade
 from shared_utils.models import SimulatedTrade
-
-
-@pytest.fixture(autouse=True)
-def prefect_test():
-    # Call evaluate_trade() against a managed ephemeral server instead of letting
-    # Prefect spawn an unmanaged temporary server, whose shutdown log fires after
-    # pytest closes stdio and prints a spurious "Logging error" at teardown.
-    with prefect_test_harness():
-        yield
 
 
 @pytest.mark.asyncio
@@ -69,12 +56,18 @@ async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_m
 @patch("evaluate_performance.MlflowClient")
 @patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls, monkeypatch):
     mock_client = MagicMock()
     mock_run = MagicMock()
     mock_run.info.run_id = "test_run_id"
     mock_client.create_run.return_value = mock_run
     mock_mlflow_client_cls.return_value = mock_client
+
+    monkeypatch.setitem(
+        evaluate_performance.AVAILABLE_FUNCTIONS,
+        "fetch_live_market_floor",
+        lambda **kwargs: json.dumps({"live_floor_cents": 900}),
+    )
 
     mock_trade = SimulatedTrade(item_id=1, purchase_price_cents=1000, estimated_profit_cents=500, trigger_z_score=-3.0)
 

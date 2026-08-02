@@ -20,13 +20,17 @@ dev = [
     "ruff>=0.16.0",
     "mypy>=2.3.0",
     "coverage>=7.15.2",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
 filterwarnings = [
     "ignore::UserWarning:prefect.*",
     'ignore:.*httpx.*:UserWarning',
 ]
+timeout = 60
+timeout_method = "thread"
 pythonpath = [
     "packages/shared_utils/src",
     "apps/analytics",
@@ -59,7 +63,24 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 45
+fail_under = 70
 show_missing = true
+
+# Per-module coverage gates enforced by scripts/check_coverage_targets.py.
+# Targets mirror issue #139: https://github.com/Criseda/brand-sniper-monorepo/issues/139
+[tool.brand-sniper.coverage-targets]
+"apps/analytics/seed_historical.py" = 80
+"apps/analytics/update_baselines.py" = 80
+"apps/analytics/long_term_macro.py" = 80
+"apps/analytics/validate_historical.py" = 80
+"apps/analytics/verify_seed_historical.py" = 80
+"apps/listener/scrapers/skinport.py" = 70
+"apps/listener/scrapers/factory.py" = 70
+"apps/listener/executor.py" = 70
+"apps/analytics/evaluate_performance.py" = 80
+"apps/analytics/tools.py" = 80
+"apps/backend/queries.py" = 80
+"apps/listener/rules_engine.py" = 90
+"apps/listener/scrapers/base.py" = 90
 
 

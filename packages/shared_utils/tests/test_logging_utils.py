@@ -50,3 +50,27 @@ def test_get_logger_rejects_non_string_name():
         get_logger(None)
     with pytest.raises(TypeError):
         get_logger(123)
+
+
+def test_get_logger_preserves_preconfigured_level(monkeypatch):
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+    name = "test.level.preset"
+    preconfigured = logging.getLogger(name)
+    preconfigured.setLevel(logging.ERROR)
+
+    logger = get_logger(name)
+
+    assert logger.level == logging.ERROR
+
+
+def test_get_logger_survives_handler_failure(monkeypatch):
+    monkeypatch.delenv("LOG_LEVEL", raising=False)
+
+    def exploding_formatter(*args, **kwargs):
+        raise ValueError("cannot format")
+
+    monkeypatch.setattr(logging, "Formatter", exploding_formatter)
+
+    logger = get_logger("test.handler.failure")
+
+    assert len(logger.handlers) == 0

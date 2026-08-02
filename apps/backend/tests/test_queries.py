@@ -6,9 +6,8 @@ import aiohttp
 import pytest
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import SQLModel
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -54,16 +53,6 @@ def _macro_baseline(item_id: int, latest_price_cents: int, avg_volume_30d: float
         support_floor_cents=55000,
         updated_at=datetime(2025, 1, 1),
     )
-
-
-@pytest.fixture()
-def db_maker(monkeypatch):
-    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
-    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    from shared_utils import db_connection
-
-    monkeypatch.setattr(db_connection, "async_session_maker", maker)
-    return maker, engine
 
 
 async def _create_tables(engine: AsyncEngine) -> None:
@@ -419,3 +408,253 @@ class TestFetchSkinportSalesHistory:
         result = await queries.fetch_skinport_sales_history("Boundary Item Four", version="Minimal Wear")
 
         assert result["version"] == "Minimal Wear"
+
+    async def test_version_no_match_falls_back_to_first_entry(self, mocker):
+        payload = [
+            {"version": "Factory New", "last_24_hours": {"median": 1.0, "volume": 1}},
+            {"version": "Minimal Wear", "last_24_hours": {"median": 2.0, "volume": 1}},
+        ]
+        mocker.patch.object(queries, "_get_session", return_value=self._Client(self._OkResponse(payload)))
+
+        result = await queries.fetch_skinport_sales_history("Boundary Item Five", version="Souvenir")
+
+        assert result["version"] == "Factory New"
+
+    async def test_empty_list_payload_returns_empty_dict(self, mocker):
+        mocker.patch.object(queries, "_get_session", return_value=self._Client(self._OkResponse([])))
+
+        assert await queries.fetch_skinport_sales_history("Boundary Item Six") == {}
+
+    async def test_cached_entry_skips_api_call(self, mocker):
+        class CountingClient:
+            def __init__(self):
+                self.get_calls = 0
+
+            def get(self, *args, **kwargs):
+                self.get_calls += 1
+                return self._OkResponse([{"last_24_hours": {"median": 5.0, "volume": 2}}])
+
+            class _OkResponse:
+                status = 200
+
+                def __init__(self, payload):
+                    self.payload = payload
+
+                async def __aenter__(self):
+                    return self
+
+                async def __aexit__(self, exc_type, exc, tb):
+                    return None
+
+                async def json(self):
+                    return self.payload
+
+        client = CountingClient()
+        mocker.patch.object(queries, "_get_session", return_value=client)
+
+        first = await queries.fetch_skinport_sales_history("Boundary Item Seven")
+        second = await queries.fetch_skinport_sales_history("Boundary Item Seven")
+
+        assert first == second
+        assert client.get_calls == 1
+
+
+@pytest.mark.asyncio
+class TestGetStickerPriceCents:
+    async def test_api_median_resolves_to_cents(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value=KNIFE_HISTORY)
+
+        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 70000
+
+    async def test_api_empty_falls_back_to_db_history_avg(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [
+                MarketItem(id=10, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
+                HistoricalPrice(item_id=10, sale_date=datetime(2025, 1, 1), median_price_cents=12345, volume_sold=5),
+            ],
+        )
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
+
+        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 12345
+
+    async def test_db_history_missing_falls_back_to_live_ticks(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [
+                MarketItem(id=11, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
+                LiveMarketTick(item_id=11, price_cents=9999, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=11, price_cents=9999, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
+            ],
+        )
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
+
+        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 9999
+
+    async def test_unknown_sticker_returns_none(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
+
+        assert await queries.get_sticker_price_cents("Not A Real Sticker") is None
+
+    async def test_api_median_missing_falls_back_to_db(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [
+                MarketItem(id=12, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
+                HistoricalPrice(item_id=12, sale_date=datetime(2025, 1, 1), median_price_cents=777, volume_sold=1),
+            ],
+        )
+        mocker.patch.object(
+            queries,
+            "fetch_skinport_sales_history",
+            return_value={"last_24_hours": {"median": None, "volume": 0}},
+        )
+
+        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 777
+
+    async def test_db_failure_returns_none_without_raising(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [MarketItem(id=13, market_hash_name="Titan | Katowice 2014", item_type="Sticker")],
+        )
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
+        mocker.patch.object(
+            queries,
+            "session_scope",
+            side_effect=SQLAlchemyError("database down"),
+        )
+
+        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") is None
+
+
+@pytest.mark.asyncio
+class TestSearchMacroTrends:
+    async def test_empty_query_returns_empty_list(self, db_maker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+
+        assert await queries.search_macro_trends("") == []
+
+    async def test_no_matching_items_returns_empty_list(self, db_maker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+
+        assert await queries.search_macro_trends("Butterfly") == []
+
+    async def test_skips_items_without_baseline(self, db_maker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [
+                MarketItem(id=20, market_hash_name="AK-47 | Redline (Field-Tested)", item_type="Rifle"),
+                MarketItem(id=21, market_hash_name="AWP | Asiimov (Field-Tested)", item_type="Rifle"),
+                _macro_baseline(item_id=21, latest_price_cents=50000, avg_volume_30d=1.0),
+            ],
+        )
+
+        results = await queries.search_macro_trends("AK-47")
+
+        assert results == []
+
+    async def test_happy_path_returns_baseline_fields(self, db_maker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [
+                MarketItem(id=22, market_hash_name="AK-47 | Redline (Field-Tested)", item_type="Rifle"),
+                _macro_baseline(item_id=22, latest_price_cents=15000, avg_volume_30d=3.0),
+            ],
+        )
+
+        results = await queries.search_macro_trends("redline")
+
+        assert len(results) == 1
+        assert results[0]["market_hash_name"] == "AK-47 | Redline (Field-Tested)"
+        assert results[0]["drift_percent"] == 0.02
+        assert results[0]["latest_price_cents"] == 15000
+
+
+class TestPrivateFetchers:
+    @pytest.mark.asyncio
+    async def test_resolve_item_falls_back_to_base_when_version_missing(self, db_maker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(
+            maker,
+            [MarketItem(id=30, market_hash_name=BASE_NAME, item_type="Knife")],
+        )
+
+        async with maker() as session:
+            resolved = await queries._resolve_item(session, VERSIONED_NAME, BASE_NAME, "Phase 3")
+
+        assert resolved == (30, "Knife", 30)
+
+    @pytest.mark.asyncio
+    async def test_resolve_item_unknown_returns_none(self, db_maker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+
+        async with maker() as session:
+            assert await queries._resolve_item(session, "Ghost Item", "Ghost Item", None) is None
+
+    @pytest.mark.asyncio
+    async def test_fetchers_log_and_return_none_on_sqlalchemy_error(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        mocker.patch("sqlalchemy.ext.asyncio.AsyncSession.execute", side_effect=SQLAlchemyError("boom"))
+
+        async with maker() as session:
+            assert await queries._fetch_steam_baseline(session, "Item", 1) is None
+            assert await queries._fetch_skinport_baseline(session, "Item", 1) is None
+            assert await queries._fetch_macro_baseline(session, "Item", 1) is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_item_returns_none_on_sqlalchemy_error(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        mocker.patch("sqlalchemy.ext.asyncio.AsyncSession.execute", side_effect=SQLAlchemyError("boom"))
+
+        async with maker() as session:
+            assert await queries._resolve_item(session, VERSIONED_NAME, BASE_NAME, "Phase 3") is None
+
+
+@pytest.mark.asyncio
+class TestHttpSession:
+    async def test_get_session_reuses_singleton(self):
+        first = await queries._get_session()
+        second = await queries._get_session()
+        try:
+            assert first is second
+            assert not first.closed
+        finally:
+            await queries.close_http_session()
+
+    async def test_close_http_session_closes_and_resets(self):
+        session = await queries._get_session()
+        assert session is not None
+
+        await queries.close_http_session()
+
+        assert queries._backend_session is None
+        assert session.closed
+
+
+class TestAnalyzeRealTimeHistoryEdge:
+    def test_history_without_usable_median_returns_defaults(self):
+        history = {"last_24_hours": {"median": None, "volume": 0}}
+
+        assert _analyze_real_time_history(history) == (None, False, 0.0)

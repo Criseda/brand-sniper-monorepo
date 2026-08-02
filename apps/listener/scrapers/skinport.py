@@ -9,11 +9,15 @@ from pathlib import Path
 import aiohttp
 from models import MarketTick
 from redis.asyncio import Redis
+from scrapers.base import BaseScraper
 from shared_utils import build_versioned_name, get_logger, parse_version_from_name, resolve_recent_median
 
-from scrapers.base import BaseScraper
-
 logger = get_logger("listener.skinport")
+
+
+async def _sleep(seconds: float) -> None:
+    """Testable seam over asyncio.sleep for cooldown/backoff waits."""
+    await asyncio.sleep(seconds)
 
 
 class SkinportScraper(BaseScraper):
@@ -115,7 +119,7 @@ class SkinportScraper(BaseScraper):
 
             # Respect the 5-minute cache instruction or back off if rate limited
             logger.info("Entering calculated cooldown cycle for %d seconds...", backoff_seconds)
-            await asyncio.sleep(backoff_seconds)
+            await _sleep(backoff_seconds)
 
     async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
         """
