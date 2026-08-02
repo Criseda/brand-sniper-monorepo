@@ -3,11 +3,21 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+from prefect.testing.utilities import prefect_test_harness
 
 os.environ["GROQ_API_KEY"] = "MOCK_API_KEY"
 
 from evaluate_performance import evaluate_trade
 from shared_utils.models import SimulatedTrade
+
+
+@pytest.fixture(autouse=True)
+def prefect_test():
+    # Call evaluate_trade() against a managed ephemeral server instead of letting
+    # Prefect spawn an unmanaged temporary server, whose shutdown log fires after
+    # pytest closes stdio and prints a spurious "Logging error" at teardown.
+    with prefect_test_harness():
+        yield
 
 
 @pytest.mark.asyncio
