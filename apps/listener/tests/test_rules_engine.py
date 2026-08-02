@@ -13,38 +13,6 @@ class MockMarketTick:
     stickers: list[dict[str, str]]
 
 
-class MockRedis:
-    def __init__(self):
-        self.data = {}
-
-    async def set(self, key, value):
-        self.data[key] = value
-
-    async def get(self, key):
-        return self.data.get(key)
-
-    async def hget(self, name, key):
-        hash_data = self.data.get(name, {})
-        return hash_data.get(key)
-
-    async def hset(self, name, key, value):
-        if name not in self.data:
-            self.data[name] = {}
-        self.data[name][key] = value
-
-
-@pytest.fixture
-def mock_redis():
-    r = MockRedis()
-    # Baseline for AK-47 Redline
-    baseline = {"support_floor_cents": 1500, "latest_price_cents": 1600}
-    r.data["baseline:AK-47 | Redline (Field-Tested)"] = json.dumps(baseline)
-
-    # Sticker prices
-    r.data["sticker_prices"] = {"Titan | Katowice 2014": "500000", "iBUYPOWER | Cologne 2014": "15000", "Cheap Sticker": "50"}
-    return r
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("tick", "expected"),
@@ -170,3 +138,50 @@ async def test_baseline_passed_directly_works(mock_redis):
     # Even without the baseline in Redis, passing it directly should work
     mock_redis.data.pop("baseline:AK-47 | Redline (Field-Tested)", None)
     assert await evaluate_opportunity(tick, mock_redis, baseline=baseline) is True
+
+
+# ── Sticker premium edge paths ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_sticker_not_in_price_map_is_skipped(mock_redis):
+    """Stickers whose price is missing from Redis add zero to the valuation."""
+    tick = MockMarketTick(
+        market_hash_name="AK-47 | Redline (Field-Tested)",
+        price_cents=1700,
+        stickers=[{"name": "Mystery Sticker"}, {"name": "Another Mystery"}],
+    )
+    assert await evaluate_opportunity(tick, mock_redis) is False
+
+
+@pytest.mark.asyncio
+async def test_non_numeric_sticker_price_is_ignored(mock_redis):
+    """A corrupt (non-numeric) sticker price must not crash the evaluation."""
+    mock_redis.data["sticker_prices"]["Broken Sticker"] = "not-a-number"
+
+    tick = MockMarketTick(
+        market_hash_name="AK-47 | Redline (Field-Tested)",
+        price_cents=1700,
+        stickers=[{"name": "Broken Sticker"}],
+    )
+    assert await evaluate_opportunity(tick, mock_redis) is False
+
+
+@pytest.mark.asyncio
+async def test_free_stickers_below_base_price_approved(mock_redis):
+    """Valuable stickers acquired at/below base price should be approved."""
+    tick = MockMarketTick(
+        market_hash_name="AK-47 | Redline (Field-Tested)",
+        price_cents=1501,  # above support floor (1500), below latest price (1600)
+        stickers=[{"name": "Titan | Katowice 2014"}],
+    )
+    assert await evaluate_opportunity(tick, mock_redis) is True
+
+
+@pytest.mark.asyncio
+async def test_tick_without_stickers_attribute_is_safe(mock_redis):
+    class BareTick:
+        market_hash_name = "AK-47 | Redline (Field-Tested)"
+        price_cents = 1700
+
+    assert await evaluate_opportunity(BareTick(), mock_redis) is False

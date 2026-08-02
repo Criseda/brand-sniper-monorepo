@@ -70,6 +70,9 @@ jobs:
           uv run coverage report
           uv run coverage xml -o coverage.xml
 
+      - name: Per-module coverage targets
+        run: uv run python scripts/check_coverage_targets.py
+
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:

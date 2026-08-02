@@ -33,6 +33,12 @@ from tools import AVAILABLE_FUNCTIONS, TOOL_SCHEMAS
 
 logger = get_logger("analytics.evaluate")
 
+
+async def _sleep(seconds: float) -> None:
+    """Testable seam over asyncio.sleep for retry backoff waits."""
+    await asyncio.sleep(seconds)
+
+
 _MODELS = [
     "qwen/qwen3-32b",
     "llama-3.3-70b-versatile",
@@ -258,7 +264,7 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
                     delay,
                     e,
                 )
-                await asyncio.sleep(delay)
+                await _sleep(delay)
             else:
                 logger.error("Groq CFO failed for %s after 3 attempts: %s", item_name, e)
                 score = 0

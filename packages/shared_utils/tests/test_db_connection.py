@@ -89,6 +89,33 @@ def test_sentinel_bool_evaluation():
     assert not sentinel
 
 
+def test_sentinel_repr():
+    sentinel = MissingDatabaseURLSentinel("test_sentinel")
+    assert repr(sentinel) == "<MissingDatabaseURLSentinel for test_sentinel>"
+
+
+def test_sentinel_dunder_attributes_raise_attribute_error():
+    sentinel = MissingDatabaseURLSentinel("test_sentinel")
+
+    with pytest.raises(AttributeError):
+        _ = sentinel.__name__
+
+
+def test_apply_ssl_for_remote_appends_to_existing_query_params():
+    url = "postgresql+asyncpg://user:pass@remote-host/db?pool_size=5"
+    assert apply_ssl_for_remote(url) == "postgresql+asyncpg://user:pass@remote-host/db?pool_size=5&ssl=require"
+
+
+def test_apply_ssl_for_remote_psycopg2_with_query_params():
+    url = "postgresql+psycopg2://user:pass@remote-host/db?keepalives=1"
+    assert apply_ssl_for_remote(url) == "postgresql+psycopg2://user:pass@remote-host/db?keepalives=1&sslmode=require"
+
+
+def test_apply_ssl_for_remote_malformed_url_returns_url():
+    url = "not-a-valid-url"
+    assert apply_ssl_for_remote(url) == url + "?ssl=require"
+
+
 @pytest.mark.asyncio
 async def test_session_scope_raises_when_database_url_missing(monkeypatch):
     monkeypatch.setattr("shared_utils.db_connection.async_session_maker", MissingDatabaseURLSentinel("async_session_maker"))
