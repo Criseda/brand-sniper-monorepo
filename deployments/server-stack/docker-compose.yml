@@ -14,7 +14,9 @@ services:
   #   ports:
   #     - "5432:5432"
   #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
+  #     # Mount at /var/lib/postgresql: the postgres:18 image moved PGDATA to
+  #     # /var/lib/postgresql/18/docker and no longer writes to /var/lib/postgresql/data.
+  #     - postgres_data:/var/lib/postgresql
   #   networks:
   #     - sniper_network
   #   restart: unless-stopped

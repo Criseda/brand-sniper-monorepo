@@ -13,8 +13,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-brand_sniper}
     ports:
       - "${LOCAL_POSTGRES_PORT:-5432}:5432"
+    # Mount at /var/lib/postgresql: the postgres:18 image moved PGDATA to
+    # /var/lib/postgresql/18/docker and no longer writes to /var/lib/postgresql/data.
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     networks:
       - sniper_network
     restart: unless-stopped
@@ -24,10 +26,16 @@ services:
       timeout: 5s
       retries: 5
 
+  mlflow-server:
+    environment:
+      MLFLOW_DATABASE_URL: ${LOCAL_MLFLOW_DATABASE_URL:-postgresql+psycopg2://postgres:postgres@postgres:5432/brand_sniper}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   backend:
     environment:
       DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/brand_sniper}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,8 +47,6 @@ services:
     #   - ../../packages/shared_utils:/app/packages/shared_utils
 
   listener:
-    environment:
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     # Uncomment for live-editing listener code from the host.
     # If the Node sidecar needs local dependencies, run npm install in
     # apps/listener/scrapers/skinport_websocket before mounting this directory.
@@ -51,7 +57,9 @@ services:
   analytics:
     environment:
       DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/brand_sniper}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+    depends_on:
+      postgres:
+        condition: service_healthy
     # Uncomment for live-editing analytics code from the host.
     # volumes:
     #   - ../../apps/analytics:/app/apps/analytics
