@@ -25,7 +25,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-from database import AsyncSessionLocal, engine
+from database import engine, session_scope
 from queries import close_http_session, get_item_market_context
 from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database schemas verified and mapped successfully.")
 
     # Load all existing market items into RAM cache
-    async with AsyncSessionLocal() as session:
+    async with session_scope() as session:
         stmt = select(MarketItem.market_hash_name, MarketItem.id)
         result = await session.exec(stmt)
         for name, item_id in result:
@@ -151,7 +151,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
     paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
 
     try:
-        async with AsyncSessionLocal() as session:
+        async with session_scope() as session:
             async with session.begin():
                 item_id = await get_or_create_item_id(session, payload.market_hash_name)
                 trade = SimulatedTrade(
@@ -179,7 +179,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
     if total_ticks == 0:
         return {"status": "SKIPPED", "records_processed": 0}
 
-    async with AsyncSessionLocal() as session:
+    async with session_scope() as session:
         async with session.begin():
             insert_data = []
             for tick in payload.ticks:

@@ -107,3 +107,44 @@ def test_detect_downtrend(entry, expected_detected, expected_severity):
     detected, severity = detect_downtrend(entry)
     assert detected is expected_detected
     assert severity == expected_severity
+
+
+def test_to_cents_rejects_non_numeric():
+    with pytest.raises(TypeError):
+        to_cents("not-a-number")
+
+
+@pytest.mark.parametrize("bad_entry", [None, "string", 42, ["list"]], ids=["none", "string", "int", "list"])
+def test_resolve_recent_median_rejects_non_dict(bad_entry):
+    with pytest.raises(TypeError):
+        resolve_recent_median(bad_entry)
+
+
+@pytest.mark.parametrize("bad_entry", [None, "string", 42], ids=["none", "string", "int"])
+def test_detect_downtrend_rejects_non_dict(bad_entry):
+    with pytest.raises(TypeError):
+        detect_downtrend(bad_entry)
+
+
+def test_resolve_recent_median_skips_non_numeric_median():
+    entry = {
+        "last_24_hours": {"median": "NaN-ish", "volume": 10},
+        "last_7_days": {"median": 11.00, "volume": 50},
+    }
+    assert resolve_recent_median(entry) == 11.00
+
+
+def test_resolve_recent_median_returns_none_when_all_medians_malformed():
+    entry = {"last_90_days": {"median": {"bad": "shape"}}}
+    assert resolve_recent_median(entry) is None
+
+
+def test_detect_downtrend_ignores_malformed_median():
+    entry = {
+        "last_24_hours": {"median": "boom", "volume": 10},
+        "last_7_days": {"median": 9.00, "volume": 50},
+        "last_30_days": {"median": 12.00, "volume": 200},
+    }
+    detected, severity = detect_downtrend(entry)
+    assert detected is True
+    assert severity == pytest.approx(0.25)

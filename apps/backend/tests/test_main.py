@@ -11,18 +11,16 @@ _test_session_maker = async_sessionmaker(bind=_test_engine, class_=AsyncSession,
 
 
 @pytest.fixture(name="client")
-def client_fixture():
+def client_fixture(monkeypatch):
     backend_dir = str(Path(__file__).resolve().parent.parent)
     sys.path.insert(0, backend_dir)
+
+    from shared_utils import db_connection
 
     import main as backend_main
 
     backend_main.engine = _test_engine
-    backend_main.AsyncSessionLocal = _test_session_maker
-
-    import queries as queries_module
-
-    queries_module.AsyncSessionLocal = _test_session_maker
+    monkeypatch.setattr(db_connection, "async_session_maker", _test_session_maker)
 
     from main import app
 

@@ -3,12 +3,24 @@ import urllib.parse
 WEAR_SUFFIXES = ["(Factory New)", "(Minimal Wear)", "(Field-Tested)", "(Well-Worn)", "(Battle-Scarred)"]
 
 
+def _require_str(value: object, arg_name: str) -> str:
+    """Validates that a name argument is a non-empty string, raising TypeError otherwise."""
+    if not isinstance(value, str):
+        raise TypeError(
+            f"{arg_name} must be a string, got {type(value).__name__}. Refusing to classify a non-string item name."
+        )
+    return value
+
+
 def parse_item_meta(name_or_filename: str) -> tuple[str, str]:
     """
     Decodes a filename or asset name, resolving the clean market_hash_name
     and classifying its structural category (e.g. Knife, Glove, Weapon Skin, Agent).
+
+    Raises TypeError if name_or_filename is not a string.
     """
-    clean_name = urllib.parse.unquote(name_or_filename.replace(".csv", ""))
+    raw_name = _require_str(name_or_filename, "name_or_filename")
+    clean_name = urllib.parse.unquote(raw_name.replace(".csv", ""))
 
     if "\u2605" in clean_name:
         if any(w in clean_name for w in ["Gloves", "Wraps"]):
@@ -57,7 +69,10 @@ def parse_version_from_name(name: str) -> tuple[str, str | None]:
     Example:
       "\u2605 Butterfly Knife | Doppler (Phase 3) (Factory New)"
       returns: ("\u2605 Butterfly Knife | Doppler (Factory New)", "Phase 3")
+
+    Raises TypeError if name is not a string.
     """
+    name = _require_str(name, "name")
     for wear in WEAR_SUFFIXES:
         if name.endswith(wear):
             rest = name[: -len(wear)].strip()
@@ -89,7 +104,10 @@ def build_versioned_name(market_hash_name: str, version: str | None) -> str:
 
       build_versioned_name("AK-47 | Redline (Field-Tested)", None)
         -> "AK-47 | Redline (Field-Tested)"
+
+    Raises TypeError if market_hash_name is not a string.
     """
+    market_hash_name = _require_str(market_hash_name, "market_hash_name")
     if not version or version == "default":
         return market_hash_name
 

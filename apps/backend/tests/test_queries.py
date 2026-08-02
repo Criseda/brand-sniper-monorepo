@@ -60,7 +60,9 @@ def _macro_baseline(item_id: int, latest_price_cents: int, avg_volume_30d: float
 def db_maker(monkeypatch):
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
     maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr(queries, "AsyncSessionLocal", maker)
+    from shared_utils import db_connection
+
+    monkeypatch.setattr(db_connection, "async_session_maker", maker)
     return maker, engine
 
 
@@ -324,7 +326,9 @@ class TestGetItemMarketContext:
         assert context["snipe_threshold_cents"] == 5525
         assert context["item_page"] is None
 
-    async def test_db_failure_returns_none_without_raising(self, db_maker, mocker):
+    async def test_db_failure_returns_none_without_raising(self, mocker):
+        from contextlib import asynccontextmanager
+
         class ExplodingSession:
             async def __aenter__(self):
                 return self
@@ -335,7 +339,12 @@ class TestGetItemMarketContext:
             async def execute(self, *args, **kwargs):
                 raise SQLAlchemyError("database down")
 
-        mocker.patch.object(queries, "AsyncSessionLocal", return_value=ExplodingSession())
+        @asynccontextmanager
+        async def exploding_scope():
+            async with ExplodingSession() as session:
+                yield session
+
+        mocker.patch.object(queries, "session_scope", exploding_scope)
 
         assert await get_item_market_context(VERSIONED_NAME) is None
 

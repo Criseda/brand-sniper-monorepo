@@ -138,3 +138,21 @@ def test_parse_build_roundtrip():
     base, version = parse_version_from_name(original)
     rebuilt = build_versioned_name(base, version)
     assert rebuilt == original
+
+
+@pytest.mark.parametrize("bad_name", [None, 123, ["name"], {"name": "x"}], ids=["none", "int", "list", "dict"])
+def test_parse_item_meta_rejects_non_string(bad_name):
+    with pytest.raises(TypeError):
+        parse_item_meta(bad_name)
+
+
+@pytest.mark.parametrize("bad_name", [None, 123], ids=["none", "int"])
+def test_parse_version_from_name_rejects_non_string(bad_name):
+    with pytest.raises(TypeError):
+        parse_version_from_name(bad_name)
+
+
+@pytest.mark.parametrize("bad_name", [None, 123], ids=["none", "int"])
+def test_build_versioned_name_rejects_non_string_base(bad_name):
+    with pytest.raises(TypeError):
+        build_versioned_name(bad_name, "Phase 3")
