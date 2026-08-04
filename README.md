@@ -83,8 +83,8 @@ docs/
 .vscode/              Pinned editor config: extensions + ruff/mypy/pytest settings
 ```
 
-Contributors can skip manual env setup: open the repo in
-[GitHub Codespaces](docs/getting-started.md#option-a-open-in-github-codespaces-recommended)
+Contributors can use either path: manual setup (below) or a dev container — open the repo in
+[GitHub Codespaces](docs/getting-started.md#option-open-in-github-codespaces)
 or a `.devcontainer/`-compatible VS Code Remote container for a ready-to-run
 Python 3.12 + uv toolchain. Docker service stacks still run via Docker Desktop on the host.
 
