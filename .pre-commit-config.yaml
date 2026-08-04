@@ -1,0 +1,30 @@
+# Pre-commit hooks: local, resolved via `uv run` so the locked toolchain is
+# used (no global installs assumed). Hooks mirror the CI quality gates:
+#   ruff check --fix, ruff format, mypy (3 apps).
+# mypy runs the full project (pass_filenames: false) — ~3s on this repo,
+# so it stays in the default hooks; remove this hook if latency ever regresses.
+#
+# Install once:  uv run pre-commit install
+# Run manually:  uv run pre-commit run --all-files
+# Skip:          git commit --no-verify
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy apps/backend/ apps/listener/ apps/analytics/
+        language: system
+        pass_filenames: false
+        types: [python]

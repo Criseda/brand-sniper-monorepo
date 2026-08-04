@@ -15,14 +15,20 @@
    - Keep shared models in `packages/shared_utils/src/shared_utils/models.py`
    - Use `contextvars.ContextVar` for thread-safe telemetry
 
-3. **Run quality checks locally**:
+3. **Install the commit-time quality gate (one-time per clone)**:
    ```bash
    make setup
+   uv run pre-commit install
+   ```
+   `pre-commit` runs `ruff check --fix`, `ruff format`, and `mypy` on every `git commit`, so CI failures for lint/format/type issues become rare. Forced full pass over all files: `uv run pre-commit run --all-files`.
+
+4. **Run the remaining gates locally** (tests stay manual — slower, and CI covers them):
+   ```bash
    make check
    ```
    `make check` runs the exact gates CI runs (lint, format check, typecheck, tests, and the project-wide coverage gate — `fail_under` in `pyproject.toml`). Fix any issues before committing. See `make help` for all shortcuts; the raw `uv` commands remain documented in [AGENTS.md](AGENTS.md).
 
-4. **Commit your changes** with a conventional commit message:
+5. **Commit your changes** with a conventional commit message:
    ```
    feat: add new endpoint for ...
    fix: resolve crash when ...
@@ -30,13 +36,13 @@
    docs: update README ...
    ```
 
-5. **Push and open a pull request** against `main`:
+6. **Push and open a pull request** against `main`:
    ```bash
    git push -u origin feat/my-feature
    ```
    Then open a PR on GitHub. Use the [pull request template](.github/pull_request_template.md).
 
-6. **CI checks** run automatically on your PR. All checks must pass before merging. The `main` branch is protected — direct pushes are not allowed.
+7. **CI checks** run automatically on your PR. All checks must pass before merging. The `main` branch is protected — direct pushes are not allowed.
 
 ## Branch naming
 
