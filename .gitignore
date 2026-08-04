@@ -22,7 +22,10 @@ data/
 *.log
 
 # IDE & OS Specific junk
-.vscode/
+# .vscode/ is ignored except the pinned config files we want in the repo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 .DS_Store
 
