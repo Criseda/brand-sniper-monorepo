@@ -40,6 +40,15 @@ addopts = ["--import-mode=importlib"]
 filterwarnings = [
     "ignore::UserWarning:prefect.*",
     'ignore:.*httpx.*:UserWarning',
+    # Test engines (sqlite+aiosqlite) are now explicitly disposed in fixtures
+    # before the per-test event loop closes (see apps/backend/tests/conftest.py
+    # and test_main.py), which prevents aiosqlite connection worker threads from
+    # outliving the loop. This broad suppression stays as a fallback only for
+    # timing-variant environments (e.g. Codespaces) where a worker thread can
+    # still observe "Event loop is closed" during test-loop teardown after an
+    # otherwise-green test run. Keep broad: the thread name/timing vary per run,
+    # so the message cannot be matched reliably.
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning",
 ]
 timeout = 60
 timeout_method = "thread"

@@ -1,15 +1,30 @@
 import time
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import aiohttp
 from database import session_scope
 from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy import Integer, String, cast, func, select
+from sqlalchemy.engine import Result
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.selectable import Select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 logger = get_logger("backend.queries")
+
+
+async def _exec_result(session: AsyncSession, stmt: Select[Any]) -> Result[Any]:
+    """Runs a SELECT via SQLModel's exec() and returns a plain SQLAlchemy Result.
+
+    exec() only unwraps to a ScalarResult for statements built with SQLModel's
+    own select(); for SQLAlchemy-built selects (cast/func/join) it returns a
+    normal Result, which is what every caller here consumes. The type-ignore is
+    required because SQLModel's exec() overloads only accept its own Select
+    subclass.
+    """
+    return await session.exec(stmt)  # type: ignore[call-overload]
+
 
 # Shared aiohttp session for backend API requests
 _backend_session: aiohttp.ClientSession | None = None
@@ -99,7 +114,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
         async with session_scope() as session:
             # Resolve item_id for the sticker
             item_stmt = select(cast(MarketItem.id, Integer)).where(cast(MarketItem.market_hash_name, String) == sticker_name)
-            item_res = await session.execute(item_stmt)
+            item_res = await _exec_result(session, item_stmt)
             item_row = item_res.fetchone()
             if not item_row:
                 return None
@@ -109,7 +124,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
             hist_stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(
                 cast(HistoricalPrice.item_id, Integer) == sticker_item_id
             )
-            hist_res = await session.execute(hist_stmt)
+            hist_res = await _exec_result(session, hist_stmt)
             avg_hist = hist_res.scalar()
             if avg_hist is not None:
                 return round(float(avg_hist))
@@ -118,7 +133,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
             live_stmt = select(func.avg(LiveMarketTick.price_cents)).where(
                 cast(LiveMarketTick.item_id, Integer) == sticker_item_id
             )
-            live_res = await session.execute(live_stmt)
+            live_res = await _exec_result(session, live_stmt)
             avg_live = live_res.scalar()
             if avg_live is not None:
                 return round(float(avg_live))
@@ -165,7 +180,7 @@ async def _resolve_item(
         item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
             cast(MarketItem.market_hash_name, String) == base_name
         )
-        item_res = await session.execute(item_stmt)
+        item_res = await _exec_result(session, item_stmt)
         item_row = item_res.fetchone()
 
         if not item_row:
@@ -178,7 +193,7 @@ async def _resolve_item(
             versioned_stmt = select(cast(MarketItem.id, Integer)).where(
                 cast(MarketItem.market_hash_name, String) == market_hash_name
             )
-            versioned_res = await session.execute(versioned_stmt)
+            versioned_res = await _exec_result(session, versioned_stmt)
             versioned_row = versioned_res.fetchone()
             if versioned_row:
                 versioned_item_id = versioned_row[0]
@@ -196,7 +211,7 @@ async def _fetch_steam_baseline(session: AsyncSession, market_hash_name: str, it
     """
     try:
         stmt = select(func.avg(HistoricalPrice.median_price_cents)).where(cast(HistoricalPrice.item_id, Integer) == item_id)
-        res = await session.execute(stmt)
+        res = await _exec_result(session, stmt)
         raw = res.scalar()
         return float(raw) if raw is not None else None
     except SQLAlchemyError as e:
@@ -214,7 +229,7 @@ async def _fetch_skinport_baseline(session: AsyncSession, market_hash_name: str,
             cast(LiveMarketTick.item_id, Integer) == item_id,
             cast(LiveMarketTick.marketplace_source, String) == "skinport",
         )
-        res = await session.execute(stmt)
+        res = await _exec_result(session, stmt)
         raw = res.scalar()
         return float(raw) if raw is not None else None
     except SQLAlchemyError as e:
@@ -229,7 +244,7 @@ async def _fetch_macro_baseline(session: AsyncSession, market_hash_name: str, it
     """
     try:
         stmt = select(ItemMacroBaseline).where(cast(ItemMacroBaseline.item_id, Integer) == item_id)
-        res = await session.execute(stmt)
+        res = await _exec_result(session, stmt)
         return res.scalar_one_or_none()
     except SQLAlchemyError as e:
         logger.error("Error fetching macro baseline for '%s': %s", market_hash_name, e)
@@ -418,7 +433,7 @@ async def search_macro_trends(query: str) -> list[dict]:
             .where(func.lower(cast(MarketItem.market_hash_name, String)).contains(query.lower()))
             .limit(10)
         )
-        result = await session.execute(stmt)
+        result = await _exec_result(session, stmt)
         rows = result.fetchall()
 
     if not rows:

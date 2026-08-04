@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from pathlib import Path
 
@@ -8,6 +9,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 _test_engine = create_async_engine("sqlite+aiosqlite://", echo=False)
 _test_session_maker = async_sessionmaker(bind=_test_engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _dispose_test_engine():
+    yield
+    asyncio.run(_test_engine.dispose())
 
 
 @pytest.fixture(name="client")
