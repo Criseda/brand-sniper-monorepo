@@ -23,6 +23,13 @@ dev = [
     "pytest-timeout>=2.4.0",
 ]
 
+[tool.uv]
+override-dependencies = [
+    # mlflow pins cryptography<50; latest advisory (GHSA-g6cj-pr64-35w5) is only
+    # fixed in 50.0.0, so force the patched release to keep `uv audit` green.
+    "cryptography>=50.0.0",
+]
+
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
 filterwarnings = [
