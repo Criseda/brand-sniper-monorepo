@@ -17,14 +17,10 @@
 
 3. **Run quality checks locally**:
    ```bash
-   uv sync --all-packages --group dev
-   uv run ruff check
-   uv run ruff format --check
-   uv run mypy apps/backend/ apps/listener/ apps/analytics/
-   uv run pytest
-   uv run coverage run -m pytest && uv run coverage report
+   make setup
+   make check
    ```
-   Fix any issues before committing. Coverage commands run from the repo root; CI fails if the project-wide coverage drops below the `fail_under` threshold in `pyproject.toml`.
+   `make check` runs the exact gates CI runs (lint, format check, typecheck, tests, and the project-wide coverage gate — `fail_under` in `pyproject.toml`). Fix any issues before committing. See `make help` for all shortcuts; the raw `uv` commands remain documented in [AGENTS.md](AGENTS.md).
 
 4. **Commit your changes** with a conventional commit message:
    ```

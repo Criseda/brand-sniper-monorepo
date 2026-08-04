@@ -96,15 +96,21 @@ docs/
 ## Quality Assurance
 
 ```bash
+make setup
+make check    # full CI gate: lint, format-check, typecheck, tests + coverage
+```
+
+`make check` mirrors CI exactly. The raw commands it wraps (useful for one-off runs) are:
+
+```bash
 uv run ruff check
 uv run ruff format --check
 uv run mypy apps/backend/ apps/listener/ apps/analytics/
-uv run pytest
-uv run coverage run -m pytest   # runs tests and collects coverage
-uv run coverage report          # prints the per-module coverage table
+uv run coverage run -m pytest
+uv run coverage report   # prints the per-module coverage table
 ```
 
-Coverage commands run from the repo root. The project-wide threshold (`fail_under` in `pyproject.toml`) is enforced in CI; coverage is uploaded to [Codecov](https://app.codecov.io/gh/Criseda/brand-sniper-monorepo) after every push.
+Coverage commands run from the repo root. The project-wide threshold (`fail_under` in `pyproject.toml`) is enforced in CI; coverage is uploaded to [Codecov](https://app.codecov.io/gh/Criseda/brand-sniper-monorepo) after every push. See `make help` for all shortcuts.
 
 All checks run via GitHub Actions on every push/PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
 
