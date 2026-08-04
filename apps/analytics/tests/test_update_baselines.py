@@ -110,6 +110,8 @@ STICKER_ROW = ("Titan | Katowice 2014", 500000)
 @pytest.mark.asyncio
 async def test_sync_pushes_baselines_and_stickers(monkeypatch, fake_redis):
     _install_fake_engine(monkeypatch, [BASELINE_ROW], [STICKER_ROW])
+    monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+    monkeypatch.delenv("EDGE_REDIS_URL", raising=False)
 
     await update_baselines.sync_baselines_to_edge()
 

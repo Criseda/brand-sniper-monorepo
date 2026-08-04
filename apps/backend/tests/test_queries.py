@@ -325,7 +325,7 @@ class TestGetItemMarketContext:
             async def __aexit__(self, exc_type, exc, tb):
                 pass
 
-            async def execute(self, *args, **kwargs):
+            async def exec(self, *args, **kwargs):
                 raise SQLAlchemyError("database down")
 
         @asynccontextmanager
@@ -615,7 +615,7 @@ class TestPrivateFetchers:
     async def test_fetchers_log_and_return_none_on_sqlalchemy_error(self, db_maker, mocker):
         maker, engine = db_maker
         await _create_tables(engine)
-        mocker.patch("sqlalchemy.ext.asyncio.AsyncSession.execute", side_effect=SQLAlchemyError("boom"))
+        mocker.patch("sqlmodel.ext.asyncio.session.AsyncSession.exec", side_effect=SQLAlchemyError("boom"))
 
         async with maker() as session:
             assert await queries._fetch_steam_baseline(session, "Item", 1) is None
@@ -626,7 +626,7 @@ class TestPrivateFetchers:
     async def test_resolve_item_returns_none_on_sqlalchemy_error(self, db_maker, mocker):
         maker, engine = db_maker
         await _create_tables(engine)
-        mocker.patch("sqlalchemy.ext.asyncio.AsyncSession.execute", side_effect=SQLAlchemyError("boom"))
+        mocker.patch("sqlmodel.ext.asyncio.session.AsyncSession.exec", side_effect=SQLAlchemyError("boom"))
 
         async with maker() as session:
             assert await queries._resolve_item(session, VERSIONED_NAME, BASE_NAME, "Phase 3") is None
