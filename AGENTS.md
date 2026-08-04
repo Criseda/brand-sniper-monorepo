@@ -14,6 +14,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Format**: `uv run ruff format` from root
 - **Typecheck**: `uv run mypy apps/backend/ apps/listener/ apps/analytics/` from root
 - **All quality checks**: `uv run ruff check && uv run ruff format --check && uv run mypy apps/backend/ apps/listener/ apps/analytics/`
+- **Task shortcuts**: the root `Makefile` wraps the commands above — `make setup` (sync), `make check` (full CI gate: lint + format-check + typecheck + tests + coverage), `make testcov` (tests + coverage report), `make migrate` (alembic from `deployments/`), `make docker-up STACK=server-stack|edge-stack`, `make docker-down`, `make help` (all targets). Bare `make` runs `check`.
 - **Branch protection**: `main` branch requires PRs, CI status checks (`quality`, `test`), and linear history — configured in GitHub repo Settings > Branches
 - **PR template**: `.github/pull_request_template.md` — filled automatically on new PRs
 - **Contributing guide**: `CONTRIBUTING.md` — development workflow, branch naming, CI expectations
