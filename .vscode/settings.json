@@ -1,0 +1,14 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "--import-mode=importlib"
+  ],
+  "ruff.lineLength": 128,
+  "ruff.targetVersion": "py312",
+  "mypy-type-checker.cwd": "${workspaceFolder}",
+  "mypy-type-checker.args": [
+    "--config-file=${workspaceFolder}/mypy.ini"
+  ],
+  "mypy-type-checker.importStrategy": "fromEnvironment"
+}

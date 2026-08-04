@@ -79,7 +79,14 @@ docs/
   getting-started.md  5-minute quickstart
   architecture.md     System design, topology, data flow
   deployment.md       Docker stacks, migrations, operations
+.devcontainer/        Dev container (GitHub Codespaces / VS Code)
+.vscode/              Pinned editor config: extensions + ruff/mypy/pytest settings
 ```
+
+Contributors can skip manual env setup: open the repo in
+[GitHub Codespaces](docs/getting-started.md#option-a-open-in-github-codespaces-recommended)
+or a `.devcontainer/`-compatible VS Code Remote container for a ready-to-run
+Python 3.12 + uv toolchain. Docker service stacks still run via Docker Desktop on the host.
 
 ---
 
