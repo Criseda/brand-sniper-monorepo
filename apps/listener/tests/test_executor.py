@@ -17,16 +17,25 @@ async def test_paper_executor_sends_payload():
     z_score = -2.5
 
     # Mock the internal private method to avoid making actual HTTP requests
-    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        # Call execute (which creates a task)
+    send_triggered = asyncio.Event()
+    captured_payloads = []
+
+    async def capture_payload(payload: dict) -> None:
+        captured_payloads.append(payload)
+        send_triggered.set()
+
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock, side_effect=capture_payload) as mock_send:
+        # Call execute (which creates a background task)
         await executor.execute(market_hash_name, purchase_price, est_profit, z_score)
 
-        # Let the event loop run briefly so the created task can execute
-        await asyncio.sleep(0.01)
+        # Wait deterministically until the background task invokes the mock
+        await asyncio.wait_for(send_triggered.wait(), timeout=1)
+        # Yield one loop tick so the completed background task is cleaned up
+        await asyncio.sleep(0)
 
         # Assert payload was constructed correctly and sent
         mock_send.assert_called_once()
-        called_payload = mock_send.call_args[0][0]
+        called_payload = captured_payloads[0]
 
         assert called_payload["market_hash_name"] == market_hash_name
         assert called_payload["purchase_price_cents"] == purchase_price
