@@ -329,6 +329,33 @@ async def test_evaluate_trade_mlflow_failure_logs_and_marks_failed(
     mock_client.set_terminated.assert_called_with("run_mlfail", status="FAILED")
 
 
+@pytest.mark.asyncio
+@patch("evaluate_performance.MlflowClient")
+@patch("evaluate_performance.openai_client")
+@patch("evaluate_performance.get_experiment_id", return_value="1")
+async def test_evaluate_trade_mlflow_failure_swallows_terminate_error(
+    mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls, caplog
+):
+    evaluate_performance._model_index_var.set(0)
+    mock_client = MagicMock()
+    mock_run = MagicMock()
+    mock_run.info.run_id = "run_mlfail2"
+    mock_client.create_run.return_value = mock_run
+    mock_client.log_param.side_effect = MlflowException("mlflow storage full")
+    mock_client.set_terminated.side_effect = MlflowException("mlflow gone")
+    mock_mlflow_client_cls.return_value = mock_client
+
+    mock_openai_client.chat.completions.create.side_effect = [
+        _json_response(70, "ok"),
+        _json_response(70, "ok"),
+    ]
+
+    await evaluate_trade(_trade(), "AK-47 | Redline (Field-Tested)", None)
+
+    assert "MLflow logging failed" in caplog.text
+    assert mock_client.set_terminated.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # pipeline
 # ---------------------------------------------------------------------------
