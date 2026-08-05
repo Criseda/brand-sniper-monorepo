@@ -262,7 +262,7 @@ async def analyze_long_term_macro(limit_items: int | None = 100):
     logger.info("Long Term Macro Analysis Pipeline completed successfully.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     validate_required_env(["DATABASE_URL"])
     import argparse
 

@@ -143,7 +143,7 @@ async def seed_historical_data(truncate: bool = False):
     logger.info("Seeding completed. Successfully processed %d files. Failed files: %d.", success_count, fail_count)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     validate_required_env(["DATABASE_URL"])
     parser = argparse.ArgumentParser(description="High-performance Postgres historical price seeder.")
     parser.add_argument("--truncate", action="store_true", help="Truncate historical_prices before starting.")

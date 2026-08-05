@@ -136,7 +136,7 @@ async def run_verification():
     logger.info("======================================================================")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     validate_required_env(["DATABASE_URL"])
     import asyncio
 

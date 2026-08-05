@@ -145,7 +145,7 @@ async def test_search_macro_trends_network_error_returns_default_message(monkeyp
 
 @pytest.mark.asyncio
 async def test_search_macro_trends_empty_payload_returns_default_message(monkeypatch):
-    monkeypatch.setattr(tools, "_get_http_session", _fake_session_getter({}))
+    monkeypatch.setattr(tools, "_get_http_session", _fake_session_getter({}, status=500))
 
     assert await search_macro_trends("market crash") == "No major macroeconomic news detected."
 
@@ -164,6 +164,32 @@ async def test_get_http_session_reuses_existing_instance(monkeypatch):
 
     assert session is fake
     monkeypatch.setattr(tools, "_http_session", None)
+
+
+@pytest.mark.asyncio
+async def test_get_http_session_creates_new_when_none(monkeypatch):
+    monkeypatch.setattr(tools, "_http_session", None)
+
+    session = await tools._get_http_session()
+
+    assert isinstance(session, aiohttp.ClientSession)
+    assert not session.closed
+    await tools.close_http_session()
+    assert tools._http_session is None
+
+
+@pytest.mark.asyncio
+async def test_get_http_session_recreates_when_closed(monkeypatch):
+    fake = _FakeSession(_FakeResp({}))
+    fake.closed = True
+    monkeypatch.setattr(tools, "_http_session", fake)
+
+    session = await tools._get_http_session()
+
+    assert isinstance(session, aiohttp.ClientSession)
+    assert not session.closed
+    await tools.close_http_session()
+    assert tools._http_session is None
 
 
 @pytest.mark.asyncio

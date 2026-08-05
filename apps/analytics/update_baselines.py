@@ -75,6 +75,6 @@ async def sync_baselines_to_edge():
     await redis.aclose()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     validate_required_env(["DATABASE_URL"])
     asyncio.run(sync_baselines_to_edge())

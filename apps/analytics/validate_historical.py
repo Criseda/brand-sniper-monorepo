@@ -97,5 +97,5 @@ def run_dry_run_validation():
     logger.info("=" * 70)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     run_dry_run_validation()

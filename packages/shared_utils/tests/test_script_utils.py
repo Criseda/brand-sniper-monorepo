@@ -17,6 +17,35 @@ def script_env(tmp_path, monkeypatch):
     return app_dir / "script.py", root
 
 
+class _FakeStream:
+    def __init__(self):
+        self.reconfigured = False
+
+    def reconfigure(self, encoding=None):
+        self.reconfigured = True
+
+
+def test_setup_script_environment_reconfigures_streams(script_env, monkeypatch):
+    script_path, _ = script_env
+    fake_out = _FakeStream()
+    fake_err = _FakeStream()
+    monkeypatch.setattr(sys, "stdout", fake_out)
+    monkeypatch.setattr(sys, "stderr", fake_err)
+
+    setup_script_environment(script_path)
+
+    assert fake_out.reconfigured
+    assert fake_err.reconfigured
+
+
+def test_setup_script_environment_skips_streams_without_reconfigure(script_env, monkeypatch):
+    script_path, _ = script_env
+    monkeypatch.setattr(sys, "stdout", object())
+    monkeypatch.setattr(sys, "stderr", object())
+
+    setup_script_environment(script_path)
+
+
 def test_setup_script_environment_loads_env_with_app_override(script_env, monkeypatch):
     script_path, root = script_env
     monkeypatch.delenv("SHARED_VAR", raising=False)
