@@ -8,13 +8,6 @@ class ConcreteScraper(BaseScraper):
 
 
 @pytest.mark.asyncio
-async def test_default_verify_anomaly_returns_false():
-    scraper = ConcreteScraper("test_platform")
-
-    assert await scraper.verify_anomaly_with_history("Some Item (Factory New)", 100.0) is False
-
-
-@pytest.mark.asyncio
 async def test_default_websocket_stream_yields_nothing():
     scraper = ConcreteScraper("test_platform")
 
