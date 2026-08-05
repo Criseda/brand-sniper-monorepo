@@ -7,7 +7,10 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "redis": "^4.6.14",
-    "socket.io-client": "^4.7.5",
+    "socket.io-client": "^4.8.3",
     "socket.io-msgpack-parser": "^3.0.2"
+  },
+  "overrides": {
+    "socket.io-parser": "^4.2.7"
   }
 }
