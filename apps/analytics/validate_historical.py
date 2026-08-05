@@ -80,7 +80,7 @@ def run_dry_run_validation():
 
             total_rows += cleaned_row_count
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.warning("Skipping corrupt or unreadable file '%s': %s", file_path.name, e)
             continue
 

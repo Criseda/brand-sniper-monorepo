@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Integer, cast
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -162,7 +163,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
                     simulated_buy_timestamp=datetime.now(UTC).replace(tzinfo=None),
                 )
                 session.add(trade)
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to log simulated trade: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

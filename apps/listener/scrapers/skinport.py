@@ -106,7 +106,7 @@ class SkinportScraper(BaseScraper):
                         logger.warning("Marketplace responded with unexpected HTTP status code: %s", response.status)
                         backoff_seconds = 305
 
-            except Exception as e:
+            except (TimeoutError, aiohttp.ClientError, ValueError) as e:
                 logger.error("Telemetry connection dropout encountered: %s", e)
                 backoff_seconds = 305
 
@@ -156,7 +156,7 @@ class SkinportScraper(BaseScraper):
                             yield MarketTick(
                                 market_hash_name=market_hash_name, price_usd=price_usd, float_value=wear, stickers=stickers
                             )
-                except Exception as parse_err:
+                except (ValueError, TypeError, AttributeError, KeyError) as parse_err:
                     logger.error("Error parsing sidecar listing message: %s", parse_err)
         finally:
             await pubsub.unsubscribe("skinport:live_listings")

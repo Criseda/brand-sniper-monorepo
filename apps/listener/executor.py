@@ -70,5 +70,5 @@ class PaperExecutor(ExecutionService):
             async with session.post(self.trade_ingest_url, json=payload) as resp:
                 if resp.status not in (201, 202):
                     logger.warning("Backend rejected trade log with status %s", resp.status)
-        except Exception as e:
+        except (TimeoutError, aiohttp.ClientError) as e:
             logger.error("Failed to reach Command Center to log trade: %s", e)

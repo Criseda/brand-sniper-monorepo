@@ -89,7 +89,7 @@ async def fetch_skinport_sales_history(market_hash_name: str, version: str | Non
                     return resolved_entry
             else:
                 logger.warning("Non-200 status fetching history for '%s': %s", market_hash_name, response.status)
-    except Exception as e:
+    except (aiohttp.ClientError, TimeoutError, ValueError) as e:
         logger.error("Error fetching sales history for '%s': %s", market_hash_name, e)
     return {}
 
@@ -137,7 +137,7 @@ async def get_sticker_price_cents(sticker_name: str) -> int | None:
             avg_live = live_res.scalar()
             if avg_live is not None:
                 return round(float(avg_live))
-    except Exception as dbe:
+    except SQLAlchemyError as dbe:
         logger.error("Error during sticker database fallback lookup: %s", dbe)
 
     return None

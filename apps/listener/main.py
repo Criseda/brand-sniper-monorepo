@@ -3,6 +3,7 @@ import json
 import math
 import os
 import signal
+import subprocess
 import sys
 import time
 from collections import OrderedDict
@@ -97,6 +98,11 @@ async def close_http_session():
         _http_session = None
 
 
+def _decode_zset_element(element: str | bytes) -> str:
+    """Decodes a Redis sorted-set member to str regardless of client decode mode."""
+    return element.decode("utf-8") if isinstance(element, bytes) else element
+
+
 async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
     """Fires a non-blocking network transmission containing structured bulk arrays."""
     payload = {"source": source, "ticks": chunk}
@@ -109,7 +115,7 @@ async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]):
             else:
                 logger.warning("[BATCH FLUSH] Backend rejected batch with status: %s", resp.status)
                 batch_flush_total.labels(status="rejected").inc()
-    except Exception as e:
+    except (TimeoutError, aiohttp.ClientError) as e:
         logger.error("[BATCH FLUSH] Failed to reach Compute Node database router: %s", e)
         batch_flush_total.labels(status="error").inc()
 
@@ -120,6 +126,7 @@ async def rest_poll_producer(scraper, queue: asyncio.Queue):
         try:
             async for tick in scraper.poll_market_stream():
                 await queue.put(tick)
+        # Broad on purpose: supervisor loop must survive any transient failure and retry.
         except Exception as e:
             logger.warning("Producer error: %s. Retrying REST stream in 10 seconds...", e)
             await asyncio.sleep(10)
@@ -134,6 +141,7 @@ async def websocket_subscriber_producer(scraper, queue: asyncio.Queue):
         try:
             async for tick in scraper.listen_websocket_stream():
                 await queue.put(tick)
+        # Broad on purpose: supervisor loop must survive any transient failure and retry.
         except Exception as e:
             logger.warning("Ingestion watchdog caught subscriber crash: %s. Reconnecting in 10 seconds...", e)
             await asyncio.sleep(10)
@@ -241,6 +249,7 @@ async def evaluate_and_execute(
     tick: MarketTick, z_score: float, mean_cents: float, cache: Redis, baseline: dict | None = None, source: str = "local"
 ):
     """Evaluates an anomaly locally on the edge and executes the trade if valid."""
+    # Broad on purpose: fire-and-forget task wrapper, failure must never kill the consumer loop.
     try:
         _dre_t0 = time.monotonic()
         is_approved = await evaluate_opportunity(tick, cache, baseline)
@@ -325,8 +334,11 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                 _t3 = time.monotonic()
                 raw_elements = await cache.zrange(redis_key, 0, -1)
                 redis_operation_latency_seconds.observe(time.monotonic() - _t3)
-                raw_elements_list: list[str] = raw_elements  # type: ignore[assignment]
-                prices = [int(element.split(":")[1]) for element in raw_elements_list]
+                prices = [
+                    int(_decode_zset_element(element).split(":")[1])
+                    for element in raw_elements
+                    if isinstance(element, (str, bytes))
+                ]
 
                 # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
                 _t4 = time.monotonic()
@@ -361,6 +373,7 @@ async def tick_consumer(queue: asyncio.Queue, platform_target: str, scraper):
                     asyncio.create_task(flush_batch_chunk_to_postgres(platform_target, batch_buffer.copy()))
                     batch_buffer.clear()
                     batch_buffer_size.set(0)
+            # Broad on purpose: one bad tick must not kill the consumer loop.
             except Exception as item_err:
                 logger.error("Error processing tick for '%s': %s", tick.market_hash_name, item_err)
             finally:
@@ -394,7 +407,7 @@ async def start_sidecar_process(scraper):
 
         await proc.wait()
         logger.info("Node.js sidecar process exited with code %s", proc.returncode)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.error("Error running Node.js sidecar: %s", e)
     finally:
         if proc and proc.returncode is None:
@@ -402,7 +415,7 @@ async def start_sidecar_process(scraper):
             try:
                 proc.terminate()
                 await proc.wait()
-            except Exception as e:
+            except OSError as e:
                 logger.warning("Error terminating sidecar process: %s", e)
 
 
