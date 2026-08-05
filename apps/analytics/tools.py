@@ -92,22 +92,23 @@ async def fetch_live_market_floor(market_hash_name: str) -> str:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
             if resp.status == 200:
                 data = json.loads(await resp.text())
-                # Use undiscounted cash equivalent average or real-time median as the true live floor price
-                live_floor = (
-                    data.get("cash_equivalent_avg_cents")
-                    or data.get("real_time_skinport_median_cents")
-                    or data.get("snipe_threshold_cents")
-                    or 0
-                )
-                return json.dumps(
-                    {
-                        "market_hash_name": market_hash_name,
-                        "live_floor_cents": live_floor,
-                        "recent_sales_cents": [data.get("real_time_skinport_median_cents", 0)],
-                        "liquidity": "HIGH" if data.get("is_liquid") else "LOW",
-                        "message": "Live market context fetched from backend database.",
-                    }
-                )
+                if isinstance(data, dict):
+                    # Use undiscounted cash equivalent average or real-time median as the true live floor price
+                    live_floor = (
+                        data.get("cash_equivalent_avg_cents")
+                        or data.get("real_time_skinport_median_cents")
+                        or data.get("snipe_threshold_cents")
+                        or 0
+                    )
+                    return json.dumps(
+                        {
+                            "market_hash_name": market_hash_name,
+                            "live_floor_cents": live_floor,
+                            "recent_sales_cents": [data.get("real_time_skinport_median_cents", 0)],
+                            "liquidity": "HIGH" if data.get("is_liquid") else "LOW",
+                            "message": "Live market context fetched from backend database.",
+                        }
+                    )
     except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError) as e:
         logger.warning("Failed to fetch live market floor from backend: %s. Returning error payload.", e)
 

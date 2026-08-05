@@ -319,5 +319,5 @@ async def run_cfo_evaluation_pipeline():
 
 
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
-    validate_required_env(["GROQ_API_KEY"])
+    validate_required_env(["GROQ_API_KEY", "MLFLOW_TRACKING_URI"])
     asyncio.run(run_cfo_evaluation_pipeline())

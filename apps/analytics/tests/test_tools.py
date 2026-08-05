@@ -113,6 +113,17 @@ async def test_fetch_live_market_floor_non_200_returns_error_payload(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_fetch_live_market_floor_non_object_payload_returns_error_payload(monkeypatch):
+    monkeypatch.setattr(tools, "_get_http_session", _fake_session_getter([1, 2, 3]))
+
+    out = json.loads(await fetch_live_market_floor("AK-47 | Redline (Field-Tested)"))
+
+    assert out["live_floor_cents"] is None
+    assert out["liquidity"] == "UNKNOWN"
+    assert "error" in out
+
+
+@pytest.mark.asyncio
 async def test_fetch_live_market_floor_network_error_returns_error_payload(monkeypatch):
     async def boom():
         raise aiohttp.ClientError("connection refused")
