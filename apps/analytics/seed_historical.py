@@ -137,6 +137,7 @@ async def seed_historical_data(truncate: bool = False):
                         )
                         success_count += 1
 
+                # Broad on purpose: any failure for one file skips only that file.
                 except Exception as e:
                     logger.warning("Skipping data for '%s' due to insertion failure: %s", market_hash_name, e)
                     fail_count += 1

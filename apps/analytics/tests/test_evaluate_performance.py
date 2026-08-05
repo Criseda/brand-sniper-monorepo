@@ -13,6 +13,7 @@ from evaluate_performance import (
     evaluate_trade,
     get_experiment_id,
 )
+from mlflow.exceptions import MlflowException
 from shared_utils.models import SimulatedTrade
 
 
@@ -73,7 +74,7 @@ def test_get_experiment_id_creates_when_missing(mock_mlflow_client_cls):
 @patch("evaluate_performance.MlflowClient")
 def test_get_experiment_id_falls_back_on_error(mock_mlflow_client_cls):
     mock_client = MagicMock()
-    mock_client.get_experiment_by_name.side_effect = Exception("mlflow down")
+    mock_client.get_experiment_by_name.side_effect = MlflowException("mlflow down")
     mock_mlflow_client_cls.return_value = mock_client
     evaluate_performance._experiment_id = None
 
@@ -314,7 +315,7 @@ async def test_evaluate_trade_mlflow_failure_logs_and_marks_failed(
     mock_run = MagicMock()
     mock_run.info.run_id = "run_mlfail"
     mock_client.create_run.return_value = mock_run
-    mock_client.log_param.side_effect = Exception("mlflow storage full")
+    mock_client.log_param.side_effect = MlflowException("mlflow storage full")
     mock_mlflow_client_cls.return_value = mock_client
 
     mock_openai_client.chat.completions.create.side_effect = [

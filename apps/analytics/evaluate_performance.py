@@ -20,6 +20,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / "apps" / "analytics" / ".env", override=T
 
 import mlflow
 from mlflow.client import MlflowClient
+from mlflow.exceptions import MlflowException
 from openai import OpenAI
 from prefect import flow, task
 from pydantic import BaseModel, Field
@@ -68,7 +69,7 @@ def get_experiment_id():
     try:
         exp = client_mlflow.get_experiment_by_name("cfo-evaluation")
         _experiment_id = exp.experiment_id if exp else client_mlflow.create_experiment("cfo-evaluation")
-    except Exception:
+    except MlflowException:
         _experiment_id = "1"
     return _experiment_id
 
@@ -239,6 +240,8 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
             eval_status = "APPROVED" if score >= 70 else "REJECTED"
             break
 
+        # Broad on purpose: retry loop relies on string-matching arbitrary API
+        # error payloads (TPD detection) and retries transient Groq failures.
         except Exception as e:
             error_str = str(e)
             # TPD (tokens-per-day) is per-model — switch to the next model
@@ -292,11 +295,11 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
 
         final_status = "FAILED" if eval_status == "ERROR" else "FINISHED"
         mlflow_client.set_terminated(run_id, status=final_status)
-    except Exception as e:
+    except (MlflowException, OSError) as e:
         logger.error("MLflow logging failed for %s: %s", item_name, e)
         try:
             mlflow_client.set_terminated(run_id, status="FAILED")
-        except Exception:
+        except MlflowException:
             pass
 
 

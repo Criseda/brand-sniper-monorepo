@@ -88,7 +88,7 @@ def fetch_live_market_floor(market_hash_name: str) -> str:
                         "message": "Live market context fetched from backend database.",
                     }
                 )
-    except Exception as e:
+    except (urllib.error.URLError, OSError, ValueError) as e:
         logger.warning("Failed to fetch live market floor from backend: %s. Returning error payload.", e)
 
     return json.dumps(
@@ -117,7 +117,7 @@ def search_macro_trends(query: str) -> str:
         with urllib.request.urlopen(req, timeout=5) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode())
-    except Exception as e:
+    except (urllib.error.URLError, OSError, ValueError) as e:
         logger.warning("Failed to fetch macro trends from backend: %s", e)
 
     if not data:

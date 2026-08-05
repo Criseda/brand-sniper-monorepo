@@ -1,6 +1,7 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 import scrapers.skinport as skinport
 from models import MarketTick
@@ -186,7 +187,7 @@ async def test_poll_continues_after_unexpected_status(mocker):
 async def test_poll_continues_after_transport_error(mocker):
     scraper = SkinportScraper()
     item = {"market_hash_name": "AK-47 | Redline", "min_price": 10.0}
-    session = _Session([Exception("connection reset"), _OkResponse([item])])
+    session = _Session([aiohttp.ClientConnectionError("connection reset"), _OkResponse([item])])
     scraper._session = session
     mocker.patch("scrapers.skinport._sleep", new_callable=AsyncMock)
 
