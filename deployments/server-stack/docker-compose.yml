@@ -30,7 +30,7 @@ services:
   # EDGE CACHE LAYER: Volatile Sliding-Window Memory (port 6380)
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:8.8.1-alpine
+    image: redis:8.10.0-alpine
     container_name: sniper_edge_redis
     env_file:
       - ../../.env
