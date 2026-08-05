@@ -1,6 +1,5 @@
 import asyncio
 import json
-import math
 import os
 import signal
 import subprocess
@@ -11,6 +10,19 @@ from pathlib import Path
 
 import aiohttp
 from dotenv import load_dotenv
+
+# Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+# Load root .env (shared) first, then listener-specific overrides.
+project_root = Path(__file__).resolve().parents[2]
+load_dotenv(dotenv_path=project_root / ".env")
+listener_env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=listener_env_path, override=True)
+
 from executor import PaperExecutor
 from executor import close_http_session as close_executor_http_session
 from listener_telemetry import (
@@ -30,23 +42,10 @@ from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
 from scrapers.factory import ScraperFactory
-
-# Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
 from shared_utils import get_logger
+from zscore import calculate_z_score, should_trigger_anomaly
 
 logger = get_logger("listener.main")
-
-# DYNAMIC NETWORK INFRASTRUCTURE CONFIGURATION
-# Load root .env (shared) first, then listener-specific overrides
-project_root = Path(__file__).resolve().parents[2]
-load_dotenv(dotenv_path=project_root / ".env")
-listener_env_path = Path(__file__).parent / ".env"
-load_dotenv(dotenv_path=listener_env_path, override=True)
 
 # Pulls target node location from RAM environment, falling back to local loopback
 COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")
@@ -55,27 +54,12 @@ COMPUTE_PORT = os.getenv("COMPUTE_NODE_PORT", "8080")
 BULK_INGEST_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/ingest/bulk"
 
 # --- Tunable Detection Parameters (configurable via .env) ---
-# Minimum absolute savings required for non-stickered anomaly validation
-MIN_SAVINGS_USD = float(os.getenv("MIN_SAVINGS_USD", "0.50"))
-MIN_SAVINGS_CENTS = round(MIN_SAVINGS_USD * 100)
-# Z-score threshold for standard items
-Z_SCORE_THRESHOLD = float(os.getenv("Z_SCORE_THRESHOLD", "-2.0"))
-# Z-score threshold for stickered items (relaxed to catch sticker snipes)
-Z_SCORE_STICKER_THRESHOLD = float(os.getenv("Z_SCORE_STICKER_THRESHOLD", "-1.0"))
-# Minimum std dev regularization factor (prevents hyper-sensitivity on stable prices)
-MIN_STD_DEV_FACTOR = float(os.getenv("MIN_STD_DEV_FACTOR", "0.04"))
 # Sliding window size for Redis price history
 SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
-# Minimum data points required before Z-score analysis
-MIN_HISTORY_POINTS = int(os.getenv("MIN_HISTORY_POINTS", "4"))
 # Dedup cache max entries (LRU eviction above this cap)
 DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "25000"))
 # Batch buffer chunk limit for bulk ingest dispatches
 CHUNK_LIMIT = int(os.getenv("CHUNK_LIMIT", "2500"))
-# Enable macro Z-score fallback for illiquid items (uses long-term volatility from Redis baseline)
-MACRO_ZSCORE_FALLBACK = os.getenv("MACRO_ZSCORE_FALLBACK", "true").lower() in ("true", "1", "yes")
-# Prior weight for Bayesian shrinkage of local stddev toward macro volatility
-MACRO_PRIOR_WEIGHT = float(os.getenv("MACRO_PRIOR_WEIGHT", "5.0"))
 
 # Shared aiohttp session (initialized at startup, closed at shutdown)
 _http_session: aiohttp.ClientSession | None = None
@@ -165,84 +149,6 @@ def update_dedup_cache(tick: MarketTick, dedup_cache: OrderedDict):
     # Evict oldest entries when cache exceeds capacity
     while len(dedup_cache) > DEDUP_CACHE_MAX_SIZE:
         dedup_cache.popitem(last=False)
-
-
-def calculate_z_score(
-    prices: list[int],
-    macro_rolling_avg_cents: int | None = None,
-    macro_volatility_cents: int | None = None,
-    macro_cv: float | None = None,
-) -> tuple[float, float, str] | None:
-    """
-    Calculates the Z-score of the most recent price against the historical window.
-
-    Uses Bayesian shrinkage to blend local and macro volatility for robust
-    detection even on illiquid items. Returns (z_score, mean_cents, source)
-    where source is 'local', 'hybrid', or 'macro', or None if insufficient data.
-
-    When local data is scarce (< MIN_HISTORY_POINTS) and macro params exist,
-    falls back to a macro Z-score using long-term volatility (Layer 1 fix for #31).
-    When local data exists, blends estimates using a Bayesian prior (Layer 2).
-    """
-    macro_available = (
-        MACRO_ZSCORE_FALLBACK
-        and macro_rolling_avg_cents is not None
-        and macro_volatility_cents is not None
-        and macro_volatility_cents > 0
-        and macro_rolling_avg_cents > 0
-    )
-    current_tick_price = prices[-1]
-
-    # Layer 1: Macro fallback when local window is too sparse
-    if len(prices) < MIN_HISTORY_POINTS:
-        if macro_available and macro_rolling_avg_cents is not None and macro_volatility_cents is not None:
-            min_vol = max(macro_volatility_cents, macro_rolling_avg_cents * 0.01)
-            z_score = (current_tick_price - macro_rolling_avg_cents) / min_vol
-            return z_score, float(macro_rolling_avg_cents), "macro"
-        return None
-
-    # Layer 2: Local + Bayesian shrinkage hybrid
-    historical_prices = prices[:-1]
-    n = len(historical_prices)
-
-    mean_cents = sum(historical_prices) / n
-    variance = sum((x - mean_cents) ** 2 for x in historical_prices) / (n - 1) if n > 1 else 0.0
-    std_dev = math.sqrt(variance)
-
-    if macro_available and macro_cv is not None and macro_cv > 0:
-        # Bayesian shrinkage: blend local stddev toward macro prior
-        macro_std_estimate = mean_cents * macro_cv
-        blended_variance = (n * variance + MACRO_PRIOR_WEIGHT * macro_std_estimate**2) / (n + MACRO_PRIOR_WEIGHT)
-        effective_std_dev = math.sqrt(blended_variance)
-        source = "hybrid"
-    else:
-        # Fall back to MIN_STD_DEV_FACTOR regularization when no macro prior
-        effective_std_dev = max(std_dev, mean_cents * MIN_STD_DEV_FACTOR)
-        source = "local"
-
-    z_score = (current_tick_price - mean_cents) / effective_std_dev
-    return z_score, mean_cents, source
-
-
-def should_trigger_anomaly(z_score: float, mean_cents: float, tick: MarketTick, source: str = "local") -> bool:
-    """
-    Determines if a Z-score outlier should proceed to history verification,
-    applying sticker-aware thresholds and the absolute savings floor.
-    source is logged for observability but does not alter thresholds.
-    """
-    sticker_count = len(tick.stickers)
-    threshold_z = Z_SCORE_STICKER_THRESHOLD if sticker_count > 0 else Z_SCORE_THRESHOLD
-
-    if z_score >= threshold_z:
-        return False
-
-    # Enforce absolute savings floor on non-stickered items to filter micro-value spam
-    if sticker_count == 0:
-        savings_cents = mean_cents - tick.price_cents
-        if savings_cents < MIN_SAVINGS_CENTS:
-            return False
-
-    return True
 
 
 async def evaluate_and_execute(

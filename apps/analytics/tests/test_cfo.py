@@ -166,3 +166,12 @@ def test_extract_retry_after(error_message, expected):
     from evaluate_performance import _extract_retry_after
 
     assert _extract_retry_after(error_message) == expected
+
+
+def test_get_openai_client_constructs_lazily(monkeypatch):
+    mock_client = MagicMock()
+    monkeypatch.setattr(evaluate_performance, "OpenAI", MagicMock(return_value=mock_client))
+    monkeypatch.setattr(evaluate_performance, "openai_client", None)
+
+    assert evaluate_performance._get_openai_client() is mock_client
+    assert evaluate_performance.openai_client is mock_client

@@ -1,6 +1,4 @@
 import asyncio
-import sys
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,9 +17,6 @@ def _dispose_test_engine():
 
 @pytest.fixture(name="client")
 def client_fixture(monkeypatch):
-    backend_dir = str(Path(__file__).resolve().parent.parent)
-    sys.path.insert(0, backend_dir)
-
     from shared_utils import db_connection
 
     import main as backend_main
