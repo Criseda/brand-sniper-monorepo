@@ -85,7 +85,7 @@ services:
   # OBSERVABILITY LAYER: Metrics and Dashboards
   # ---------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:v3.13.1
+    image: prom/prometheus:v3.13.2
     container_name: sniper_prometheus
     ports:
       - "9090:9090"
