@@ -74,10 +74,18 @@ def get_experiment_id():
     return _experiment_id
 
 
-openai_client = OpenAI(
-    api_key=os.getenv("GROQ_API_KEY"),
-    base_url="https://api.groq.com/openai/v1",
-)
+openai_client: OpenAI | None = None
+
+
+def _get_openai_client() -> OpenAI:
+    global openai_client
+    if openai_client is None:
+        openai_client = OpenAI(
+            api_key=os.getenv("GROQ_API_KEY"),
+            base_url="https://api.groq.com/openai/v1",
+        )
+    return openai_client
+
 
 _SYSTEM_INSTRUCTION = """
 You are the Adversarial CFO of an algorithmic trading firm.
@@ -137,7 +145,7 @@ def _msg_dict(msg) -> dict:
 
 async def _call(messages, temperature=0.5, **kwargs):
     return await asyncio.to_thread(
-        openai_client.chat.completions.create,
+        _get_openai_client().chat.completions.create,
         model=_get_current_model(),
         messages=messages,
         temperature=temperature,

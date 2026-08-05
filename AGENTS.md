@@ -48,7 +48,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 ## Testing quirks
 
 - `pyproject.toml` has `pythonpath` set for test discovery (`apps/*`, `shared_utils/src`)
-- Backend test must `sys.path.insert(0, ...)` to ensure `import main` resolves to `apps/backend/main.py` over root `main.py`
+- Backend tests rely on the pytest `pythonpath` entry for `apps/backend` so `import main` resolves to `apps/backend/main.py` over root `main.py`
 - Listener tests need `@pytest.mark.asyncio`
 - Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine — no PostgreSQL needed
 - Analytics tests mock `client` and `mlflow` globally; set `GROQ_API_KEY` env var

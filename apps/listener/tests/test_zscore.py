@@ -1,37 +1,23 @@
-import importlib.util
-from pathlib import Path
-
 import pytest
+import zscore
 from models import MarketTick
-
-
-def _load_listener_main():
-    """Import apps/listener/main.py as an isolated module to avoid conflicts."""
-    module_path = Path(__file__).resolve().parent.parent / "main.py"
-    spec = importlib.util.spec_from_file_location("listener_main_under_test", module_path)
-    mod = importlib.util.module_from_spec(spec)
-    # Prevent accidental sys.modules pollution
-    spec.loader.exec_module(mod)
-    return mod
-
+from zscore import calculate_z_score, should_trigger_anomaly
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def listener_main():
-    """Load the real listener main module once per module and pin its constants."""
-    mod = _load_listener_main()
-    mod.MIN_HISTORY_POINTS = 4
-    mod.MIN_STD_DEV_FACTOR = 0.04
-    mod.Z_SCORE_THRESHOLD = -2.0
-    mod.Z_SCORE_STICKER_THRESHOLD = -1.0
-    mod.MIN_SAVINGS_CENTS = 50
-    mod.MACRO_ZSCORE_FALLBACK = True
-    mod.MACRO_PRIOR_WEIGHT = 5.0
-    return mod
+@pytest.fixture(autouse=True)
+def _pin_detection_constants(monkeypatch):
+    """Pin tunable constants so detection tests are deterministic."""
+    monkeypatch.setattr(zscore, "MIN_HISTORY_POINTS", 4)
+    monkeypatch.setattr(zscore, "MIN_STD_DEV_FACTOR", 0.04)
+    monkeypatch.setattr(zscore, "Z_SCORE_THRESHOLD", -2.0)
+    monkeypatch.setattr(zscore, "Z_SCORE_STICKER_THRESHOLD", -1.0)
+    monkeypatch.setattr(zscore, "MIN_SAVINGS_CENTS", 50)
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_FALLBACK", True)
+    monkeypatch.setattr(zscore, "MACRO_PRIOR_WEIGHT", 5.0)
 
 
 def _tick(price_usd: float, stickers: list[dict] | None = None) -> MarketTick:
@@ -101,7 +87,7 @@ def _tick(price_usd: float, stickers: list[dict] | None = None) -> MarketTick:
         ),
     ],
 )
-def test_calculate_z_score(listener_main, prices, macro_avg, macro_vol, macro_cv, expected):
+def test_calculate_z_score(prices, macro_avg, macro_vol, macro_cv, expected):
     kwargs = {}
     if macro_avg is not None:
         kwargs["macro_rolling_avg_cents"] = macro_avg
@@ -110,7 +96,7 @@ def test_calculate_z_score(listener_main, prices, macro_avg, macro_vol, macro_cv
     if macro_cv is not None:
         kwargs["macro_cv"] = macro_cv
 
-    result = listener_main.calculate_z_score(prices, **kwargs)
+    result = calculate_z_score(prices, **kwargs)
 
     if expected is None:
         assert result is None
@@ -145,15 +131,15 @@ def test_calculate_z_score(listener_main, prices, macro_avg, macro_vol, macro_cv
         pytest.param(5.80, -3.0, 600, [{"name": "Titan"}], True, id="no_savings_floor_for_stickered_items"),
     ],
 )
-def test_should_trigger_anomaly(listener_main, price_usd, z_score, mean_cents, stickers, expected):
+def test_should_trigger_anomaly(price_usd, z_score, mean_cents, stickers, expected):
     tick = _tick(price_usd, stickers)
-    assert listener_main.should_trigger_anomaly(z_score, mean_cents, tick) is expected
+    assert should_trigger_anomaly(z_score, mean_cents, tick) is expected
 
 
-def test_source_param_does_not_alter_outcome(listener_main):
+def test_source_param_does_not_alter_outcome():
     tick = _tick(5.00)
-    assert listener_main.should_trigger_anomaly(-3.0, 600, tick, source="local") is True
-    assert listener_main.should_trigger_anomaly(-3.0, 600, tick, source="hybrid") is True
-    assert listener_main.should_trigger_anomaly(-3.0, 600, tick, source="macro") is True
-    assert listener_main.should_trigger_anomaly(-1.0, 600, tick, source="local") is False
-    assert listener_main.should_trigger_anomaly(-1.0, 600, tick, source="macro") is False
+    assert should_trigger_anomaly(-3.0, 600, tick, source="local") is True
+    assert should_trigger_anomaly(-3.0, 600, tick, source="hybrid") is True
+    assert should_trigger_anomaly(-3.0, 600, tick, source="macro") is True
+    assert should_trigger_anomaly(-1.0, 600, tick, source="local") is False
+    assert should_trigger_anomaly(-1.0, 600, tick, source="macro") is False

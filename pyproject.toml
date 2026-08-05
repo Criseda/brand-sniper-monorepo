@@ -56,6 +56,7 @@ pythonpath = [
     "packages/shared_utils/src",
     "apps/analytics",
     "apps/listener",
+    "apps/backend",
 ]
 
 [tool.ruff]
@@ -102,6 +103,7 @@ show_missing = true
 "apps/analytics/tools.py" = 80
 "apps/backend/queries.py" = 80
 "apps/listener/rules_engine.py" = 90
+"apps/listener/zscore.py" = 90
 "apps/listener/scrapers/base.py" = 90
 
 

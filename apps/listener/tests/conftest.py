@@ -22,6 +22,16 @@ class MockRedis:
             self.data[name] = {}
         self.data[name][key] = value
 
+    async def exists(self, key):
+        return key in self.data
+
+    async def delete(self, key):
+        removed = self.data.pop(key, None)
+        return 1 if removed is not None else 0
+
+    async def expire(self, key, seconds):
+        return key in self.data
+
     async def pipeline(self, transaction=False):
         return MockPipeline(self)
 

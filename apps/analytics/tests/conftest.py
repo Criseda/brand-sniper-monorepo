@@ -1,9 +1,10 @@
-import os
-
 import pytest
 from prefect.testing.utilities import prefect_test_harness
 
-os.environ["GROQ_API_KEY"] = "MOCK_API_KEY"
+
+@pytest.fixture(autouse=True)
+def _mock_groq_key(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "MOCK_API_KEY")
 
 
 @pytest.fixture(autouse=True, scope="session")
