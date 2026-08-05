@@ -20,6 +20,9 @@
   <a href="https://mypy-lang.org/">
     <img src="https://img.shields.io/badge/types-mypy-blue" alt="Mypy">
   </a>
+  <a href="https://app.codecov.io/gh/Criseda/brand-sniper-monorepo">
+    <img src="https://codecov.io/gh/Criseda/brand-sniper-monorepo/graph/badge.svg" alt="Coverage">
+  </a>
 </p>
 
 ---
@@ -76,7 +79,14 @@ docs/
   getting-started.md  5-minute quickstart
   architecture.md     System design, topology, data flow
   deployment.md       Docker stacks, migrations, operations
+.devcontainer/        Dev container (GitHub Codespaces / VS Code)
+.vscode/              Pinned editor config: extensions + ruff/mypy/pytest settings
 ```
+
+Contributors can use either path: manual setup (below) or a dev container — open the repo in
+[GitHub Codespaces](docs/getting-started.md#option-open-in-github-codespaces)
+or a `.devcontainer/`-compatible VS Code Remote container for a ready-to-run
+Python 3.12 + uv toolchain. Docker service stacks still run via Docker Desktop on the host.
 
 ---
 
@@ -93,11 +103,21 @@ docs/
 ## Quality Assurance
 
 ```bash
+make setup
+make check    # full CI gate: lint, format-check, typecheck, tests + coverage
+```
+
+`make check` mirrors CI exactly. The raw commands it wraps (useful for one-off runs) are:
+
+```bash
 uv run ruff check
 uv run ruff format --check
 uv run mypy apps/backend/ apps/listener/ apps/analytics/
-uv run pytest
+uv run coverage run -m pytest
+uv run coverage report   # prints the per-module coverage table
 ```
+
+Coverage commands run from the repo root. The project-wide threshold (`fail_under` in `pyproject.toml`) is enforced in CI; coverage is uploaded to [Codecov](https://app.codecov.io/gh/Criseda/brand-sniper-monorepo) after every push. See `make help` for all shortcuts.
 
 All checks run via GitHub Actions on every push/PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
 

@@ -1,16 +1,30 @@
+import logging
 import os
 import urllib.parse
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+_logger = logging.getLogger("shared_utils.db")
 
 
 class MissingDatabaseURLError(ValueError):
     """Raised when trying to use database features but DATABASE_URL is not set."""
 
     pass
+
+
+class DatabaseConnectionError(Exception):
+    """Raised when a database connection or pool operation fails.
+
+    Wraps low-level SQLAlchemy connection failures (unreachable host, pool
+    exhaustion/timeouts, stale connections) so callers can react to a
+    single, domain-specific exception type.
+    """
 
 
 class MissingDatabaseURLSentinel:
@@ -93,10 +107,31 @@ else:
     async_session_maker = MissingDatabaseURLSentinel("async_session_maker")  # type: ignore[assignment]
 
 
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+@asynccontextmanager
+async def session_scope() -> AsyncGenerator[AsyncSession, None]:
+    """Opens a database session, committing on success and rolling back on failure.
+
+    Connection-level failures (unreachable host, pool exhaustion, stale
+    connections) are logged with context and re-raised as DatabaseConnectionError.
+    A missing DATABASE_URL surfaces as MissingDatabaseURLError.
+    """
     if not async_session_maker:
         raise MissingDatabaseURLError(
             "DATABASE_URL environment variable is not set. Database connection cannot be established."
         )
-    async with async_session_maker() as session:
-        yield session
+
+    session: AsyncSession | None = None
+    try:
+        session = async_session_maker()
+    except SQLAlchemyError as exc:
+        _logger.error("[DB] Failed to acquire a database session: %s", exc)
+        raise DatabaseConnectionError(f"Could not acquire a database session: {exc}") from exc
+
+    try:
+        async with session:
+            yield session
+            await session.commit()
+    except SQLAlchemyError as exc:
+        _logger.error("[DB] Database operation failed, rolling back: %s", exc)
+        await session.rollback()
+        raise DatabaseConnectionError(f"Database operation failed: {exc}") from exc

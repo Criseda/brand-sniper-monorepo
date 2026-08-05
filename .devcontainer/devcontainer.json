@@ -1,0 +1,36 @@
+{
+  "name": "brand-sniper-dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "postCreateCommand": "uv sync --all-packages --group dev && (test -f .env || cp .env.example .env) && uv run pre-commit install",
+  "forwardPorts": [8080, 6380, 5432, 4200],
+  "portsAttributes": {
+    "8080": {
+      "label": "Backend API",
+      "onAutoForward": "notify"
+    },
+    "6380": {
+      "label": "Edge Redis",
+      "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "PostgreSQL (local dev, optional)",
+      "onAutoForward": "notify"
+    },
+    "4200": {
+      "label": "Prefect Server",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  }
+}

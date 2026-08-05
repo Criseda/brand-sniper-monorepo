@@ -4,8 +4,10 @@
 services:
   listener:
     environment:
-      COMPUTE_NODE_IP: ${COMPUTE_NODE_IP:-host.docker.internal}
-      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      # Compose interpolates this from the shell env or deployments/edge-stack/.env
+      # only (never the root .env, whose value would be shadowed here anyway).
+      # host.docker.internal is only correct when the backend runs on this host.
+      COMPUTE_NODE_IP: ${COMPUTE_NODE_IP:?Set COMPUTE_NODE_IP in the edge-stack .env or shell}
     # Makes host.docker.internal available on Linux Docker engines.
     extra_hosts:
       - "host.docker.internal:host-gateway"

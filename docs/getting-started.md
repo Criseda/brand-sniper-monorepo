@@ -2,6 +2,16 @@
 
 Run the full Brand Sniper stack on your machine in 5 minutes.
 
+## Option: Open in GitHub Codespaces
+
+Open the repo in a pre-provisioned container — Python 3.12, uv, and the VS Code extensions (ruff, mypy, TOML) come ready:
+
+1. Click **Code > Codespaces > Create codespace on main** on the repo page (or run `gh codespace create`).
+2. Wait for `postCreateCommand` to finish — it runs `uv sync --all-packages --group dev`, copies `.env.example` to `.env` if missing, and installs the pre-commit hooks.
+3. You still need the **Docker service stacks** (Redis, Prefect, MLflow, Grafana): the container does not bundle Docker or Compose, so run `docker compose up -d` in `deployments/server-stack/` on your host — ports `8080`, `6380`, `5432`, `4200` are forwarded automatically into the IDE.
+
+## Option: Manual setup
+
 ## Prerequisites
 
 - **Python 3.12** — install from [python.org](https://python.org)

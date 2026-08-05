@@ -9,11 +9,15 @@ from pathlib import Path
 import aiohttp
 from models import MarketTick
 from redis.asyncio import Redis
+from scrapers.base import BaseScraper
 from shared_utils import build_versioned_name, get_logger, parse_version_from_name, resolve_recent_median
 
-from scrapers.base import BaseScraper
-
 logger = get_logger("listener.skinport")
+
+
+async def _sleep(seconds: float) -> None:
+    """Testable seam over asyncio.sleep for cooldown/backoff waits."""
+    await asyncio.sleep(seconds)
 
 
 class SkinportScraper(BaseScraper):
@@ -76,7 +80,7 @@ class SkinportScraper(BaseScraper):
         while True:
             try:
                 # Target CS2 inventory items denominated in USD
-                params = {"app_id": 730, "currency": "USD", "tradable": 0}
+                params: dict[str, str | int] = {"app_id": 730, "currency": "USD", "tradable": 0}
 
                 logger.info("Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
                 async with session.get(self.api_url, params=params) as response:
@@ -115,7 +119,7 @@ class SkinportScraper(BaseScraper):
 
             # Respect the 5-minute cache instruction or back off if rate limited
             logger.info("Entering calculated cooldown cycle for %d seconds...", backoff_seconds)
-            await asyncio.sleep(backoff_seconds)
+            await _sleep(backoff_seconds)
 
     async def verify_anomaly_with_history(self, market_hash_name: str, price_usd: float) -> bool:
         """
@@ -147,7 +151,7 @@ class SkinportScraper(BaseScraper):
 
             if not target_entry:
                 url = "https://api.skinport.com/v1/sales/history"
-                params = {"app_id": 730, "currency": "USD", "market_hash_name": base_name}
+                params: dict[str, str | int] = {"app_id": 730, "currency": "USD", "market_hash_name": base_name}
                 session = await self._get_session()
 
                 async with session.get(

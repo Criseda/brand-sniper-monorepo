@@ -66,6 +66,10 @@ cp docker-compose.override.example.yml docker-compose.override.yml
 docker compose up -d
 ```
 
+The edge-stack override requires `COMPUTE_NODE_IP` to be set in the shell
+environment or `deployments/edge-stack/.env` (it is not read from the root
+`.env`). Point it at the central backend, e.g. `COMPUTE_NODE_IP=192.168.1.20`.
+
 The override file is for local-only changes such as adding a local PostgreSQL service, setting development environment variables, or adding bind mounts while working on app code. To be explicit about the files Compose should use, run:
 
 ```bash

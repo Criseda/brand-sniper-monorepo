@@ -8,6 +8,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import Integer, cast
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -24,7 +25,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-from database import AsyncSessionLocal, engine
+from database import engine, session_scope
 from queries import close_http_session, get_item_market_context
 from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
@@ -44,7 +45,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database schemas verified and mapped successfully.")
 
     # Load all existing market items into RAM cache
-    async with AsyncSessionLocal() as session:
+    async with session_scope() as session:
         stmt = select(MarketItem.market_hash_name, MarketItem.id)
         result = await session.exec(stmt)
         for name, item_id in result:
@@ -98,6 +99,11 @@ async def health_check():
 @app.get("/api/v1/market/context/{market_hash_name:path}")
 async def market_context(market_hash_name: str):
     context = await get_item_market_context(market_hash_name)
+    if context is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Item not found or market context unavailable",
+        )
     return context
 
 
@@ -126,11 +132,13 @@ async def get_or_create_item_id(session: AsyncSession, name: str) -> int:
         insert(MarketItem)
         .values(market_hash_name=name, item_type=item_type)
         .on_conflict_do_update(index_elements=["market_hash_name"], set_={"item_type": item_type})
-        .returning(MarketItem.id)
+        .returning(cast(MarketItem.id, Integer))
     )
 
     result = await session.exec(stmt)
     item_id = result.scalar()
+    if item_id is None:
+        raise RuntimeError(f"Failed to resolve or create item_id for '{name}'")
     item_cache[name] = item_id
     return item_id
 
@@ -143,7 +151,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
     paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
 
     try:
-        async with AsyncSessionLocal() as session:
+        async with session_scope() as session:
             async with session.begin():
                 item_id = await get_or_create_item_id(session, payload.market_hash_name)
                 trade = SimulatedTrade(
@@ -171,7 +179,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
     if total_ticks == 0:
         return {"status": "SKIPPED", "records_processed": 0}
 
-    async with AsyncSessionLocal() as session:
+    async with session_scope() as session:
         async with session.begin():
             insert_data = []
             for tick in payload.ticks:

@@ -17,15 +17,41 @@ members = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.22",
+    "ruff>=0.16.1",
     "mypy>=2.3.0",
+    "coverage>=7.15.2",
+    "pytest-timeout>=2.4.0",
+    "pre-commit>=4.0.0",
+]
+
+[tool.uv]
+override-dependencies = [
+    # mlflow caps cryptography<50 (3.15.1, latest); GHSA-g6cj-pr64-35w5 is only
+    # fixed in 50.0.0, so force the patched release to keep `uv audit` green.
+    # REMOVE WHEN: mlflow's metadata allows cryptography>=50. Verify with:
+    #   uv lock --upgrade-package mlflow --upgrade-package cryptography==50.0.0
+    # (fails today). On success: delete this block, `uv lock`, `uv audit`, `make check`.
+    # Tracked in issue #144 — also delete the AGENTS.md pointer when removing this.
+    "cryptography>=50.0.0",
 ]
 
 [tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
 filterwarnings = [
     "ignore::UserWarning:prefect.*",
     'ignore:.*httpx.*:UserWarning',
+    # Test engines (sqlite+aiosqlite) are now explicitly disposed in fixtures
+    # before the per-test event loop closes (see apps/backend/tests/conftest.py
+    # and test_main.py), which prevents aiosqlite connection worker threads from
+    # outliving the loop. This broad suppression stays as a fallback only for
+    # timing-variant environments (e.g. Codespaces) where a worker thread can
+    # still observe "Event loop is closed" during test-loop teardown after an
+    # otherwise-green test run. Keep broad: the thread name/timing vary per run,
+    # so the message cannot be matched reliably.
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning",
 ]
+timeout = 60
+timeout_method = "thread"
 pythonpath = [
     "packages/shared_utils/src",
     "apps/analytics",
@@ -42,5 +68,40 @@ ignore = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.coverage.run]
+branch = true
+source = [
+    "apps/backend",
+    "apps/listener",
+    "apps/analytics",
+    "packages/shared_utils/src",
+]
+omit = [
+    "*/tests/*",
+    "*/main.py",
+    "deployments/migrations/*",
+]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+
+# Per-module coverage gates enforced by scripts/check_coverage_targets.py.
+# Targets mirror issue #139: https://github.com/Criseda/brand-sniper-monorepo/issues/139
+[tool.brand-sniper.coverage-targets]
+"apps/analytics/seed_historical.py" = 80
+"apps/analytics/update_baselines.py" = 80
+"apps/analytics/long_term_macro.py" = 80
+"apps/analytics/validate_historical.py" = 80
+"apps/analytics/verify_seed_historical.py" = 80
+"apps/listener/scrapers/skinport.py" = 70
+"apps/listener/scrapers/factory.py" = 70
+"apps/listener/executor.py" = 70
+"apps/analytics/evaluate_performance.py" = 80
+"apps/analytics/tools.py" = 80
+"apps/backend/queries.py" = 80
+"apps/listener/rules_engine.py" = 90
+"apps/listener/scrapers/base.py" = 90
 
 

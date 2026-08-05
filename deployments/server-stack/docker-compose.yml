@@ -14,7 +14,9 @@ services:
   #   ports:
   #     - "5432:5432"
   #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
+  #     # Mount at /var/lib/postgresql: the postgres:18 image moved PGDATA to
+  #     # /var/lib/postgresql/18/docker and no longer writes to /var/lib/postgresql/data.
+  #     - postgres_data:/var/lib/postgresql
   #   networks:
   #     - sniper_network
   #   restart: unless-stopped
@@ -28,7 +30,7 @@ services:
   # EDGE CACHE LAYER: Volatile Sliding-Window Memory (port 6380)
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:8.8.1-alpine
+    image: redis:8.10.0-alpine
     container_name: sniper_edge_redis
     env_file:
       - ../../.env
@@ -43,7 +45,7 @@ services:
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
   # ---------------------------------------------------------------------------
   prefect-server:
-    image: prefecthq/prefect:3.7.6-python3.12
+    image: prefecthq/prefect:3.8.2.dev1-python3.12
     container_name: sniper_prefect_server
     command: prefect server start --host 0.0.0.0
     environment:
@@ -83,7 +85,7 @@ services:
   # OBSERVABILITY LAYER: Metrics and Dashboards
   # ---------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:v3.13.1
+    image: prom/prometheus:v3.13.2
     container_name: sniper_prometheus
     ports:
       - "9090:9090"
