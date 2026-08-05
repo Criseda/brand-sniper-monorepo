@@ -140,7 +140,9 @@ async def search_macro_trends(query: str) -> str:
     return json.dumps(data)
 
 
-def verify_float_value(market_hash_name: str, float_value: float) -> str:
+async def verify_float_value(market_hash_name: str, float_value: float) -> str:
+    """Evaluates float wear quality. Kept async for a uniform tool interface
+    (every AVAILABLE_FUNCTIONS entry is awaited by the CFO tool loop)."""
     logger.info("[CFO] Verifying float value for %s: %.4f", market_hash_name, float_value)
     quality, multiplier, description = _classify_float(float_value)
     return json.dumps(

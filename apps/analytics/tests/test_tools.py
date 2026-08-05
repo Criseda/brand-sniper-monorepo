@@ -1,10 +1,17 @@
+import asyncio
 import json
 from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
 import tools
-from tools import _classify_float, _wear_tier, fetch_live_market_floor, search_macro_trends
+from tools import (
+    _classify_float,
+    _wear_tier,
+    fetch_live_market_floor,
+    search_macro_trends,
+    verify_float_value,
+)
 
 
 class _FakeResp:
@@ -153,6 +160,53 @@ async def test_search_macro_trends_empty_payload_returns_default_message(monkeyp
 # ---------------------------------------------------------------------------
 # session lifecycle
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", sorted(tools.AVAILABLE_FUNCTIONS))
+def test_all_tools_are_awaitable(name):
+    assert asyncio.iscoroutinefunction(tools.AVAILABLE_FUNCTIONS[name])
+
+
+@pytest.mark.parametrize(
+    ("item_name", "float_value", "expected"),
+    [
+        pytest.param(
+            "AK-47 | Redline (Field-Tested)",
+            0.001,
+            {"float_quality": "Exceptional", "premium_multiplier": 1.5, "wear_tier": "Factory New"},
+            id="factory_new_exceptional",
+        ),
+        pytest.param(
+            "AWP | Asiimov (Field-Tested)",
+            0.96,
+            {"float_quality": "Exceptional", "premium_multiplier": 1.3, "wear_tier": "Battle-Scarred"},
+            id="battle_scarred_exceptional",
+        ),
+        pytest.param(
+            "M4A4 | Howl (Factory New)",
+            0.30,
+            {"float_quality": "Standard", "premium_multiplier": 1.0, "wear_tier": "Field-Tested"},
+            id="field_tested_standard",
+        ),
+        pytest.param(
+            "AK-47 | Redline (Factory New)",
+            0.05,
+            {"float_quality": "Good", "premium_multiplier": 1.1},
+            id="factory_new_good",
+        ),
+        pytest.param(
+            "AK-47 | Redline (Minimal Wear)",
+            0.075,
+            {"float_quality": "Good", "premium_multiplier": 1.15, "wear_tier": "Minimal Wear"},
+            id="minimal_wear_good",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_verify_float_value(item_name, float_value, expected):
+    result = json.loads(await verify_float_value(item_name, float_value))
+    for key, value in expected.items():
+        assert result[key] == value
 
 
 @pytest.mark.asyncio

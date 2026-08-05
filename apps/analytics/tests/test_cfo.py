@@ -113,49 +113,6 @@ async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_opena
 
 
 @pytest.mark.parametrize(
-    ("item_name", "float_value", "expected"),
-    [
-        pytest.param(
-            "AK-47 | Redline (Field-Tested)",
-            0.001,
-            {"float_quality": "Exceptional", "premium_multiplier": 1.5, "wear_tier": "Factory New"},
-            id="factory_new_exceptional",
-        ),
-        pytest.param(
-            "AWP | Asiimov (Field-Tested)",
-            0.96,
-            {"float_quality": "Exceptional", "premium_multiplier": 1.3, "wear_tier": "Battle-Scarred"},
-            id="battle_scarred_exceptional",
-        ),
-        pytest.param(
-            "M4A4 | Howl (Factory New)",
-            0.30,
-            {"float_quality": "Standard", "premium_multiplier": 1.0, "wear_tier": "Field-Tested"},
-            id="field_tested_standard",
-        ),
-        pytest.param(
-            "AK-47 | Redline (Factory New)",
-            0.05,
-            {"float_quality": "Good", "premium_multiplier": 1.1},
-            id="factory_new_good",
-        ),
-        pytest.param(
-            "AK-47 | Redline (Minimal Wear)",
-            0.075,
-            {"float_quality": "Good", "premium_multiplier": 1.15, "wear_tier": "Minimal Wear"},
-            id="minimal_wear_good",
-        ),
-    ],
-)
-def test_verify_float_value(item_name, float_value, expected):
-    from tools import verify_float_value
-
-    result = json.loads(verify_float_value(item_name, float_value))
-    for key, value in expected.items():
-        assert result[key] == value
-
-
-@pytest.mark.parametrize(
     ("error_message", "expected"),
     [
         ("Please try again in 5.0s", 6.0),
