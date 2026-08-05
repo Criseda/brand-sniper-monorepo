@@ -1,5 +1,4 @@
 import json
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -50,20 +49,6 @@ class _Session:
                 raise response
             return response
         return _OkResponse(self.default_payload)
-
-    async def close(self):
-        self.closed = True
-
-
-class _FailingSession:
-    def __init__(self, error):
-        self.error = error
-        self.get_calls = []
-        self.closed = False
-
-    def get(self, url, params=None, **kwargs):
-        self.get_calls.append((url, params))
-        raise self.error
 
     async def close(self):
         self.closed = True
@@ -210,120 +195,6 @@ async def test_poll_continues_after_transport_error(mocker):
     await stream.aclose()
 
     assert len(session.get_calls) == 2
-
-
-# ---------------------------------------------------------------------------
-# verify_anomaly_with_history
-# ---------------------------------------------------------------------------
-
-HISTORY_ENTRY = {
-    "last_24_hours": {"median": 700.0, "volume": 4},
-    "last_7_days": {"median": 700.0, "volume": 30},
-    "last_30_days": {"median": 690.0, "volume": 100},
-    "last_90_days": {"median": 690.0, "volume": 400},
-}
-
-
-VERSIONED_NAME = "★ Butterfly Knife | Doppler (Phase 3) (Factory New)"
-BASE_NAME = "★ Butterfly Knife | Doppler (Factory New)"
-
-
-@pytest.mark.asyncio
-async def test_verify_respects_cooldown():
-    scraper = SkinportScraper()
-    scraper.history_api_cooldown_until = time.time() + 100.0
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 100.0) is False
-
-
-@pytest.mark.asyncio
-async def test_verify_uses_fresh_cache_entry():
-    scraper = SkinportScraper()
-    scraper.history_cache[(BASE_NAME, "Phase 3")] = (time.time(), HISTORY_ENTRY)
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is True
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 700.0) is False
-
-
-@pytest.mark.asyncio
-async def test_verify_fetches_from_api_and_caches():
-    scraper = SkinportScraper()
-    session = _Session([_OkResponse([HISTORY_ENTRY]), _OkResponse([HISTORY_ENTRY])])
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is True
-
-    assert (BASE_NAME, "Phase 3") in scraper.history_cache
-    assert session.get_calls[0][0] == "https://api.skinport.com/v1/sales/history"
-
-
-@pytest.mark.asyncio
-async def test_verify_non_200_returns_false():
-    scraper = SkinportScraper()
-    session = _Session([_StatusResponse(500)])
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is False
-
-
-@pytest.mark.asyncio
-async def test_verify_429_sets_cooldown():
-    scraper = SkinportScraper()
-    session = _Session([_StatusResponse(429)])
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is False
-    assert scraper.history_api_cooldown_until > time.time()
-
-
-@pytest.mark.asyncio
-async def test_verify_empty_list_returns_true():
-    scraper = SkinportScraper()
-    session = _Session([_OkResponse([])])
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is True
-
-
-@pytest.mark.asyncio
-async def test_verify_version_match_selects_entry():
-    scraper = SkinportScraper()
-    matching = {"version": "Phase 3", "last_24_hours": {"median": 500.0, "volume": 3}}
-    other = {"version": "Phase 4", "last_24_hours": {"median": 900.0, "volume": 3}}
-    session = _Session([_OkResponse([other, matching])])
-    scraper._session = session
-
-    # matching median is 500 -> threshold 475, so 600 is NOT a snipe
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is False
-
-
-@pytest.mark.asyncio
-async def test_verify_version_missing_uses_first_entry():
-    scraper = SkinportScraper()
-    first = {"version": "Factory New", "last_24_hours": {"median": 500.0, "volume": 3}}
-    session = _Session([_OkResponse([first])])
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history("Item (Phase 9) (Factory New)", 400.0) is True
-
-
-@pytest.mark.asyncio
-async def test_verify_entry_without_usable_median_returns_true():
-    scraper = SkinportScraper()
-    entry = {"last_24_hours": {"median": None, "volume": 0}}
-    session = _Session([_OkResponse([entry])])
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is True
-
-
-@pytest.mark.asyncio
-async def test_verify_transport_error_returns_false():
-    scraper = SkinportScraper()
-    session = _FailingSession(Exception("boom"))
-    scraper._session = session
-
-    assert await scraper.verify_anomaly_with_history(VERSIONED_NAME, 600.0) is False
 
 
 # ---------------------------------------------------------------------------

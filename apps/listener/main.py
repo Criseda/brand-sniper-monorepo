@@ -11,6 +11,7 @@ from pathlib import Path
 import aiohttp
 from dotenv import load_dotenv
 from executor import PaperExecutor
+from executor import close_http_session as close_executor_http_session
 from listener_telemetry import (
     anomalies_confirmed_total,
     anomalies_detected_total,
@@ -451,6 +452,8 @@ async def process_live_telemetry_stream(platform_target: str):
         await asyncio.gather(*pending, return_exceptions=True)
     finally:
         await close_http_session()
+        await close_executor_http_session()
+        await scraper.close()
         logger.info("Cleanup complete.")
 
 
