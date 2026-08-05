@@ -14,3 +14,10 @@ async def test_default_websocket_stream_yields_nothing():
     messages = [msg async for msg in scraper.listen_websocket_stream()]
 
     assert messages == []
+
+
+@pytest.mark.asyncio
+async def test_default_close_is_noop():
+    scraper = ConcreteScraper("test_platform")
+
+    await scraper.close()

@@ -17,7 +17,7 @@ class BaseScraper(ABC):
         Continuous non-blocking generator that polls the target platform API
         and yields verified, normalized MarketTick objects.
         """
-        pass
+        pass  # pragma: no cover - abstract body, subclasses override
 
     async def close(self) -> None:
         """Releases any platform-specific resources (e.g. HTTP sessions). Override in subclass."""
