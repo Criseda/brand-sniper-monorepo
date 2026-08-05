@@ -380,5 +380,21 @@ async def test_run_cfo_evaluation_pipeline(monkeypatch):
     mock_evaluate.assert_awaited_once_with(trade, "AK-47 | Redline (Field-Tested)", None)
 
 
+@pytest.mark.asyncio
+async def test_run_cfo_evaluation_pipeline_closes_session_on_error(monkeypatch):
+    evaluate_performance._model_index_var.set(0)
+    mock_fetch = AsyncMock(return_value=[(_trade(), "AK-47 | Redline (Field-Tested)", None)])
+    mock_evaluate = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_close = AsyncMock()
+    monkeypatch.setattr(evaluate_performance, "fetch_daily_trades", mock_fetch)
+    monkeypatch.setattr(evaluate_performance, "evaluate_trade", mock_evaluate)
+    monkeypatch.setattr(evaluate_performance, "close_http_session", mock_close)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await evaluate_performance.run_cfo_evaluation_pipeline()
+
+    mock_close.assert_awaited_once()
+
+
 def test_extract_retry_after_minutes_format():
     assert _extract_retry_after("Please try again in 2m13.5744s") == pytest.approx(2 * 60 + 13.5744 + 1, abs=0.01)

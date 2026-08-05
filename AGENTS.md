@@ -43,6 +43,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Listener must be non-blocking**: use `aiohttp`, never `requests`
 - **Edge Redis on `localhost:6380`** (not default 6379), `--save "" --appendonly no` (volatile RAM only)
 - **CFO tools** in `apps/analytics/tools.py` — plain functions, registered as OpenAI-compatible function tools
+- **Script bootstrap**: analytics scripts call `setup_script_environment(__file__)` at the top and `validate_required_env([...])` inside `__main__` (never at import) — do not re-add `load_dotenv`/`sys.path`/`reconfigure` boilerplate
 - **Listener spawns Node.js sidecar** for WebSocket — lives in `scrapers/skinport_websocket/`
 
 ## Testing quirks

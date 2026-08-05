@@ -8,8 +8,10 @@ from dotenv import load_dotenv
 def setup_script_environment(script_path: str | Path) -> Path:
     """Bootstraps a runnable app script: path alignment, UTF-8 streams, and .env loading.
 
-    Loads the root .env (shared) first, then the app-specific .env with override,
-    mirroring how the services do it. Returns the repository root.
+    Expects the script to live at <repo-root>/<app>/<script.py> (exactly two levels
+    below the repository root). Loads the root .env (shared) first, then the
+    app-specific .env with override, mirroring how the services do it. Returns the
+    repository root.
     """
     script_file = Path(script_path).resolve()
     project_root = script_file.parents[2]

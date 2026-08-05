@@ -6,7 +6,7 @@ from redis.asyncio import Redis
 from shared_utils import setup_script_environment
 from sqlalchemy import select
 
-PROJECT_ROOT = setup_script_environment(__file__)
+setup_script_environment(__file__)
 
 from shared_utils import get_logger, validate_required_env
 from shared_utils.db_connection import async_engine

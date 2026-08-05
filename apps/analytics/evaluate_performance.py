@@ -7,7 +7,7 @@ import tempfile
 
 from shared_utils import setup_script_environment
 
-PROJECT_ROOT = setup_script_environment(__file__)
+setup_script_environment(__file__)
 
 import mlflow
 from mlflow.client import MlflowClient
@@ -190,6 +190,9 @@ async def _json_phase(messages):
 
 @task
 async def fetch_daily_trades():
+    # Uses session.execute() (SQLAlchemy-style) rather than session.exec()
+    # because the statement combines a correlated scalar subquery; the two
+    # styles are mixed across the codebase deliberately (see #81).
     async with AsyncSession(async_engine) as session:
         latest_tick_subq = (
             select(LiveMarketTick.float_value)
@@ -308,10 +311,11 @@ async def run_cfo_evaluation_pipeline():
     trades = await fetch_daily_trades()
     logger.info("Found %d trades to evaluate.", len(trades))
 
-    for trade, item_name, float_value in trades:
-        await evaluate_trade(trade, item_name, float_value)
-
-    await close_http_session()
+    try:
+        for trade, item_name, float_value in trades:
+            await evaluate_trade(trade, item_name, float_value)
+    finally:
+        await close_http_session()
 
 
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests

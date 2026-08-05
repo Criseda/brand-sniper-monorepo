@@ -9,7 +9,7 @@ import pandas as pd
 from shared_utils import setup_script_environment
 from sqlalchemy import DateTime, Integer, String, cast, select
 
-PROJECT_ROOT = setup_script_environment(__file__)
+setup_script_environment(__file__)
 
 from prefect import flow, get_run_logger, task
 from shared_utils import utc_now_naive, validate_required_env
@@ -263,7 +263,6 @@ async def analyze_long_term_macro(limit_items: int | None = 100):
 
 
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
-    validate_required_env(["DATABASE_URL"])
     import argparse
 
     parser = argparse.ArgumentParser(description="Calculate macro baselines and sync to Redis.")
@@ -274,6 +273,8 @@ if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via un
         help="Limit number of items to process (default: 100, pass <= 0 for all).",
     )
     args = parser.parse_args()
+
+    validate_required_env(["DATABASE_URL"])
 
     # Allow running directly for development/testing
     asyncio.run(analyze_long_term_macro(limit_items=args.limit))
