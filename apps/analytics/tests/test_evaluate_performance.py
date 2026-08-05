@@ -148,10 +148,14 @@ async def test_tool_loop_exhausts_rounds_then_asks_no_tools(monkeypatch):
     tool_resp = _tool_call_response("fetch_live_market_floor", '{"market_hash_name": "AK-47 | Redline (Field-Tested)"}')
     stop_resp = _json_response(60, "done")
     monkeypatch.setattr(evaluate_performance, "_MAX_TOOL_ROUNDS", 2)
+
+    async def fake_tool(**kwargs):
+        return json.dumps({"live_floor_cents": 900})
+
     monkeypatch.setitem(
         evaluate_performance.AVAILABLE_FUNCTIONS,
         "fetch_live_market_floor",
-        lambda **kwargs: json.dumps({"live_floor_cents": 900}),
+        fake_tool,
     )
     mock_call = AsyncMock(side_effect=[tool_resp, tool_resp, stop_resp])
     monkeypatch.setattr(evaluate_performance, "_call", mock_call)
@@ -374,6 +378,22 @@ async def test_run_cfo_evaluation_pipeline(monkeypatch):
 
     mock_fetch.assert_awaited_once()
     mock_evaluate.assert_awaited_once_with(trade, "AK-47 | Redline (Field-Tested)", None)
+
+
+@pytest.mark.asyncio
+async def test_run_cfo_evaluation_pipeline_closes_session_on_error(monkeypatch):
+    evaluate_performance._model_index_var.set(0)
+    mock_fetch = AsyncMock(return_value=[(_trade(), "AK-47 | Redline (Field-Tested)", None)])
+    mock_evaluate = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_close = AsyncMock()
+    monkeypatch.setattr(evaluate_performance, "fetch_daily_trades", mock_fetch)
+    monkeypatch.setattr(evaluate_performance, "evaluate_trade", mock_evaluate)
+    monkeypatch.setattr(evaluate_performance, "close_http_session", mock_close)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await evaluate_performance.run_cfo_evaluation_pipeline()
+
+    mock_close.assert_awaited_once()
 
 
 def test_extract_retry_after_minutes_format():

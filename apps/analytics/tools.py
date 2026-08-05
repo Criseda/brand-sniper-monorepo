@@ -1,15 +1,34 @@
 import json
 import os
-import urllib.error
 import urllib.parse
-import urllib.request
 
+import aiohttp
+from openai import pydantic_function_tool
 from pydantic import BaseModel, Field
 from shared_utils import get_logger
 
 logger = get_logger("analytics.tools")
 
 BACKEND_URL: str = os.getenv("COMPUTE_NODE_URL", "http://localhost:8080")
+
+_http_session: aiohttp.ClientSession | None = None
+
+
+async def _get_http_session() -> aiohttp.ClientSession:
+    """Returns a shared lazy aiohttp session, recreating it if it was closed."""
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        _http_session = aiohttp.ClientSession()
+    return _http_session
+
+
+async def close_http_session() -> None:
+    """Closes the shared aiohttp session and resets it to None (idempotent)."""
+    global _http_session
+    if _http_session and not _http_session.closed:
+        await _http_session.close()
+        _http_session = None
+
 
 _FLOAT_TIERS: list[tuple[float, float, str]] = [
     (0.00, 0.07, "Factory New"),
@@ -65,30 +84,32 @@ def _wear_tier(float_value: float) -> str:
     return "Unknown"
 
 
-def fetch_live_market_floor(market_hash_name: str) -> str:
+async def fetch_live_market_floor(market_hash_name: str) -> str:
     logger.info("[CFO] Fetching live market floor for: %s", market_hash_name)
     try:
         url = f"{BACKEND_URL}/api/v1/market/context/{urllib.parse.quote(market_hash_name, safe='')}"
-        with urllib.request.urlopen(url, timeout=5) as resp:
+        session = await _get_http_session()
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
             if resp.status == 200:
-                data = json.loads(resp.read().decode())
-                # Use undiscounted cash equivalent average or real-time median as the true live floor price
-                live_floor = (
-                    data.get("cash_equivalent_avg_cents")
-                    or data.get("real_time_skinport_median_cents")
-                    or data.get("snipe_threshold_cents")
-                    or 0
-                )
-                return json.dumps(
-                    {
-                        "market_hash_name": market_hash_name,
-                        "live_floor_cents": live_floor,
-                        "recent_sales_cents": [data.get("real_time_skinport_median_cents", 0)],
-                        "liquidity": "HIGH" if data.get("is_liquid") else "LOW",
-                        "message": "Live market context fetched from backend database.",
-                    }
-                )
-    except (urllib.error.URLError, OSError, ValueError) as e:
+                data = json.loads(await resp.text())
+                if isinstance(data, dict):
+                    # Use undiscounted cash equivalent average or real-time median as the true live floor price
+                    live_floor = (
+                        data.get("cash_equivalent_avg_cents")
+                        or data.get("real_time_skinport_median_cents")
+                        or data.get("snipe_threshold_cents")
+                        or 0
+                    )
+                    return json.dumps(
+                        {
+                            "market_hash_name": market_hash_name,
+                            "live_floor_cents": live_floor,
+                            "recent_sales_cents": [data.get("real_time_skinport_median_cents", 0)],
+                            "liquidity": "HIGH" if data.get("is_liquid") else "LOW",
+                            "message": "Live market context fetched from backend database.",
+                        }
+                    )
+    except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError) as e:
         logger.warning("Failed to fetch live market floor from backend: %s. Returning error payload.", e)
 
     return json.dumps(
@@ -103,21 +124,16 @@ def fetch_live_market_floor(market_hash_name: str) -> str:
     )
 
 
-def search_macro_trends(query: str) -> str:
+async def search_macro_trends(query: str) -> str:
     logger.info("[CFO] Macro trend search requested: %s", query)
     data: dict = {}
     try:
         url = f"{BACKEND_URL}/api/v1/market/search-trends"
-        req = urllib.request.Request(
-            url,
-            data=json.dumps({"query": query}).encode(),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        session = await _get_http_session()
+        async with session.post(url, json={"query": query}, timeout=aiohttp.ClientTimeout(total=5)) as resp:
             if resp.status == 200:
-                data = json.loads(resp.read().decode())
-    except (urllib.error.URLError, OSError, ValueError) as e:
+                data = json.loads(await resp.text())
+    except (aiohttp.ClientError, TimeoutError, json.JSONDecodeError) as e:
         logger.warning("Failed to fetch macro trends from backend: %s", e)
 
     if not data:
@@ -125,7 +141,9 @@ def search_macro_trends(query: str) -> str:
     return json.dumps(data)
 
 
-def verify_float_value(market_hash_name: str, float_value: float) -> str:
+async def verify_float_value(market_hash_name: str, float_value: float) -> str:
+    """Evaluates float wear quality. Kept async for a uniform tool interface
+    (every AVAILABLE_FUNCTIONS entry is awaited by the CFO tool loop)."""
     logger.info("[CFO] Verifying float value for %s: %.4f", market_hash_name, float_value)
     quality, multiplier, description = _classify_float(float_value)
     return json.dumps(
@@ -139,8 +157,6 @@ def verify_float_value(market_hash_name: str, float_value: float) -> str:
         }
     )
 
-
-from openai import pydantic_function_tool  # noqa: E402
 
 _TOOL_DEFS: list[tuple[str, str, type[BaseModel], str]] = [
     (

@@ -3,19 +3,14 @@ Verify the integrity of historical database seeding.
 Run this script after seed_historical.py finishes.
 """
 
-import sys
 import time
-from pathlib import Path
 
-from dotenv import load_dotenv
+from shared_utils import setup_script_environment
 from sqlmodel import text
 
-# Dynamic path alignment to find shared-utils package
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.append(str(PROJECT_ROOT))
-load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
+setup_script_environment(__file__)
 
-from shared_utils import get_logger
+from shared_utils import get_logger, validate_required_env
 from shared_utils.db_connection import async_engine
 
 logger = get_logger("analytics.verify")
@@ -141,7 +136,8 @@ async def run_verification():
     logger.info("======================================================================")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
+    validate_required_env(["DATABASE_URL"])
     import asyncio
 
     asyncio.run(run_verification())

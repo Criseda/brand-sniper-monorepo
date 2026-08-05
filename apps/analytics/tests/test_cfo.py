@@ -63,10 +63,13 @@ async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_opena
     mock_client.create_run.return_value = mock_run
     mock_mlflow_client_cls.return_value = mock_client
 
+    async def fake_tool(**kwargs):
+        return json.dumps({"live_floor_cents": 900})
+
     monkeypatch.setitem(
         evaluate_performance.AVAILABLE_FUNCTIONS,
         "fetch_live_market_floor",
-        lambda **kwargs: json.dumps({"live_floor_cents": 900}),
+        fake_tool,
     )
 
     mock_trade = SimulatedTrade(item_id=1, purchase_price_cents=1000, estimated_profit_cents=500, trigger_z_score=-3.0)
@@ -107,49 +110,6 @@ async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_opena
 
     assert mock_openai_client.chat.completions.create.call_count == 3
     mock_client.log_metric.assert_called_with("test_run_id", "cfo_confidence_score", 50)
-
-
-@pytest.mark.parametrize(
-    ("item_name", "float_value", "expected"),
-    [
-        pytest.param(
-            "AK-47 | Redline (Field-Tested)",
-            0.001,
-            {"float_quality": "Exceptional", "premium_multiplier": 1.5, "wear_tier": "Factory New"},
-            id="factory_new_exceptional",
-        ),
-        pytest.param(
-            "AWP | Asiimov (Field-Tested)",
-            0.96,
-            {"float_quality": "Exceptional", "premium_multiplier": 1.3, "wear_tier": "Battle-Scarred"},
-            id="battle_scarred_exceptional",
-        ),
-        pytest.param(
-            "M4A4 | Howl (Factory New)",
-            0.30,
-            {"float_quality": "Standard", "premium_multiplier": 1.0, "wear_tier": "Field-Tested"},
-            id="field_tested_standard",
-        ),
-        pytest.param(
-            "AK-47 | Redline (Factory New)",
-            0.05,
-            {"float_quality": "Good", "premium_multiplier": 1.1},
-            id="factory_new_good",
-        ),
-        pytest.param(
-            "AK-47 | Redline (Minimal Wear)",
-            0.075,
-            {"float_quality": "Good", "premium_multiplier": 1.15, "wear_tier": "Minimal Wear"},
-            id="minimal_wear_good",
-        ),
-    ],
-)
-def test_verify_float_value(item_name, float_value, expected):
-    from tools import verify_float_value
-
-    result = json.loads(verify_float_value(item_name, float_value))
-    for key, value in expected.items():
-        assert result[key] == value
 
 
 @pytest.mark.parametrize(

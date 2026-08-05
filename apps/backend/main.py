@@ -1,7 +1,6 @@
 import os
 import sys
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
@@ -30,7 +29,7 @@ from database import engine, session_scope
 from queries import close_http_session, get_item_market_context
 from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
-from shared_utils import get_logger, parse_item_meta
+from shared_utils import get_logger, parse_item_meta, utc_fromtimestamp_naive, utc_now_naive
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
 
@@ -160,7 +159,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
                     purchase_price_cents=payload.purchase_price_cents,
                     estimated_profit_cents=payload.estimated_profit_cents,
                     trigger_z_score=payload.trigger_z_score,
-                    simulated_buy_timestamp=datetime.now(UTC).replace(tzinfo=None),
+                    simulated_buy_timestamp=utc_now_naive(),
                 )
                 session.add(trade)
     except SQLAlchemyError as e:
@@ -190,7 +189,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
                         "item_id": item_id,
                         "price_cents": tick.price_cents,
                         "marketplace_source": payload.source,
-                        "inserted_at": datetime.fromtimestamp(tick.timestamp, tz=UTC).replace(tzinfo=None),
+                        "inserted_at": utc_fromtimestamp_naive(tick.timestamp),
                     }
                 )
 

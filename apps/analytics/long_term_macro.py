@@ -4,30 +4,15 @@ Calculates historical rolling baselines, seasonality metrics, and monitors price
 """
 
 import asyncio
-import sys
-from datetime import UTC, datetime
-from pathlib import Path
 
 import pandas as pd
-from dotenv import load_dotenv
+from shared_utils import setup_script_environment
 from sqlalchemy import DateTime, Integer, String, cast, select
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-root_env = PROJECT_ROOT / ".env"
-if root_env.exists():
-    load_dotenv(dotenv_path=root_env)
-
-analytics_env = PROJECT_ROOT / "apps" / "analytics" / ".env"
-if analytics_env.exists():
-    load_dotenv(dotenv_path=analytics_env, override=True)
+setup_script_environment(__file__)
 
 from prefect import flow, get_run_logger, task
+from shared_utils import utc_now_naive, validate_required_env
 from shared_utils.db_connection import async_engine
 from shared_utils.models import HistoricalPrice, ItemMacroBaseline, MarketItem
 from sqlalchemy.dialects.postgresql import insert
@@ -210,7 +195,7 @@ async def save_macro_baselines_to_db(analysis_results: list[dict]):
                             "volatility_cents": res["volatility_cents"],
                             "avg_volume_30d": res["avg_volume_30d"],
                             "support_floor_cents": res["support_floor_cents"],
-                            "updated_at": datetime.now(UTC).replace(tzinfo=None),
+                            "updated_at": utc_now_naive(),
                         },
                     )
                 )
@@ -277,7 +262,7 @@ async def analyze_long_term_macro(limit_items: int | None = 100):
     logger.info("Long Term Macro Analysis Pipeline completed successfully.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     import argparse
 
     parser = argparse.ArgumentParser(description="Calculate macro baselines and sync to Redis.")
@@ -288,6 +273,8 @@ if __name__ == "__main__":
         help="Limit number of items to process (default: 100, pass <= 0 for all).",
     )
     args = parser.parse_args()
+
+    validate_required_env(["DATABASE_URL"])
 
     # Allow running directly for development/testing
     asyncio.run(analyze_long_term_macro(limit_items=args.limit))
