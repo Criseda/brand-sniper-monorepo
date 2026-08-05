@@ -15,6 +15,7 @@ _http_session: aiohttp.ClientSession | None = None
 
 
 async def _get_http_session() -> aiohttp.ClientSession:
+    """Returns a shared lazy aiohttp session, recreating it if it was closed."""
     global _http_session
     if _http_session is None or _http_session.closed:
         _http_session = aiohttp.ClientSession()
@@ -22,6 +23,7 @@ async def _get_http_session() -> aiohttp.ClientSession:
 
 
 async def close_http_session() -> None:
+    """Closes the shared aiohttp session and resets it to None (idempotent)."""
     global _http_session
     if _http_session and not _http_session.closed:
         await _http_session.close()
