@@ -3,22 +3,13 @@ Validate that the historical prices CSV files are clean and ready to be seeded i
 Please run this before seed_historical_prices.py to prevent errors and save time.
 """
 
-import sys
-from pathlib import Path
-
 import pandas as pd
+from shared_utils import get_logger, parse_item_meta, setup_script_environment
 
-# Force standard streams to use UTF-8 to support Unicode characters on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
-from shared_utils import get_logger, parse_item_meta
-
+PROJECT_ROOT = setup_script_environment(__file__)
 logger = get_logger("analytics.validate")
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
+DATA_DIR = PROJECT_ROOT / "data" / "items"
 
 
 def run_dry_run_validation():

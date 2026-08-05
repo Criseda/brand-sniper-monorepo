@@ -63,10 +63,13 @@ async def test_evaluate_trade_with_tool_calls(mock_get_experiment_id, mock_opena
     mock_client.create_run.return_value = mock_run
     mock_mlflow_client_cls.return_value = mock_client
 
+    async def fake_tool(**kwargs):
+        return json.dumps({"live_floor_cents": 900})
+
     monkeypatch.setitem(
         evaluate_performance.AVAILABLE_FUNCTIONS,
         "fetch_live_market_floor",
-        lambda **kwargs: json.dumps({"live_floor_cents": 900}),
+        fake_tool,
     )
 
     mock_trade = SimulatedTrade(item_id=1, purchase_price_cents=1000, estimated_profit_cents=500, trigger_z_score=-3.0)

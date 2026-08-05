@@ -3,20 +3,11 @@ import contextvars
 import json
 import os
 import re
-import sys
 import tempfile
-from pathlib import Path
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+from shared_utils import setup_script_environment
 
-from dotenv import load_dotenv
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
-load_dotenv(dotenv_path=PROJECT_ROOT / "apps" / "analytics" / ".env", override=True)
+PROJECT_ROOT = setup_script_environment(__file__)
 
 import mlflow
 from mlflow.client import MlflowClient
@@ -24,13 +15,13 @@ from mlflow.exceptions import MlflowException
 from openai import OpenAI
 from prefect import flow, task
 from pydantic import BaseModel, Field
-from shared_utils import get_logger
+from shared_utils import get_logger, validate_required_env
 from shared_utils.db_connection import async_engine
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
 from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from tools import AVAILABLE_FUNCTIONS, TOOL_SCHEMAS
+from tools import AVAILABLE_FUNCTIONS, TOOL_SCHEMAS, close_http_session
 
 logger = get_logger("analytics.evaluate")
 
@@ -167,7 +158,7 @@ async def _tool_loop(messages):
 
         for tc in msg.tool_calls:
             fn_args = json.loads(tc.function.arguments)
-            result = AVAILABLE_FUNCTIONS[tc.function.name](**fn_args)
+            result = await AVAILABLE_FUNCTIONS[tc.function.name](**fn_args)
             messages.append({"role": "tool", "tool_call_id": tc.id, "name": tc.function.name, "content": result})
 
     kwargs = {"tools": TOOL_SCHEMAS, "tool_choice": "none"}
@@ -320,6 +311,9 @@ async def run_cfo_evaluation_pipeline():
     for trade, item_name, float_value in trades:
         await evaluate_trade(trade, item_name, float_value)
 
+    await close_http_session()
+
 
 if __name__ == "__main__":
+    validate_required_env(["GROQ_API_KEY"])
     asyncio.run(run_cfo_evaluation_pipeline())

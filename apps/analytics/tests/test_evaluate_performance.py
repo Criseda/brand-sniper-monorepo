@@ -148,10 +148,14 @@ async def test_tool_loop_exhausts_rounds_then_asks_no_tools(monkeypatch):
     tool_resp = _tool_call_response("fetch_live_market_floor", '{"market_hash_name": "AK-47 | Redline (Field-Tested)"}')
     stop_resp = _json_response(60, "done")
     monkeypatch.setattr(evaluate_performance, "_MAX_TOOL_ROUNDS", 2)
+
+    async def fake_tool(**kwargs):
+        return json.dumps({"live_floor_cents": 900})
+
     monkeypatch.setitem(
         evaluate_performance.AVAILABLE_FUNCTIONS,
         "fetch_live_market_floor",
-        lambda **kwargs: json.dumps({"live_floor_cents": 900}),
+        fake_tool,
     )
     mock_call = AsyncMock(side_effect=[tool_resp, tool_resp, stop_resp])
     monkeypatch.setattr(evaluate_performance, "_call", mock_call)

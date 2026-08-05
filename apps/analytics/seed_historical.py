@@ -5,33 +5,21 @@ Please run validate_historical.py first to ensure the data is clean.
 
 import argparse
 import io
-import sys
-from pathlib import Path
 
 import pandas as pd
+from shared_utils import setup_script_environment
 from sqlmodel import select, text
 
-# Force standard streams to use UTF-8 to support Unicode characters on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+PROJECT_ROOT = setup_script_environment(__file__)
 
-# Dynamic path alignment to ensure the script can find the shared-utils package
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.append(str(PROJECT_ROOT))
-from dotenv import load_dotenv
-
-load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
-
-from shared_utils import get_logger, parse_item_meta
+from shared_utils import get_logger, parse_item_meta, validate_required_env
 from shared_utils.db_connection import async_engine
 from shared_utils.models import MarketItem
 
 logger = get_logger("analytics.seed")
 
 # Path pointing to where your Kaggle files live: /data/items/
-DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "items"
+DATA_DIR = PROJECT_ROOT / "data" / "items"
 
 
 async def seed_historical_data(truncate: bool = False):
@@ -156,6 +144,7 @@ async def seed_historical_data(truncate: bool = False):
 
 
 if __name__ == "__main__":
+    validate_required_env(["DATABASE_URL"])
     parser = argparse.ArgumentParser(description="High-performance Postgres historical price seeder.")
     parser.add_argument("--truncate", action="store_true", help="Truncate historical_prices before starting.")
     args = parser.parse_args()

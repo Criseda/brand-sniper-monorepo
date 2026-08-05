@@ -1,27 +1,14 @@
 import asyncio
 import json
 import os
-import sys
-from pathlib import Path
 
-from dotenv import load_dotenv
 from redis.asyncio import Redis
+from shared_utils import setup_script_environment
 from sqlalchemy import select
 
-# Align workspace directories for imports
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.append(str(PROJECT_ROOT))
+PROJECT_ROOT = setup_script_environment(__file__)
 
-# Load root .env (shared) first, then analytics-specific overrides
-root_env = PROJECT_ROOT / ".env"
-if root_env.exists():
-    load_dotenv(dotenv_path=root_env)
-
-analytics_env = PROJECT_ROOT / "apps" / "analytics" / ".env"
-if analytics_env.exists():
-    load_dotenv(dotenv_path=analytics_env, override=True)
-
-from shared_utils import get_logger
+from shared_utils import get_logger, validate_required_env
 from shared_utils.db_connection import async_engine
 from shared_utils.models import ItemMacroBaseline, MarketItem
 
@@ -89,4 +76,5 @@ async def sync_baselines_to_edge():
 
 
 if __name__ == "__main__":
+    validate_required_env(["DATABASE_URL"])
     asyncio.run(sync_baselines_to_edge())
