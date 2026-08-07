@@ -66,6 +66,10 @@ async def replay(limit: int) -> int:
     return replayed
 
 
-if __name__ == "__main__":
+def main() -> None:
     arguments = parse_args()
     asyncio.run(replay(arguments.limit))
+
+
+if __name__ == "__main__":
+    main()
