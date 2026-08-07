@@ -13,6 +13,14 @@ Acts as the central scraping target for the local Prometheus server. It leverage
 - **`paper_trades_executed_total`**: A Counter tracking the number of successful snipes executed by the Edge node.
 - **`rules_engine_latency_seconds`**: A Histogram tracking DRE evaluation latency (sub-millisecond to 2s buckets).
 
+### 3. Stable API Errors (`api_errors.py`)
+
+All API errors use the RFC 9457 `application/problem+json` format. Invalid
+requests return `422`, unknown market items return `404`, unavailable database
+dependencies return `503`, and unexpected failures return a sanitized `500`.
+Every occurrence includes an opaque `instance` identifier for log correlation;
+internal exception details are logged but never returned to clients.
+
 ## Setup & Execution
 
 ### 1. Environment Configuration

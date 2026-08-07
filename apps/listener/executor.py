@@ -1,7 +1,7 @@
 import abc
-import asyncio
 
 import aiohttp
+from listener_telemetry import trade_submissions_total
 from shared_utils import get_logger
 
 logger = get_logger("listener.executor")
@@ -36,6 +36,10 @@ class ExecutionService(abc.ABC):
         pass
 
 
+class ExecutionError(RuntimeError):
+    """Raised when an execution cannot be submitted to the backend."""
+
+
 class PaperExecutor(ExecutionService):
     def __init__(self, backend_url: str):
         self.trade_ingest_url = f"{backend_url.rstrip('/')}/api/v1/ingest/trade"
@@ -55,20 +59,23 @@ class PaperExecutor(ExecutionService):
         }
 
         logger.info(
-            "Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: $%.2f | Z-Score: %.2f",
+            "[PAPER TRADE] Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: $%.2f | Z-Score: %.2f",
             market_hash_name,
             purchase_price_cents / 100,
             estimated_profit_cents / 100,
             z_score,
         )
 
-        asyncio.create_task(self._send_to_backend(payload))
+        await self._send_to_backend(payload)
 
     async def _send_to_backend(self, payload: dict) -> None:
         try:
             session = await _get_session()
             async with session.post(self.trade_ingest_url, json=payload) as resp:
                 if resp.status not in (201, 202):
-                    logger.warning("Backend rejected trade log with status %s", resp.status)
+                    trade_submissions_total.labels(outcome="rejected").inc()
+                    raise ExecutionError(f"Backend rejected trade submission with HTTP {resp.status}")
         except (TimeoutError, aiohttp.ClientError) as e:
-            logger.error("Failed to reach Command Center to log trade: %s", e)
+            trade_submissions_total.labels(outcome="error").inc()
+            raise ExecutionError("Failed to reach the backend for trade submission") from e
+        trade_submissions_total.labels(outcome="success").inc()

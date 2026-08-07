@@ -1,4 +1,8 @@
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
+
+NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class SimulatedTradePayload(BaseModel):
@@ -21,11 +25,11 @@ class BulkPriceTick(BaseModel):
 class SearchTrendsPayload(BaseModel):
     """Schema for the macro trend search query."""
 
-    query: str = Field(..., description="The search query for macro trend analysis")
+    query: NonEmptyText = Field(..., description="The search query for macro trend analysis")
 
 
 class BulkIngestionPayload(BaseModel):
     """Container schema for high-throughput multi-venue price uploads sent from edge nodes."""
 
-    source: str = Field(..., description="The platform origin, e.g., 'skinport' or 'steam'")
+    source: NonEmptyText = Field(..., description="The platform origin, e.g., 'skinport' or 'steam'")
     ticks: list[BulkPriceTick] = Field(..., description="Array of collected market snapshot blocks")

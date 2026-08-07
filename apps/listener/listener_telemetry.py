@@ -18,7 +18,7 @@ anomalies_detected_total = Counter(
 
 anomalies_confirmed_total = Counter(
     "listener_anomalies_confirmed_total",
-    "Total number of anomalies approved by the DRE (paper trades executed)",
+    "Total number of anomalies approved by the DRE",
 )
 
 anomalies_rejected_total = Counter(
@@ -52,4 +52,33 @@ batch_flush_total = Counter(
     "listener_batch_flush_total",
     "Total number of batch flushes dispatched to the backend",
     labelnames=["status"],
+)
+
+background_jobs_total = Counter(
+    "listener_background_jobs_total",
+    "Total number of listener background jobs by type and outcome",
+    labelnames=["job_type", "outcome"],
+)
+
+background_jobs_active = Gauge(
+    "listener_background_jobs_active",
+    "Current number of active listener background jobs",
+    labelnames=["job_type"],
+)
+
+background_jobs_queued = Gauge(
+    "listener_background_jobs_queued",
+    "Current number of queued listener background jobs",
+    labelnames=["job_type"],
+)
+
+trade_submissions_total = Counter(
+    "listener_trade_submissions_total",
+    "Total number of paper-trade submissions to the backend by outcome",
+    labelnames=["outcome"],
+)
+
+tick_queue_size = Gauge(
+    "listener_tick_queue_size",
+    "Current number of ticks waiting for listener processing",
 )

@@ -151,7 +151,7 @@
       "title": "DRE Decisions/min",
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 12 },
       "targets": [
-        { "expr": "rate(listener_anomalies_confirmed_total[1m]) * 60", "legendFormat": "Confirmed (trade)", "refId": "A" },
+        { "expr": "rate(listener_anomalies_confirmed_total[1m]) * 60", "legendFormat": "Confirmed by DRE", "refId": "A" },
         { "expr": "rate(listener_anomalies_rejected_total[1m]) * 60", "legendFormat": "Filtered/Rejected", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: outcomes/min" } }
@@ -247,7 +247,7 @@
       "title": "Backend Errors/min",
       "gridPos": { "h": 5, "w": 7, "x": 10, "y": 24 },
       "targets": [
-        { "expr": "rate(listener_backend_request_errors_total[5m]) * 60", "legendFormat": "Errors", "refId": "A" }
+        { "expr": "sum by (status_code) (rate(backend_http_errors_total[5m])) * 60", "legendFormat": "HTTP {{status_code}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: errors/min" } }
     },
@@ -270,6 +270,40 @@
         }
       },
       "options": { "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "type": "row",
+      "title": "Bounded Work Supervision",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Background Queue Depth",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 30 },
+      "targets": [
+        { "expr": "listener_background_jobs_queued", "legendFormat": "{{job_type}}", "refId": "A" },
+        { "expr": "listener_tick_queue_size", "legendFormat": "ticks", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Background Job Outcomes/min",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 30 },
+      "targets": [
+        { "expr": "sum by (job_type, outcome) (rate(listener_background_jobs_total[5m])) * 60", "legendFormat": "{{job_type}} {{outcome}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "suffix: jobs/min" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Trade Submission Outcomes/min",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 30 },
+      "targets": [
+        { "expr": "sum by (outcome) (rate(listener_trade_submissions_total[5m])) * 60", "legendFormat": "{{outcome}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "suffix: submissions/min" } }
     }
   ]
 }

@@ -1,9 +1,8 @@
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
 import pytest
-from executor import PaperExecutor, _get_session, close_http_session
+from executor import ExecutionError, PaperExecutor, _get_session, close_http_session
 
 
 @pytest.mark.asyncio
@@ -16,26 +15,11 @@ async def test_paper_executor_sends_payload():
     est_profit = 500
     z_score = -2.5
 
-    # Mock the internal private method to avoid making actual HTTP requests
-    send_triggered = asyncio.Event()
-    captured_payloads = []
-
-    async def capture_payload(payload: dict) -> None:
-        captured_payloads.append(payload)
-        send_triggered.set()
-
-    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock, side_effect=capture_payload) as mock_send:
-        # Call execute (which creates a background task)
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
         await executor.execute(market_hash_name, purchase_price, est_profit, z_score)
 
-        # Wait deterministically until the background task invokes the mock
-        await asyncio.wait_for(send_triggered.wait(), timeout=1)
-        # Yield one loop tick so the completed background task is cleaned up
-        await asyncio.sleep(0)
-
-        # Assert payload was constructed correctly and sent
         mock_send.assert_called_once()
-        called_payload = captured_payloads[0]
+        called_payload = mock_send.call_args.args[0]
 
         assert called_payload["market_hash_name"] == market_hash_name
         assert called_payload["purchase_price_cents"] == purchase_price
@@ -44,7 +28,8 @@ async def test_paper_executor_sends_payload():
 
 
 class _Response:
-    status = 500
+    def __init__(self, status=500):
+        self.status = status
 
     async def __aenter__(self):
         return self
@@ -72,7 +57,8 @@ async def test_send_to_backend_logs_rejection_on_non_2xx(mocker):
     mocker.patch("executor._get_session", return_value=client)
     executor = PaperExecutor("http://mock-backend:8080")
 
-    await executor._send_to_backend({"market_hash_name": "Item"})
+    with pytest.raises(ExecutionError, match="HTTP 500"):
+        await executor._send_to_backend({"market_hash_name": "Item"})
 
     assert client.posted == [("http://mock-backend:8080/api/v1/ingest/trade", {"market_hash_name": "Item"})]
 
@@ -83,7 +69,19 @@ async def test_send_to_backend_survives_connection_error(mocker):
     mocker.patch("executor._get_session", return_value=client)
     executor = PaperExecutor("http://mock-backend:8080")
 
+    with pytest.raises(ExecutionError, match="Failed to reach"):
+        await executor._send_to_backend({"market_hash_name": "Item"})
+
+
+@pytest.mark.asyncio
+async def test_send_to_backend_accepts_created_response(mocker):
+    client = _Client(response=_Response(status=201))
+    mocker.patch("executor._get_session", return_value=client)
+    executor = PaperExecutor("http://mock-backend:8080")
+
     await executor._send_to_backend({"market_hash_name": "Item"})
+
+    assert client.posted == [("http://mock-backend:8080/api/v1/ingest/trade", {"market_hash_name": "Item"})]
 
 
 @pytest.mark.asyncio

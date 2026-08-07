@@ -12,6 +12,17 @@ Because the ingestion node must never block, it routes incoming data ticks concu
 2. **The Batched Ingestion (The Cold Path):**
    Streams bulk batches of market ticks over the network to the server backend REST API (`/api/v1/ingest/bulk`) to be saved into the permanent SQL database. This historical data is later mined by the Analytics pipeline to train the AI baselines.
 
+Both paths run through bounded worker pools owned by `asyncio.TaskGroup`. The
+tick queue, anomaly queue, and batch-flush queue apply asynchronous backpressure
+at configurable limits, preventing burst traffic from creating an unbounded
+number of tasks. Shutdown stops producers, drains queued work within
+`LISTENER_SHUTDOWN_GRACE_SECONDS`, and then closes network resources.
+
+Paper-trade submission is awaited inside the anomaly worker. Backend rejection,
+timeouts, and connection failures therefore reach the worker supervisor and are
+reported through `listener_trade_submissions_total` and
+`listener_background_jobs_total` instead of becoming orphaned task failures.
+
 ### Node.js WebSocket Sidecar
 
 The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO feed for real-time sale listings. The sidecar publishes parsed listings to the local Redis Pub/Sub channel `skinport:live_listings`, which the main Python process subscribes to and feeds into the anomaly detection pipeline. (The subprocess stdout/stderr are captured solely for application logging).

@@ -315,7 +315,7 @@ class TestGetItemMarketContext:
         assert context["snipe_threshold_cents"] == 5525
         assert context["item_page"] is None
 
-    async def test_db_failure_returns_none_without_raising(self, mocker):
+    async def test_db_failure_propagates(self, mocker):
         from contextlib import asynccontextmanager
 
         class ExplodingSession:
@@ -335,7 +335,8 @@ class TestGetItemMarketContext:
 
         mocker.patch.object(queries, "session_scope", exploding_scope)
 
-        assert await get_item_market_context(VERSIONED_NAME) is None
+        with pytest.raises(SQLAlchemyError, match="database down"):
+            await get_item_market_context(VERSIONED_NAME)
 
 
 @pytest.mark.asyncio
@@ -623,13 +624,14 @@ class TestPrivateFetchers:
             assert await queries._fetch_macro_baseline(session, "Item", 1) is None
 
     @pytest.mark.asyncio
-    async def test_resolve_item_returns_none_on_sqlalchemy_error(self, db_maker, mocker):
+    async def test_resolve_item_propagates_sqlalchemy_error(self, db_maker, mocker):
         maker, engine = db_maker
         await _create_tables(engine)
         mocker.patch("sqlmodel.ext.asyncio.session.AsyncSession.exec", side_effect=SQLAlchemyError("boom"))
 
         async with maker() as session:
-            assert await queries._resolve_item(session, VERSIONED_NAME, BASE_NAME, "Phase 3") is None
+            with pytest.raises(SQLAlchemyError, match="boom"):
+                await queries._resolve_item(session, VERSIONED_NAME, BASE_NAME, "Phase 3")
 
 
 @pytest.mark.asyncio
