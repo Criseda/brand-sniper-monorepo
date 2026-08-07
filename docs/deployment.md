@@ -198,6 +198,11 @@ cd apps/listener
 uv run python replay_batches.py --limit 100
 ```
 
+The limit applies to attempted batches. The command exits non-zero if any
+attempt fails, making it safe to use from operational automation. Malformed
+stream records are isolated in `listener:ingest:malformed` so that one poison
+record cannot block recovery of valid pending or dead-letter batches.
+
 Batch IDs make replays idempotent at the backend. Reusing an ID with different
 content returns HTTP 409. The stream uses the existing volatile Edge Redis
 configuration, so it protects against listener/backend restarts but not an Edge

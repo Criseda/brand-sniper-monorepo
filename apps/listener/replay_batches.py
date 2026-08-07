@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import aiohttp
@@ -15,13 +16,24 @@ load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 logger = get_logger("listener.replay_batches")
 
 
+@dataclass(frozen=True, slots=True)
+class ReplayResult:
+    attempted: int
+    succeeded: int
+    failed: int
+
+    @property
+    def exit_code(self) -> int:
+        return 1 if self.failed else 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Replay listener batches from the Redis dead-letter stream.")
     parser.add_argument("--limit", type=int, default=100, help="Maximum batches to replay")
     return parser.parse_args()
 
 
-async def replay(limit: int) -> int:
+async def replay(limit: int) -> ReplayResult:
     if limit < 1:
         raise ValueError("--limit must be at least 1")
 
@@ -33,7 +45,9 @@ async def replay(limit: int) -> int:
     max_attempts = int(os.getenv("LISTENER_BATCH_MAX_ATTEMPTS", "5"))
     base_delay = float(os.getenv("LISTENER_BATCH_RETRY_BASE_SECONDS", "0.5"))
     max_delay = float(os.getenv("LISTENER_BATCH_RETRY_MAX_SECONDS", "8"))
-    replayed = 0
+    attempted = 0
+    succeeded = 0
+    failed = 0
 
     async with (
         RedisBatchStore.from_url(redis_url, password=redis_password) as store,
@@ -44,6 +58,7 @@ async def replay(limit: int) -> int:
             return session
 
         async for batch in store.iter_dead_letters():
+            attempted += 1
             try:
                 await send_batch_with_retry(
                     batch,
@@ -53,23 +68,29 @@ async def replay(limit: int) -> int:
                     base_delay_seconds=base_delay,
                     max_delay_seconds=max_delay,
                 )
+                await store.acknowledge_dead_letter(batch.record_id)
             except Exception as exc:
+                failed += 1
                 logger.error("[BATCH FLUSH] Replay failed for batch %s: %s", batch.batch_id, exc)
-                continue
-
-            await store.acknowledge_dead_letter(batch.record_id)
-            replayed += 1
-            if replayed >= limit:
+            else:
+                succeeded += 1
+            if attempted >= limit:
                 break
 
-    logger.info("[BATCH FLUSH] Replayed %d dead-letter batches.", replayed)
-    return replayed
+    logger.info(
+        "[BATCH FLUSH] Replay complete: %d attempted, %d succeeded, %d failed.",
+        attempted,
+        succeeded,
+        failed,
+    )
+    return ReplayResult(attempted=attempted, succeeded=succeeded, failed=failed)
 
 
-def main() -> None:
+def main() -> int:
     arguments = parse_args()
-    asyncio.run(replay(arguments.limit))
+    result = asyncio.run(replay(arguments.limit))
+    return result.exit_code
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

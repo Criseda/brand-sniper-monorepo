@@ -65,6 +65,12 @@ groups:
         labels: { severity: critical }
         annotations: { summary: "Batches moved to dead-letter storage", description: "Replay or inspect the listener Redis dead-letter stream" }
 
+      - alert: BatchDeliveryMalformedRecords
+        expr: increase(listener_batch_delivery_malformed_total[5m]) > 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "Malformed batches moved to quarantine", description: "Inspect the listener Redis malformed stream before replaying data" }
+
       - alert: ListenerBackgroundJobFailures
         expr: sum(rate(listener_background_jobs_total{outcome="failed"}[5m])) > 0
         for: 2m

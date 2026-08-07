@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 import replay_batches
 from batch_delivery import StoredBatch
+from replay_batches import ReplayResult
 
 
 class FakeBatchStore:
@@ -56,9 +57,9 @@ async def test_replay_acknowledges_success_and_honors_limit(monkeypatch):
     monkeypatch.setattr(replay_batches.aiohttp, "ClientSession", FakeClientSession)
     monkeypatch.setattr(replay_batches, "send_batch_with_retry", send)
 
-    replayed = await replay_batches.replay(limit=1)
+    result = await replay_batches.replay(limit=1)
 
-    assert replayed == 1
+    assert result == ReplayResult(attempted=1, succeeded=1, failed=0)
     assert store.acknowledged == ["1"]
     send.assert_awaited_once()
 
@@ -80,11 +81,40 @@ async def test_replay_retains_failure_and_continues(monkeypatch):
     monkeypatch.setattr(replay_batches.aiohttp, "ClientSession", FakeClientSession)
     monkeypatch.setattr(replay_batches, "send_batch_with_retry", send)
 
-    replayed = await replay_batches.replay(limit=2)
+    result = await replay_batches.replay(limit=2)
 
-    assert replayed == 1
+    assert result == ReplayResult(attempted=2, succeeded=1, failed=1)
     assert store.acknowledged == ["2"]
     assert send.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_replay_limit_counts_failed_attempts(monkeypatch):
+    store = FakeBatchStore([make_batch("1"), make_batch("2"), make_batch("3")])
+    send = AsyncMock(side_effect=RuntimeError("still unavailable"))
+    monkeypatch.setattr(replay_batches.RedisBatchStore, "from_url", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(replay_batches.aiohttp, "ClientSession", FakeClientSession)
+    monkeypatch.setattr(replay_batches, "send_batch_with_retry", send)
+
+    result = await replay_batches.replay(limit=2)
+
+    assert result == ReplayResult(attempted=2, succeeded=0, failed=2)
+    assert send.await_count == 2
+    assert store.acknowledged == []
+
+
+@pytest.mark.asyncio
+async def test_replay_empty_dead_letter_stream_returns_zero_summary(monkeypatch):
+    store = FakeBatchStore([])
+    send = AsyncMock()
+    monkeypatch.setattr(replay_batches.RedisBatchStore, "from_url", lambda *_args, **_kwargs: store)
+    monkeypatch.setattr(replay_batches.aiohttp, "ClientSession", FakeClientSession)
+    monkeypatch.setattr(replay_batches, "send_batch_with_retry", send)
+
+    result = await replay_batches.replay(limit=10)
+
+    assert result == ReplayResult(attempted=0, succeeded=0, failed=0)
+    send.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -105,13 +135,25 @@ def test_main_runs_replay_with_parsed_limit(monkeypatch):
     def run(coroutine):
         captured.append(coroutine)
         coroutine.close()
+        return ReplayResult(attempted=3, succeeded=3, failed=0)
 
     monkeypatch.setattr(replay_batches, "parse_args", lambda: SimpleNamespace(limit=3))
     monkeypatch.setattr(replay_batches.asyncio, "run", run)
 
-    replay_batches.main()
+    assert replay_batches.main() == 0
 
     assert len(captured) == 1
+
+
+def test_main_returns_failure_when_any_replay_fails(monkeypatch):
+    def run(coroutine):
+        coroutine.close()
+        return ReplayResult(attempted=1, succeeded=0, failed=1)
+
+    monkeypatch.setattr(replay_batches, "parse_args", lambda: SimpleNamespace(limit=1))
+    monkeypatch.setattr(replay_batches.asyncio, "run", run)
+
+    assert replay_batches.main() == 1
 
 
 def test_script_entrypoint_runs_main(monkeypatch):
@@ -120,10 +162,13 @@ def test_script_entrypoint_runs_main(monkeypatch):
     def run(coroutine):
         captured.append(coroutine)
         coroutine.close()
+        return ReplayResult(attempted=4, succeeded=4, failed=0)
 
     monkeypatch.setattr("sys.argv", ["replay_batches.py", "--limit", "4"])
     monkeypatch.setattr(replay_batches.asyncio, "run", run)
 
-    runpy.run_path(replay_batches.__file__, run_name="__main__")
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_path(replay_batches.__file__, run_name="__main__")
 
     assert len(captured) == 1
+    assert exit_info.value.code == 0

@@ -4,11 +4,12 @@ import random
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import aiohttp
 from listener_telemetry import (
     batch_delivery_dead_letters_total,
+    batch_delivery_malformed_total,
     batch_delivery_pending,
     batch_delivery_retries_total,
     batch_flush_total,
@@ -40,11 +41,25 @@ class StoredBatch:
         decoded_id = record_id.decode() if isinstance(record_id, bytes) else record_id
         decoded_payload = payload.decode() if isinstance(payload, bytes) else payload
         data = json.loads(decoded_payload)
+        if not isinstance(data, dict):
+            raise ValueError("Stored batch payload must be a JSON object")
+
+        batch_id = data["batch_id"]
+        source = data["source"]
+        ticks = data["ticks"]
+        if not isinstance(batch_id, str) or not batch_id:
+            raise ValueError("Stored batch_id must be a non-empty string")
+        UUID(batch_id)
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("Stored batch source must be a non-empty string")
+        if not isinstance(ticks, list) or not all(isinstance(tick, dict) for tick in ticks):
+            raise ValueError("Stored batch ticks must be a list of objects")
+
         return cls(
             record_id=decoded_id,
-            batch_id=data["batch_id"],
-            source=data["source"],
-            ticks=data["ticks"],
+            batch_id=batch_id,
+            source=source,
+            ticks=ticks,
         )
 
 
@@ -57,10 +72,18 @@ class BatchDeliveryError(RuntimeError):
 class RedisBatchStore:
     """Redis Stream-backed pending queue and dead-letter queue."""
 
-    def __init__(self, redis: Redis, *, pending_key: str, dead_letter_key: str):
+    def __init__(
+        self,
+        redis: Redis,
+        *,
+        pending_key: str,
+        dead_letter_key: str,
+        malformed_key: str = "listener:ingest:malformed",
+    ):
         self.redis = redis
         self.pending_key = pending_key
         self.dead_letter_key = dead_letter_key
+        self.malformed_key = malformed_key
 
     @classmethod
     def from_url(
@@ -70,23 +93,36 @@ class RedisBatchStore:
         password: str | None,
         pending_key: str = "listener:ingest:pending",
         dead_letter_key: str = "listener:ingest:dead-letter",
+        malformed_key: str = "listener:ingest:malformed",
     ) -> "RedisBatchStore":
         redis = Redis.from_url(redis_url, username="default", password=password, decode_responses=True)
-        return cls(redis, pending_key=pending_key, dead_letter_key=dead_letter_key)
+        return cls(
+            redis,
+            pending_key=pending_key,
+            dead_letter_key=dead_letter_key,
+            malformed_key=malformed_key,
+        )
 
     async def __aenter__(self) -> "RedisBatchStore":
         await self.redis.ping()
-        await self._update_pending_metric()
+        await self._refresh_pending_metric()
         return self
 
     async def __aexit__(self, exc_type, exc, traceback) -> None:
         await self.redis.aclose()
 
-    async def add(self, source: str, ticks: list[dict[str, Any]]) -> StoredBatch:
-        batch = StoredBatch(record_id="", batch_id=str(uuid4()), source=source, ticks=ticks)
+    async def add(
+        self,
+        source: str,
+        ticks: list[dict[str, Any]],
+        *,
+        batch_id: str | None = None,
+    ) -> StoredBatch:
+        batch = StoredBatch(record_id="", batch_id=batch_id or str(uuid4()), source=source, ticks=ticks)
         record_id = await self.redis.xadd(self.pending_key, {"payload": batch.serialize()})
-        await self._update_pending_metric()
-        return StoredBatch(record_id=str(record_id), batch_id=batch.batch_id, source=source, ticks=ticks)
+        await self._refresh_pending_metric()
+        decoded_record_id = record_id.decode() if isinstance(record_id, bytes) else str(record_id)
+        return StoredBatch(record_id=decoded_record_id, batch_id=batch.batch_id, source=source, ticks=ticks)
 
     async def iter_pending(self, *, page_size: int = 100) -> AsyncIterator[StoredBatch]:
         async for batch in self._iter_stream(self.pending_key, page_size=page_size):
@@ -98,7 +134,7 @@ class RedisBatchStore:
 
     async def acknowledge(self, record_id: str) -> None:
         await self.redis.xdel(self.pending_key, record_id)
-        await self._update_pending_metric()
+        await self._refresh_pending_metric()
 
     async def acknowledge_dead_letter(self, record_id: str) -> None:
         await self.redis.xdel(self.dead_letter_key, record_id)
@@ -115,7 +151,7 @@ class RedisBatchStore:
             pipeline.xdel(self.pending_key, batch.record_id)
             await pipeline.execute()
         batch_delivery_dead_letters_total.inc()
-        await self._update_pending_metric()
+        await self._refresh_pending_metric()
 
     async def _iter_stream(self, key: str, *, page_size: int) -> AsyncIterator[StoredBatch]:
         start = "-"
@@ -129,9 +165,19 @@ class RedisBatchStore:
                     continue
                 payload = fields.get("payload") or fields.get(b"payload")
                 if payload is None:
-                    logger.error("[BATCH FLUSH] Ignoring malformed Redis stream entry '%s'.", record_id)
+                    await self._quarantine_malformed(
+                        key,
+                        record_id,
+                        "",
+                        ValueError("Redis stream entry has no payload field"),
+                    )
                     continue
-                yield StoredBatch.deserialize(record_id, payload)
+                try:
+                    batch = StoredBatch.deserialize(record_id, payload)
+                except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError, ValueError) as exc:
+                    await self._quarantine_malformed(key, record_id, payload, exc)
+                    continue
+                yield batch
             if len(entries) < page_size:
                 return
             last_id = entries[-1][0]
@@ -139,8 +185,42 @@ class RedisBatchStore:
                 last_id = last_id.decode()
             start = f"({last_id}"
 
-    async def _update_pending_metric(self) -> None:
-        batch_delivery_pending.set(await self.redis.xlen(self.pending_key))
+    async def _quarantine_malformed(
+        self,
+        source_key: str,
+        record_id: str | bytes,
+        payload: str | bytes,
+        error: Exception,
+    ) -> None:
+        decoded_record_id = record_id.decode() if isinstance(record_id, bytes) else record_id
+        decoded_payload = payload.decode(errors="replace") if isinstance(payload, bytes) else payload
+        async with self.redis.pipeline(transaction=True) as pipeline:
+            pipeline.xadd(
+                self.malformed_key,
+                {
+                    "source_stream": source_key,
+                    "source_record_id": decoded_record_id,
+                    "payload": decoded_payload,
+                    "last_error": str(error)[:500],
+                },
+            )
+            pipeline.xdel(source_key, decoded_record_id)
+            await pipeline.execute()
+        logger.error(
+            "[BATCH FLUSH] Quarantined malformed Redis stream entry '%s': %s",
+            decoded_record_id,
+            error,
+        )
+        batch_delivery_malformed_total.inc()
+        await self._refresh_pending_metric()
+
+    async def _refresh_pending_metric(self) -> None:
+        """Refresh observability without invalidating a completed queue operation."""
+        try:
+            pending_count = await self.redis.xlen(self.pending_key)
+            batch_delivery_pending.set(pending_count)
+        except Exception as exc:
+            logger.warning("[BATCH FLUSH] Failed to refresh pending-batch metric: %s", exc)
 
 
 async def send_batch_with_retry(

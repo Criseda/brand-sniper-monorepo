@@ -1,3 +1,7 @@
+import asyncio
+import importlib.util
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import aiohttp
@@ -18,6 +22,7 @@ class FakeRedis:
         self.next_id = 1
         self.pinged = False
         self.closed = False
+        self.xlen_error: Exception | None = None
 
     async def ping(self):
         self.pinged = True
@@ -44,6 +49,8 @@ class FakeRedis:
         return len(entries) - len(self.streams[key])
 
     async def xlen(self, key):
+        if self.xlen_error is not None:
+            raise self.xlen_error
         return len(self.streams.get(key, []))
 
     def pipeline(self, *, transaction):
@@ -110,6 +117,44 @@ def stored_batch() -> StoredBatch:
         source="skinport",
         ticks=[{"market_hash_name": "Test Item", "price_cents": 1000, "timestamp": 1700000000}],
     )
+
+
+def load_listener_main():
+    module_path = Path(__file__).resolve().parents[1] / "main.py"
+    spec = importlib.util.spec_from_file_location("listener_main_batch_test", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load listener main module for batching test")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param("[]", id="not_an_object"),
+        pytest.param('{"batch_id":"","source":"skinport","ticks":[]}', id="empty_batch_id"),
+        pytest.param('{"batch_id":"not-a-uuid","source":"skinport","ticks":[]}', id="invalid_batch_id"),
+        pytest.param(
+            '{"batch_id":"a3634aa6-364e-4090-958b-1b94932429d5","source":" ","ticks":[]}',
+            id="blank_source",
+        ),
+        pytest.param(
+            '{"batch_id":"a3634aa6-364e-4090-958b-1b94932429d5","source":"skinport","ticks":["bad"]}',
+            id="invalid_ticks",
+        ),
+    ],
+)
+def test_stored_batch_rejects_invalid_payload_shapes(payload):
+    with pytest.raises(ValueError):
+        StoredBatch.deserialize("1-0", payload)
+
+
+def test_stored_batch_rejects_missing_required_fields():
+    payload = json.dumps({"batch_id": "a3634aa6-364e-4090-958b-1b94932429d5", "source": "skinport"})
+
+    with pytest.raises(KeyError):
+        StoredBatch.deserialize("1-0", payload)
 
 
 @pytest.mark.asyncio
@@ -300,19 +345,64 @@ async def test_redis_store_lifecycle_and_acknowledgements(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_successful_xadd_is_not_invalidated_by_metric_failure():
+    redis = FakeRedis()
+    redis.xlen_error = RuntimeError("metrics unavailable")
+    store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter")
+    stable_batch_id = "a3634aa6-364e-4090-958b-1b94932429d5"
+
+    stored = await store.add("skinport", [{"item": 1}], batch_id=stable_batch_id)
+
+    assert stored.batch_id == stable_batch_id
+    assert len(redis.streams["pending"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_buffer_ownership_transfers_before_scheduling_can_be_cancelled(monkeypatch, stored_batch):
+    listener_main = load_listener_main()
+    store = AsyncMock()
+    store.add.return_value = stored_batch
+    scheduling_started = asyncio.Event()
+
+    async def block_scheduling(*_args):
+        scheduling_started.set()
+        await asyncio.Future()
+
+    monkeypatch.setattr(listener_main, "schedule_stored_batch", block_scheduling)
+    buffer = stored_batch.ticks.copy()
+
+    flush_task = asyncio.create_task(
+        listener_main.flush_batch_buffer(
+            stored_batch.source,
+            buffer,
+            batch_id=stored_batch.batch_id,
+            store=store,
+            batch_pool=AsyncMock(),
+        )
+    )
+    await scheduling_started.wait()
+
+    assert buffer == []
+    store.add.assert_awaited_once_with(stored_batch.source, stored_batch.ticks, batch_id=stored_batch.batch_id)
+
+    flush_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await flush_task
+
+
+@pytest.mark.asyncio
 async def test_stream_iteration_skips_malformed_entries_and_paginates(stored_batch):
     redis = AsyncMock()
     redis.xrange.side_effect = [
         [
             (None, None),
-            ("1-0", {}),
             (b"2-0", {b"payload": stored_batch.serialize().encode()}),
         ],
         [],
     ]
     store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter")
 
-    recovered = [batch async for batch in store.iter_pending(page_size=3)]
+    recovered = [batch async for batch in store.iter_pending(page_size=2)]
 
     assert recovered == [
         StoredBatch(
@@ -335,3 +425,29 @@ async def test_stream_iteration_paginates_after_string_id():
     recovered = [batch async for batch in store.iter_pending(page_size=2)]
 
     assert len(recovered) == 3
+
+
+@pytest.mark.asyncio
+async def test_stream_iteration_quarantines_poison_record_and_continues(stored_batch):
+    redis = FakeRedis()
+    redis.streams["pending"] = [
+        ("1-0", {"payload": "not-json"}),
+        ("2-0", {}),
+        ("3-0", {"payload": stored_batch.serialize()}),
+    ]
+    store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter", malformed_key="malformed")
+
+    recovered = [batch async for batch in store.iter_pending()]
+
+    assert recovered == [
+        StoredBatch(
+            record_id="3-0",
+            batch_id=stored_batch.batch_id,
+            source=stored_batch.source,
+            ticks=stored_batch.ticks,
+        )
+    ]
+    assert redis.streams["pending"] == [("3-0", {"payload": stored_batch.serialize()})]
+    assert len(redis.streams["malformed"]) == 2
+    assert redis.streams["malformed"][0][1]["source_record_id"] == "1-0"
+    assert redis.streams["malformed"][1][1]["source_record_id"] == "2-0"

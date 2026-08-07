@@ -236,7 +236,10 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
 @app.post(
     "/api/v1/ingest/bulk",
     status_code=status.HTTP_201_CREATED,
-    responses=COMMON_ERROR_RESPONSES,
+    responses={
+        status.HTTP_409_CONFLICT: problem_response("Batch ID already used with different content"),
+        **COMMON_ERROR_RESPONSES,
+    },
 )
 async def process_bulk_ingestion(payload: BulkIngestionPayload):
     total_ticks = len(payload.ticks)

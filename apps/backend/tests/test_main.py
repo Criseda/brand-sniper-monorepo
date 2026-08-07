@@ -118,6 +118,68 @@ def test_ingest_bulk_rejects_reused_batch_id_with_different_payload(client):
     assert "different payload" in response.json()["detail"]
 
 
+@pytest.mark.asyncio
+async def test_concurrent_bulk_requests_keep_new_item_ids_local_until_commit(monkeypatch):
+    from schemas import BulkIngestionPayload
+
+    import main as backend_main
+
+    market_hash_name = "Concurrent Uncommitted Item"
+    backend_main.item_cache.pop(market_hash_name, None)
+    both_waiting_to_commit = asyncio.Event()
+    allow_commits = asyncio.Event()
+    waiting_count = 0
+
+    class ScalarResult:
+        def scalar(self):
+            return 424242
+
+    class FakeSession:
+        async def exec(self, _statement, params=None):
+            return None if params is not None else ScalarResult()
+
+    @asynccontextmanager
+    async def delayed_commit_scope():
+        nonlocal waiting_count
+        yield FakeSession()
+        waiting_count += 1
+        if waiting_count == 2:
+            both_waiting_to_commit.set()
+        await allow_commits.wait()
+
+    async def register_batch(_session, _payload):
+        return True
+
+    monkeypatch.setattr(backend_main, "session_scope", delayed_commit_scope)
+    monkeypatch.setattr(backend_main, "_register_ingestion_batch", register_batch)
+    payloads = [
+        BulkIngestionPayload.model_validate(
+            {
+                "batch_id": str(uuid4()),
+                "source": "skinport",
+                "ticks": [{"market_hash_name": market_hash_name, "price_cents": price, "timestamp": 1700000000}],
+            }
+        )
+        for price in (1000, 1100)
+    ]
+
+    requests = [asyncio.create_task(backend_main.process_bulk_ingestion(payload)) for payload in payloads]
+    try:
+        await asyncio.wait_for(both_waiting_to_commit.wait(), timeout=1)
+        assert market_hash_name not in backend_main.item_cache
+        allow_commits.set()
+        responses = await asyncio.gather(*requests)
+        assert responses == [
+            {"status": "SUCCESS", "records_processed": 1},
+            {"status": "SUCCESS", "records_processed": 1},
+        ]
+        assert backend_main.item_cache[market_hash_name] == 424242
+    finally:
+        allow_commits.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+        backend_main.item_cache.pop(market_hash_name, None)
+
+
 def test_ingest_bulk_empty_ticks(client):
     payload = {"source": "test_source", "ticks": []}
     response = client.post("/api/v1/ingest/bulk", json=payload)
@@ -264,6 +326,7 @@ def test_openapi_documents_problem_json_responses(client):
     schema = client.get("/openapi.json").json()
     responses = schema["paths"]["/api/v1/ingest/bulk"]["post"]["responses"]
 
+    assert "application/problem+json" in responses["409"]["content"]
     assert "application/problem+json" in responses["422"]["content"]
     assert "application/problem+json" in responses["503"]["content"]
     assert "application/problem+json" in responses["500"]["content"]

@@ -64,6 +64,11 @@ batch_delivery_dead_letters_total = Counter(
     "Total number of bulk-ingestion batches moved to the dead-letter stream",
 )
 
+batch_delivery_malformed_total = Counter(
+    "listener_batch_delivery_malformed_total",
+    "Total number of malformed bulk-ingestion records moved to quarantine",
+)
+
 batch_delivery_pending = Gauge(
     "listener_batch_delivery_pending",
     "Current number of batches waiting in the Redis delivery stream",
