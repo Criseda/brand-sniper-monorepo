@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+import aiohttp
 import pytest
 from batch_delivery import (
     BatchDeliveryError,
@@ -14,6 +15,14 @@ class FakeRedis:
     def __init__(self):
         self.streams: dict[str, list[tuple[str, dict[str, str]]]] = {}
         self.next_id = 1
+        self.pinged = False
+        self.closed = False
+
+    async def ping(self):
+        self.pinged = True
+
+    async def aclose(self):
+        self.closed = True
 
     async def xadd(self, key, fields):
         record_id = f"{self.next_id}-0"
@@ -146,6 +155,51 @@ async def test_permanent_failure_does_not_retry(stored_batch):
 
 
 @pytest.mark.asyncio
+async def test_connection_failure_is_reported_as_retryable(stored_batch):
+    async def fail_to_connect():
+        raise aiohttp.ClientConnectionError("unreachable")
+
+    with pytest.raises(BatchDeliveryError, match="Backend connection failed") as error:
+        await send_batch_with_retry(
+            stored_batch,
+            url="http://backend/api/v1/ingest/bulk",
+            session_factory=fail_to_connect,
+            max_attempts=1,
+            base_delay_seconds=0.01,
+            max_delay_seconds=0.1,
+        )
+
+    assert error.value.retryable is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("max_attempts", "base_delay_seconds", "max_delay_seconds", "message"),
+    [
+        (0, 0.01, 0.1, "max_attempts must be at least 1"),
+        (1, 0, 0.1, "retry delays must be greater than 0"),
+        (1, 0.01, 0, "retry delays must be greater than 0"),
+    ],
+)
+async def test_retry_configuration_is_validated(
+    stored_batch,
+    max_attempts,
+    base_delay_seconds,
+    max_delay_seconds,
+    message,
+):
+    with pytest.raises(ValueError, match=message):
+        await send_batch_with_retry(
+            stored_batch,
+            url="http://backend/api/v1/ingest/bulk",
+            session_factory=AsyncMock(),
+            max_attempts=max_attempts,
+            base_delay_seconds=base_delay_seconds,
+            max_delay_seconds=max_delay_seconds,
+        )
+
+
+@pytest.mark.asyncio
 async def test_acknowledges_only_after_success(stored_batch):
     session = FakeSession([FakeResponse(201)])
     store = AsyncMock()
@@ -208,3 +262,48 @@ async def test_redis_store_persists_and_dead_letters_batches():
     assert len(dead_letters) == 1
     assert dead_letters[0].batch_id == stored.batch_id
     assert dead_letters[0].ticks == stored.ticks
+
+
+@pytest.mark.asyncio
+async def test_redis_store_lifecycle_and_acknowledgements(monkeypatch):
+    redis = FakeRedis()
+    monkeypatch.setattr("batch_delivery.Redis.from_url", lambda *_args, **_kwargs: redis)
+    store = RedisBatchStore.from_url("redis://edge:6380", password="secret")
+
+    async with store as entered:
+        assert entered is store
+        stored = await store.add("skinport", [])
+        await store.acknowledge(stored.record_id)
+        redis.streams["listener:ingest:dead-letter"] = [("2-0", {"payload": stored.serialize()})]
+        await store.acknowledge_dead_letter("2-0")
+
+    assert redis.pinged is True
+    assert redis.closed is True
+    assert redis.streams["listener:ingest:pending"] == []
+    assert redis.streams["listener:ingest:dead-letter"] == []
+
+
+@pytest.mark.asyncio
+async def test_stream_iteration_skips_malformed_entries_and_paginates(stored_batch):
+    redis = AsyncMock()
+    redis.xrange.side_effect = [
+        [
+            (None, None),
+            ("1-0", {}),
+            (b"2-0", {b"payload": stored_batch.serialize().encode()}),
+        ],
+        [],
+    ]
+    store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter")
+
+    recovered = [batch async for batch in store.iter_pending(page_size=3)]
+
+    assert recovered == [
+        StoredBatch(
+            record_id="2-0",
+            batch_id=stored_batch.batch_id,
+            source=stored_batch.source,
+            ticks=stored_batch.ticks,
+        )
+    ]
+    assert redis.xrange.await_args_list[1].kwargs["min"] == "(2-0"
