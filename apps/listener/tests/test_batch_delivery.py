@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock
 
 import aiohttp
+import batch_delivery
 import pytest
 from batch_delivery import (
     BatchDeliveryError,
@@ -200,6 +201,21 @@ async def test_retry_configuration_is_validated(
 
 
 @pytest.mark.asyncio
+async def test_defensive_error_when_attempt_loop_does_not_run(stored_batch, monkeypatch):
+    monkeypatch.setattr(batch_delivery, "range", lambda *_args: (), raising=False)
+
+    with pytest.raises(RuntimeError, match="without an error"):
+        await send_batch_with_retry(
+            stored_batch,
+            url="http://backend/api/v1/ingest/bulk",
+            session_factory=AsyncMock(),
+            max_attempts=1,
+            base_delay_seconds=0.01,
+            max_delay_seconds=0.1,
+        )
+
+
+@pytest.mark.asyncio
 async def test_acknowledges_only_after_success(stored_batch):
     session = FakeSession([FakeResponse(201)])
     store = AsyncMock()
@@ -307,3 +323,15 @@ async def test_stream_iteration_skips_malformed_entries_and_paginates(stored_bat
         )
     ]
     assert redis.xrange.await_args_list[1].kwargs["min"] == "(2-0"
+
+
+@pytest.mark.asyncio
+async def test_stream_iteration_paginates_after_string_id():
+    redis = FakeRedis()
+    store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter")
+    for item in range(3):
+        await store.add("skinport", [{"item": item}])
+
+    recovered = [batch async for batch in store.iter_pending(page_size=2)]
+
+    assert len(recovered) == 3

@@ -1,3 +1,4 @@
+import runpy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -109,5 +110,20 @@ def test_main_runs_replay_with_parsed_limit(monkeypatch):
     monkeypatch.setattr(replay_batches.asyncio, "run", run)
 
     replay_batches.main()
+
+    assert len(captured) == 1
+
+
+def test_script_entrypoint_runs_main(monkeypatch):
+    captured = []
+
+    def run(coroutine):
+        captured.append(coroutine)
+        coroutine.close()
+
+    monkeypatch.setattr("sys.argv", ["replay_batches.py", "--limit", "4"])
+    monkeypatch.setattr(replay_batches.asyncio, "run", run)
+
+    runpy.run_path(replay_batches.__file__, run_name="__main__")
 
     assert len(captured) == 1
