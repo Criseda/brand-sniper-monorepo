@@ -174,34 +174,31 @@ async def _resolve_item(
     Resolves the base item row (id + type) and the versioned item id.
     Falls back to the base item id when no versioned row exists.
 
-    Returns None when the item is unknown or the lookup fails (logged).
+    Returns None only when the item is unknown. Database failures propagate so
+    callers can distinguish an unavailable dependency from a missing item.
     """
-    try:
-        item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
-            cast(MarketItem.market_hash_name, String) == base_name
-        )
-        item_res = await _exec_result(session, item_stmt)
-        item_row = item_res.fetchone()
+    item_stmt = select(cast(MarketItem.id, Integer), cast(MarketItem.item_type, String)).where(
+        cast(MarketItem.market_hash_name, String) == base_name
+    )
+    item_res = await _exec_result(session, item_stmt)
+    item_row = item_res.fetchone()
 
-        if not item_row:
-            return None
-
-        base_item_id, item_type = item_row
-
-        versioned_item_id = base_item_id
-        if version:
-            versioned_stmt = select(cast(MarketItem.id, Integer)).where(
-                cast(MarketItem.market_hash_name, String) == market_hash_name
-            )
-            versioned_res = await _exec_result(session, versioned_stmt)
-            versioned_row = versioned_res.fetchone()
-            if versioned_row:
-                versioned_item_id = versioned_row[0]
-
-        return base_item_id, item_type, versioned_item_id
-    except SQLAlchemyError as e:
-        logger.error("Error resolving item '%s': %s", market_hash_name, e)
+    if not item_row:
         return None
+
+    base_item_id, item_type = item_row
+
+    versioned_item_id = base_item_id
+    if version:
+        versioned_stmt = select(cast(MarketItem.id, Integer)).where(
+            cast(MarketItem.market_hash_name, String) == market_hash_name
+        )
+        versioned_res = await _exec_result(session, versioned_stmt)
+        versioned_row = versioned_res.fetchone()
+        if versioned_row:
+            versioned_item_id = versioned_row[0]
+
+    return base_item_id, item_type, versioned_item_id
 
 
 async def _fetch_steam_baseline(session: AsyncSession, market_hash_name: str, item_id: int) -> float | None:
@@ -350,9 +347,8 @@ async def get_item_market_context(market_hash_name: str) -> MarketContext | None
     applying liquidity checks, cash corridors, and active downtrend penalties
     to protect trading capital from structural price crashes (e.g. 2025 updates).
 
-    Returns None when the item cannot be resolved (unknown item or lookup
-    failure) so callers can surface a not-found response instead of silently
-    reading an empty context. Each data-fetch sub-step degrades gracefully:
+    Returns None when the item cannot be resolved because it is unknown. Each
+    optional data-fetch sub-step degrades gracefully:
     failures are logged inside the step and the remaining sources still
     produce a partial context, so a downstream outage never results in a 500
     for the caller.

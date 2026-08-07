@@ -9,7 +9,6 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Integer, cast
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -25,6 +24,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
+from api_errors import COMMON_ERROR_RESPONSES, problem_response, register_error_handlers
 from database import engine, session_scope
 from queries import close_http_session, get_item_market_context
 from queries import search_macro_trends as query_macro_trends
@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Algorithmic Market Sniper Engine", description="Core Compute REST API Node", version="1.0.0", lifespan=lifespan
 )
+register_error_handlers(app)
 
 # Configure allowed CORS origins
 cors_origins_raw = os.getenv("CORS_ORIGINS", "")
@@ -96,18 +97,24 @@ async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
 
 
-@app.get("/api/v1/market/context/{market_hash_name:path}")
+@app.get(
+    "/api/v1/market/context/{market_hash_name:path}",
+    responses={
+        status.HTTP_404_NOT_FOUND: problem_response("Market item not found"),
+        **COMMON_ERROR_RESPONSES,
+    },
+)
 async def market_context(market_hash_name: str):
     context = await get_item_market_context(market_hash_name)
     if context is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Item not found or market context unavailable",
+            detail="Item not found",
         )
     return context
 
 
-@app.post("/api/v1/market/search-trends")
+@app.post("/api/v1/market/search-trends", responses=COMMON_ERROR_RESPONSES)
 async def search_trends(payload: SearchTrendsPayload):
     results = await query_macro_trends(payload.query)
     return {"query": payload.query, "results": results}
@@ -147,31 +154,28 @@ async def get_or_create_item_id(session: AsyncSession, name: str) -> int:
 async def ingest_simulated_trade(payload: SimulatedTradePayload):
     logger.info("Logging Simulated Trade: %s for $%.2f", payload.market_hash_name, payload.purchase_price_cents / 100)
 
+    async with session_scope() as session:
+        async with session.begin():
+            item_id = await get_or_create_item_id(session, payload.market_hash_name)
+            trade = SimulatedTrade(
+                item_id=item_id,
+                purchase_price_cents=payload.purchase_price_cents,
+                estimated_profit_cents=payload.estimated_profit_cents,
+                trigger_z_score=payload.trigger_z_score,
+                simulated_buy_timestamp=utc_now_naive(),
+            )
+            session.add(trade)
+
     paper_trades_executed_total.inc()
     paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
-
-    try:
-        async with session_scope() as session:
-            async with session.begin():
-                item_id = await get_or_create_item_id(session, payload.market_hash_name)
-                trade = SimulatedTrade(
-                    item_id=item_id,
-                    purchase_price_cents=payload.purchase_price_cents,
-                    estimated_profit_cents=payload.estimated_profit_cents,
-                    trigger_z_score=payload.trigger_z_score,
-                    simulated_buy_timestamp=utc_now_naive(),
-                )
-                session.add(trade)
-    except SQLAlchemyError as e:
-        logger.error("Failed to log simulated trade: %s", e, exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to log simulated trade due to an internal error",
-        ) from e
     return {"status": "SUCCESS"}
 
 
-@app.post("/api/v1/ingest/bulk", status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/v1/ingest/bulk",
+    status_code=status.HTTP_201_CREATED,
+    responses=COMMON_ERROR_RESPONSES,
+)
 async def process_bulk_ingestion(payload: BulkIngestionPayload):
     total_ticks = len(payload.ticks)
     logger.info("Bulk Ingestion Intercepted: %d elements from '%s'", total_ticks, payload.source)

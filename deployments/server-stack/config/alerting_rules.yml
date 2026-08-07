@@ -58,3 +58,21 @@ groups:
         for: 2m
         labels: { severity: warning }
         annotations: { summary: "Batch flush errors detected", description: "The listener is failing to flush batches to the backend" }
+
+      - alert: ListenerBackgroundJobFailures
+        expr: sum(rate(listener_background_jobs_total{outcome="failed"}[5m])) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "Listener background jobs are failing", description: "Anomaly evaluation or batch-flush jobs are failing" }
+
+      - alert: TradeSubmissionFailures
+        expr: sum(rate(listener_trade_submissions_total{outcome=~"error|rejected"}[5m])) > 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Paper-trade submissions are failing", description: "The listener cannot reliably submit paper trades to the backend" }
+
+      - alert: BackendRequestFailures
+        expr: sum(rate(backend_http_errors_total{status_code=~"5.."}[5m])) > 0
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "Backend API is returning server errors", description: "Inspect backend_http_errors_total by route and status code" }
