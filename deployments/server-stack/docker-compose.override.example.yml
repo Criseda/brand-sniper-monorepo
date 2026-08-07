@@ -28,7 +28,7 @@ services:
 
   mlflow-server:
     environment:
-      MLFLOW_DATABASE_URL: ${LOCAL_MLFLOW_DATABASE_URL:-postgresql+psycopg2://postgres:postgres@postgres:5432/brand_sniper}
+      MLFLOW_BACKEND_STORE_URI: ${LOCAL_MLFLOW_BACKEND_STORE_URI:-postgresql+psycopg2://postgres:postgres@postgres:5432/brand_sniper}
     depends_on:
       postgres:
         condition: service_healthy

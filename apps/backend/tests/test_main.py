@@ -1,4 +1,6 @@
 import asyncio
+from contextlib import asynccontextmanager
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -80,6 +82,42 @@ def test_ingest_bulk_success(client):
     assert data["records_processed"] == 2
 
 
+def test_ingest_bulk_replay_is_idempotent(client):
+    batch_id = str(uuid4())
+    payload = {
+        "batch_id": batch_id,
+        "source": "test_source",
+        "ticks": [{"market_hash_name": "Replay Item", "price_cents": 1500, "timestamp": 1700000000}],
+    }
+
+    first = client.post("/api/v1/ingest/bulk", json=payload)
+    replay = client.post("/api/v1/ingest/bulk", json=payload)
+
+    assert first.status_code == 201
+    assert first.json() == {"status": "SUCCESS", "records_processed": 1}
+    assert replay.status_code == 201
+    assert replay.json() == {"status": "DUPLICATE", "records_processed": 0}
+
+
+def test_ingest_bulk_rejects_reused_batch_id_with_different_payload(client):
+    batch_id = str(uuid4())
+    payload = {
+        "batch_id": batch_id,
+        "source": "test_source",
+        "ticks": [{"market_hash_name": "Conflict Item", "price_cents": 1500, "timestamp": 1700000000}],
+    }
+    changed_payload = {
+        **payload,
+        "ticks": [{"market_hash_name": "Conflict Item", "price_cents": 1600, "timestamp": 1700000000}],
+    }
+
+    assert client.post("/api/v1/ingest/bulk", json=payload).status_code == 201
+    response = client.post("/api/v1/ingest/bulk", json=changed_payload)
+
+    assert response.status_code == 409
+    assert "different payload" in response.json()["detail"]
+
+
 def test_ingest_bulk_empty_ticks(client):
     payload = {"source": "test_source", "ticks": []}
     response = client.post("/api/v1/ingest/bulk", json=payload)
@@ -151,6 +189,42 @@ def test_bulk_ingestion_database_failure_returns_503(client, monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["status"] == 503
+
+
+def test_item_cache_is_not_updated_when_commit_fails(client, monkeypatch):
+    import main as backend_main
+
+    market_hash_name = "Uncommitted Cache Item"
+    backend_main.item_cache.pop(market_hash_name, None)
+
+    class FakeSession:
+        def add(self, _instance):
+            return None
+
+    @asynccontextmanager
+    async def fail_during_commit():
+        yield FakeSession()
+        raise DatabaseConnectionError("commit failed")
+
+    async def resolve_item(_session, name, pending_items):
+        pending_items[name] = 999999
+        return 999999
+
+    monkeypatch.setattr(backend_main, "session_scope", fail_during_commit)
+    monkeypatch.setattr(backend_main, "get_or_create_item_id", resolve_item)
+
+    response = client.post(
+        "/api/v1/ingest/trade",
+        json={
+            "market_hash_name": market_hash_name,
+            "purchase_price_cents": 1000,
+            "estimated_profit_cents": 500,
+            "trigger_z_score": -3.5,
+        },
+    )
+
+    assert response.status_code == 503
+    assert market_hash_name not in backend_main.item_cache
 
 
 def test_search_trends_unexpected_failure_returns_safe_500(client, monkeypatch):

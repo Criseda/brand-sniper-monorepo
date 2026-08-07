@@ -24,6 +24,7 @@ load_dotenv(dotenv_path=project_root / ".env")
 listener_env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=listener_env_path, override=True)
 
+from batch_delivery import RedisBatchStore, deliver_stored_batch
 from executor import ExecutionService, PaperExecutor
 from executor import close_http_session as close_executor_http_session
 from listener_telemetry import (
@@ -31,7 +32,6 @@ from listener_telemetry import (
     anomalies_detected_total,
     anomalies_rejected_total,
     batch_buffer_size,
-    batch_flush_total,
     dedup_cache_size,
     redis_operation_latency_seconds,
     rules_engine_latency_seconds,
@@ -64,6 +64,13 @@ def _positive_int_env(name: str, default: int) -> int:
     return value
 
 
+def _positive_float_env(name: str, default: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than 0")
+    return value
+
+
 # --- Tunable Detection Parameters (configurable via .env) ---
 # Sliding window size for Redis price history
 SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
@@ -78,6 +85,9 @@ ANOMALY_QUEUE_SIZE = _positive_int_env("LISTENER_ANOMALY_QUEUE_SIZE", 128)
 BATCH_WORKERS = _positive_int_env("LISTENER_BATCH_WORKERS", 2)
 BATCH_QUEUE_SIZE = _positive_int_env("LISTENER_BATCH_QUEUE_SIZE", 8)
 SHUTDOWN_GRACE_SECONDS = _positive_int_env("LISTENER_SHUTDOWN_GRACE_SECONDS", 30)
+BATCH_MAX_ATTEMPTS = _positive_int_env("LISTENER_BATCH_MAX_ATTEMPTS", 5)
+BATCH_RETRY_BASE_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_BASE_SECONDS", 0.5)
+BATCH_RETRY_MAX_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_MAX_SECONDS", 8)
 
 # Shared aiohttp session (initialized at startup, closed at shutdown)
 _http_session: aiohttp.ClientSession | None = None
@@ -106,23 +116,48 @@ def _decode_zset_element(element: str | bytes) -> str:
     return element.decode("utf-8") if isinstance(element, bytes) else element
 
 
-async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]) -> None:
-    """Sends one structured bulk-ingestion batch to the backend."""
-    payload = {"source": source, "ticks": chunk}
-    try:
-        session = await get_http_session()
-        async with session.post(BULK_INGEST_URL, json=payload, timeout=aiohttp.ClientTimeout(total=15, connect=3)) as resp:
-            if resp.status == 201:
-                logger.info("[BATCH FLUSH] Successfully committed %d items to Compute Node.", len(chunk))
-                batch_flush_total.labels(status="success").inc()
-            else:
-                logger.warning("[BATCH FLUSH] Backend rejected batch with status: %s", resp.status)
-                batch_flush_total.labels(status="rejected").inc()
-                raise RuntimeError(f"Backend rejected batch flush with HTTP {resp.status}")
-    except (TimeoutError, aiohttp.ClientError) as e:
-        logger.error("[BATCH FLUSH] Failed to reach Compute Node database router: %s", e)
-        batch_flush_total.labels(status="error").inc()
-        raise RuntimeError("Failed to reach backend for batch flush") from e
+async def enqueue_batch(
+    source: str,
+    chunk: list[dict],
+    store: RedisBatchStore,
+    batch_pool: BoundedTaskPool,
+) -> None:
+    """Persist a batch before scheduling its delivery."""
+    batch = await store.add(source, chunk)
+    await batch_pool.submit(
+        partial(
+            deliver_stored_batch,
+            store,
+            batch,
+            url=BULK_INGEST_URL,
+            session_factory=get_http_session,
+            max_attempts=BATCH_MAX_ATTEMPTS,
+            base_delay_seconds=BATCH_RETRY_BASE_SECONDS,
+            max_delay_seconds=BATCH_RETRY_MAX_SECONDS,
+        )
+    )
+
+
+async def recover_pending_batches(store: RedisBatchStore, batch_pool: BoundedTaskPool) -> int:
+    """Reschedule batches left pending by an earlier listener process."""
+    recovered = 0
+    async for batch in store.iter_pending():
+        await batch_pool.submit(
+            partial(
+                deliver_stored_batch,
+                store,
+                batch,
+                url=BULK_INGEST_URL,
+                session_factory=get_http_session,
+                max_attempts=BATCH_MAX_ATTEMPTS,
+                base_delay_seconds=BATCH_RETRY_BASE_SECONDS,
+                max_delay_seconds=BATCH_RETRY_MAX_SECONDS,
+            )
+        )
+        recovered += 1
+    if recovered:
+        logger.warning("[BATCH FLUSH] Recovered %d pending batches from Redis.", recovered)
+    return recovered
 
 
 async def rest_poll_producer(scraper, queue: asyncio.Queue[MarketTick | None]) -> None:
@@ -219,6 +254,7 @@ async def tick_consumer(
     platform_target: str,
     anomaly_pool: BoundedTaskPool,
     batch_pool: BoundedTaskPool,
+    batch_store: RedisBatchStore,
     executor: ExecutionService,
 ) -> None:
     """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
@@ -319,7 +355,7 @@ async def tick_consumer(
 
                 # 4. When buffer matches target density constraints, dispatch non-blocking task
                 if len(batch_buffer) >= CHUNK_LIMIT:
-                    await batch_pool.submit(partial(flush_batch_chunk_to_postgres, platform_target, batch_buffer.copy()))
+                    await enqueue_batch(platform_target, batch_buffer.copy(), batch_store, batch_pool)
                     batch_buffer.clear()
                     batch_buffer_size.set(0)
             # Broad on purpose: one bad tick must not kill the consumer loop.
@@ -329,7 +365,7 @@ async def tick_consumer(
                 queue.task_done()
     finally:
         if batch_buffer:
-            await batch_pool.submit(partial(flush_batch_chunk_to_postgres, platform_target, batch_buffer.copy()))
+            await enqueue_batch(platform_target, batch_buffer.copy(), batch_store, batch_pool)
             batch_buffer.clear()
             batch_buffer_size.set(0)
         await cache.aclose()
@@ -386,6 +422,8 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
     queue: asyncio.Queue[MarketTick | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
     scraper = ScraperFactory.get_scraper(platform_target)
     executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
+    edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
+    redis_password = os.getenv("REDIS_PASSWORD")
 
     # Register graceful shutdown on SIGINT/SIGTERM
     shutdown_event = asyncio.Event()
@@ -401,6 +439,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     try:
         async with (
+            RedisBatchStore.from_url(edge_redis_url, password=redis_password) as batch_store,
             BoundedTaskPool(
                 "anomaly",
                 workers=ANOMALY_WORKERS,
@@ -414,9 +453,10 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                 shutdown_timeout=SHUTDOWN_GRACE_SECONDS,
             ) as batch_pool,
         ):
+            await recover_pending_batches(batch_store, batch_pool)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
-                    tick_consumer(queue, platform_target, anomaly_pool, batch_pool, executor),
+                    tick_consumer(queue, platform_target, anomaly_pool, batch_pool, batch_store, executor),
                     name="tick-consumer",
                 )
                 producer_tasks = [

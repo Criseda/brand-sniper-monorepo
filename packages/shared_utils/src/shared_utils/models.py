@@ -39,6 +39,21 @@ class LiveMarketTick(SQLModel, table=True):
     inserted_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
 
 
+class IngestionBatch(SQLModel, table=True):
+    """Idempotency ledger for listener bulk-ingestion requests."""
+
+    __tablename__: str = "ingestion_batches"
+
+    batch_id: str = Field(primary_key=True, max_length=36)
+    source: str = Field(nullable=False)
+    record_count: int = Field(nullable=False)
+    payload_sha256: str = Field(nullable=False, max_length=64)
+    received_at: datetime = Field(
+        sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
+        index=True,
+    )
+
+
 class HistoricalPrice(SQLModel, table=True):
     """
     Data warehouse table holding long-term aggregate historical timelines (Kaggle).

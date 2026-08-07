@@ -54,6 +54,21 @@ batch_flush_total = Counter(
     labelnames=["status"],
 )
 
+batch_delivery_retries_total = Counter(
+    "listener_batch_delivery_retries_total",
+    "Total number of transient bulk-ingestion delivery retries",
+)
+
+batch_delivery_dead_letters_total = Counter(
+    "listener_batch_delivery_dead_letters_total",
+    "Total number of bulk-ingestion batches moved to the dead-letter stream",
+)
+
+batch_delivery_pending = Gauge(
+    "listener_batch_delivery_pending",
+    "Current number of batches waiting in the Redis delivery stream",
+)
+
 background_jobs_total = Counter(
     "listener_background_jobs_total",
     "Total number of listener background jobs by type and outcome",
