@@ -5,6 +5,22 @@ from listener_telemetry import background_jobs_total
 from task_supervisor import BoundedTaskPool, PoolState
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"workers": 0}, "workers must be at least 1"),
+        ({"queue_size": 0}, "queue_size must be at least 1"),
+        ({"shutdown_timeout": 0}, "shutdown_timeout must be greater than 0"),
+    ],
+)
+def test_pool_rejects_invalid_configuration(overrides, message):
+    options = {"workers": 1, "queue_size": 1, "shutdown_timeout": 1}
+    options.update(overrides)
+
+    with pytest.raises(ValueError, match=message):
+        BoundedTaskPool("test_invalid", **options)
+
+
 @pytest.mark.asyncio
 async def test_pool_caps_concurrent_jobs():
     active = 0
@@ -88,6 +104,42 @@ async def test_pool_drains_on_close_and_rejects_late_submissions():
     assert pool.state is PoolState.CLOSED
     with pytest.raises(RuntimeError, match="not accepting work"):
         await pool.submit(job)
+
+    await pool.close()
+
+
+@pytest.mark.asyncio
+async def test_pool_reports_pending_work_and_rejects_restart():
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def blocking_job() -> None:
+        started.set()
+        await release.wait()
+
+    async def noop_job() -> None:
+        return None
+
+    pool = BoundedTaskPool("test_state", workers=1, queue_size=1, shutdown_timeout=1)
+    async with pool:
+        await pool.submit(blocking_job)
+        await asyncio.wait_for(started.wait(), timeout=1)
+        await pool.submit(noop_job)
+
+        assert pool.pending == 1
+        with pytest.raises(RuntimeError, match="cannot be started"):
+            await pool.__aenter__()
+
+        release.set()
+
+
+@pytest.mark.asyncio
+async def test_pool_can_close_before_it_is_started():
+    pool = BoundedTaskPool("test_never_started", workers=1, queue_size=1, shutdown_timeout=1)
+
+    await pool.close()
+
+    assert pool.state is PoolState.CLOSED
 
 
 @pytest.mark.asyncio

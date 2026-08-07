@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from http import HTTPStatus
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -66,8 +66,7 @@ def _problem_response(
 
 
 async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    if not isinstance(exc, StarletteHTTPException):
-        raise TypeError("http_exception_handler requires an HTTPException")
+    exc = cast(StarletteHTTPException, exc)
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
     return _problem_response(
         request,
@@ -78,8 +77,7 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
 
 
 async def validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    if not isinstance(exc, RequestValidationError):
-        raise TypeError("validation_exception_handler requires a RequestValidationError")
+    exc = cast(RequestValidationError, exc)
     errors = [
         ValidationProblem(
             location=[part for part in error["loc"] if isinstance(part, (str, int))],
@@ -100,8 +98,7 @@ async def database_exception_handler(
     request: Request,
     exc: Exception,
 ) -> JSONResponse:
-    if not isinstance(exc, (DatabaseConnectionError, MissingDatabaseURLError)):
-        raise TypeError("database_exception_handler requires a database configuration or connection error")
+    exc = cast(DatabaseConnectionError | MissingDatabaseURLError, exc)
     logger.error(
         "[API] Database dependency unavailable for %s %s",
         request.method,

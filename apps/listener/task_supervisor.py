@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
 
 from listener_telemetry import background_jobs_active, background_jobs_queued, background_jobs_total
 from shared_utils import get_logger
@@ -105,8 +106,8 @@ class BoundedTaskPool:
             for _ in self._workers:
                 self._queue.put_nowait(None)
 
-        if self._task_group is not None:
-            await self._task_group.__aexit__(None, None, None)
+        task_group = cast(asyncio.TaskGroup, self._task_group)
+        await task_group.__aexit__(None, None, None)
 
         background_jobs_queued.labels(job_type=self.name).set(0)
         background_jobs_active.labels(job_type=self.name).set(0)
@@ -115,11 +116,10 @@ class BoundedTaskPool:
     def _cancel_queued_work(self) -> None:
         while True:
             try:
-                item = self._queue.get_nowait()
+                self._queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
-            if item is not None:
-                background_jobs_total.labels(job_type=self.name, outcome="cancelled").inc()
+            background_jobs_total.labels(job_type=self.name, outcome="cancelled").inc()
             self._queue.task_done()
 
     async def _worker(self) -> None:
