@@ -69,10 +69,11 @@ services:
     container_name: sniper_mlflow_server
     env_file:
       - ../../.env
-    command: ["sh", "-c", "mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri $$MLFLOW_DATABASE_URL --artifacts-destination /mlruns --serve-artifacts"]
     environment:
-      - PYTHONWARNINGS=ignore:::mlflow.server.fastapi_app
-      - MLFLOW_SERVER_ALLOWED_HOSTS=mlflow-server:*,localhost:*
+      PYTHONWARNINGS: ignore:::mlflow.server.fastapi_app
+      MLFLOW_SERVER_ALLOWED_HOSTS: mlflow-server:*,localhost:*
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
+      MLFLOW_WORKERS: "1"
     ports:
       - "5000:5000"
     volumes:
@@ -80,6 +81,14 @@ services:
     networks:
       - sniper_network
     restart: unless-stopped
+    mem_limit: 1g
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
 
   # ---------------------------------------------------------------------------
   # OBSERVABILITY LAYER: Metrics and Dashboards

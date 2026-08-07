@@ -123,8 +123,8 @@
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
       "targets": [
         { "expr": "rate(listener_batch_flush_total{status=\"success\"}[5m]) * 60", "legendFormat": "Success", "refId": "A" },
-        { "expr": "rate(listener_batch_flush_total{status=\"error\"}[5m]) * 60", "legendFormat": "Error", "refId": "B" },
-        { "expr": "rate(listener_batch_flush_total{status=\"rejected\"}[5m]) * 60", "legendFormat": "Rejected", "refId": "C" }
+        { "expr": "rate(listener_batch_flush_total{status=\"retry\"}[5m]) * 60", "legendFormat": "Retry", "refId": "B" },
+        { "expr": "rate(listener_batch_flush_total{status=\"dead_letter\"}[5m]) * 60", "legendFormat": "Dead letter", "refId": "C" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: flushes/min" } }
     },

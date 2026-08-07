@@ -8,6 +8,7 @@ import time
 from collections import OrderedDict
 from functools import partial
 from pathlib import Path
+from uuid import uuid4
 
 import aiohttp
 from dotenv import load_dotenv
@@ -24,6 +25,7 @@ load_dotenv(dotenv_path=project_root / ".env")
 listener_env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=listener_env_path, override=True)
 
+from batch_delivery import RedisBatchStore, StoredBatch, deliver_stored_batch
 from executor import ExecutionService, PaperExecutor
 from executor import close_http_session as close_executor_http_session
 from listener_telemetry import (
@@ -31,7 +33,6 @@ from listener_telemetry import (
     anomalies_detected_total,
     anomalies_rejected_total,
     batch_buffer_size,
-    batch_flush_total,
     dedup_cache_size,
     redis_operation_latency_seconds,
     rules_engine_latency_seconds,
@@ -64,6 +65,13 @@ def _positive_int_env(name: str, default: int) -> int:
     return value
 
 
+def _positive_float_env(name: str, default: float) -> float:
+    value = float(os.getenv(name, str(default)))
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than 0")
+    return value
+
+
 # --- Tunable Detection Parameters (configurable via .env) ---
 # Sliding window size for Redis price history
 SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
@@ -78,6 +86,9 @@ ANOMALY_QUEUE_SIZE = _positive_int_env("LISTENER_ANOMALY_QUEUE_SIZE", 128)
 BATCH_WORKERS = _positive_int_env("LISTENER_BATCH_WORKERS", 2)
 BATCH_QUEUE_SIZE = _positive_int_env("LISTENER_BATCH_QUEUE_SIZE", 8)
 SHUTDOWN_GRACE_SECONDS = _positive_int_env("LISTENER_SHUTDOWN_GRACE_SECONDS", 30)
+BATCH_MAX_ATTEMPTS = _positive_int_env("LISTENER_BATCH_MAX_ATTEMPTS", 5)
+BATCH_RETRY_BASE_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_BASE_SECONDS", 0.5)
+BATCH_RETRY_MAX_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_MAX_SECONDS", 8)
 
 # Shared aiohttp session (initialized at startup, closed at shutdown)
 _http_session: aiohttp.ClientSession | None = None
@@ -106,23 +117,58 @@ def _decode_zset_element(element: str | bytes) -> str:
     return element.decode("utf-8") if isinstance(element, bytes) else element
 
 
-async def flush_batch_chunk_to_postgres(source: str, chunk: list[dict]) -> None:
-    """Sends one structured bulk-ingestion batch to the backend."""
-    payload = {"source": source, "ticks": chunk}
+async def schedule_stored_batch(
+    batch: StoredBatch,
+    store: RedisBatchStore,
+    batch_pool: BoundedTaskPool,
+) -> None:
+    """Schedule delivery for a batch that is already durable in Redis."""
+    await batch_pool.submit(
+        partial(
+            deliver_stored_batch,
+            store,
+            batch,
+            url=BULK_INGEST_URL,
+            session_factory=get_http_session,
+            max_attempts=BATCH_MAX_ATTEMPTS,
+            base_delay_seconds=BATCH_RETRY_BASE_SECONDS,
+            max_delay_seconds=BATCH_RETRY_MAX_SECONDS,
+        )
+    )
+
+
+async def flush_batch_buffer(
+    source: str,
+    buffer: list[dict],
+    *,
+    batch_id: str,
+    store: RedisBatchStore,
+    batch_pool: BoundedTaskPool,
+) -> None:
+    """Persist a stable batch, transfer buffer ownership, then schedule delivery."""
+    snapshot = buffer.copy()
+    batch = await store.add(source, snapshot, batch_id=batch_id)
+    buffer.clear()
+    batch_buffer_size.set(0)
     try:
-        session = await get_http_session()
-        async with session.post(BULK_INGEST_URL, json=payload, timeout=aiohttp.ClientTimeout(total=15, connect=3)) as resp:
-            if resp.status == 201:
-                logger.info("[BATCH FLUSH] Successfully committed %d items to Compute Node.", len(chunk))
-                batch_flush_total.labels(status="success").inc()
-            else:
-                logger.warning("[BATCH FLUSH] Backend rejected batch with status: %s", resp.status)
-                batch_flush_total.labels(status="rejected").inc()
-                raise RuntimeError(f"Backend rejected batch flush with HTTP {resp.status}")
-    except (TimeoutError, aiohttp.ClientError) as e:
-        logger.error("[BATCH FLUSH] Failed to reach Compute Node database router: %s", e)
-        batch_flush_total.labels(status="error").inc()
-        raise RuntimeError("Failed to reach backend for batch flush") from e
+        await schedule_stored_batch(batch, store, batch_pool)
+    except asyncio.CancelledError:
+        logger.warning("[BATCH FLUSH] Batch %s remains pending after scheduling was cancelled.", batch.batch_id)
+        raise
+    except Exception:
+        logger.exception("[BATCH FLUSH] Batch %s remains pending after scheduling failed.", batch.batch_id)
+        raise
+
+
+async def recover_pending_batches(store: RedisBatchStore, batch_pool: BoundedTaskPool) -> int:
+    """Reschedule batches left pending by an earlier listener process."""
+    recovered = 0
+    async for batch in store.iter_pending():
+        await schedule_stored_batch(batch, store, batch_pool)
+        recovered += 1
+    if recovered:
+        logger.warning("[BATCH FLUSH] Recovered %d pending batches from Redis.", recovered)
+    return recovered
 
 
 async def rest_poll_producer(scraper, queue: asyncio.Queue[MarketTick | None]) -> None:
@@ -219,6 +265,7 @@ async def tick_consumer(
     platform_target: str,
     anomaly_pool: BoundedTaskPool,
     batch_pool: BoundedTaskPool,
+    batch_store: RedisBatchStore,
     executor: ExecutionService,
 ) -> None:
     """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
@@ -227,6 +274,7 @@ async def tick_consumer(
     cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
     batch_buffer: list[dict] = []
+    batch_buffer_id: str | None = None
     dedup_cache: DedupCache = OrderedDict()
 
     logger.info("Telemetry processing consumer loop is active (Redis: %s).", edge_redis_url)
@@ -239,100 +287,118 @@ async def tick_consumer(
                 queue.task_done()
                 break
             try:
-                # 1. Deduplication Filter
-                if is_duplicate(tick, dedup_cache):
-                    ticks_deduplicated_total.inc()
-                    continue
-                update_dedup_cache(tick, dedup_cache)
-                dedup_cache_size.set(len(dedup_cache))
-                ticks_processed_total.inc()
+                try:
+                    # 1. Deduplication Filter
+                    if is_duplicate(tick, dedup_cache):
+                        ticks_deduplicated_total.inc()
+                        continue
+                    update_dedup_cache(tick, dedup_cache)
+                    dedup_cache_size.set(len(dedup_cache))
+                    ticks_processed_total.inc()
 
-                # Accumulate records for long-term database tracking
-                batch_buffer.append(
-                    {"market_hash_name": tick.market_hash_name, "price_cents": tick.price_cents, "timestamp": tick.timestamp}
-                )
-                batch_buffer_size.set(len(batch_buffer))
+                    # Accumulate records for long-term database tracking
+                    batch_buffer.append(
+                        {
+                            "market_hash_name": tick.market_hash_name,
+                            "price_cents": tick.price_cents,
+                            "timestamp": tick.timestamp,
+                        }
+                    )
+                    batch_buffer_size.set(len(batch_buffer))
 
-                # 2. Update Volatile Sliding Cache Layer
-                redis_key = f"market:ticks:{tick.market_hash_name}"
-                value_string = f"{tick.timestamp}:{tick.price_cents}"
-                _t0 = time.monotonic()
-                await cache.zadd(redis_key, {value_string: tick.timestamp})
-                redis_operation_latency_seconds.observe(time.monotonic() - _t0)
+                    # 2. Update Volatile Sliding Cache Layer
+                    redis_key = f"market:ticks:{tick.market_hash_name}"
+                    value_string = f"{tick.timestamp}:{tick.price_cents}"
+                    _t0 = time.monotonic()
+                    await cache.zadd(redis_key, {value_string: tick.timestamp})
+                    redis_operation_latency_seconds.observe(time.monotonic() - _t0)
 
-                # Keep only the last N ticks
-                _t1 = time.monotonic()
-                card = await cache.zcard(redis_key)
-                redis_operation_latency_seconds.observe(time.monotonic() - _t1)
-                if card > SLIDING_WINDOW_SIZE:
-                    _t2 = time.monotonic()
-                    await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
-                    redis_operation_latency_seconds.observe(time.monotonic() - _t2)
+                    # Keep only the last N ticks
+                    _t1 = time.monotonic()
+                    card = await cache.zcard(redis_key)
+                    redis_operation_latency_seconds.observe(time.monotonic() - _t1)
+                    if card > SLIDING_WINDOW_SIZE:
+                        _t2 = time.monotonic()
+                        await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
+                        redis_operation_latency_seconds.observe(time.monotonic() - _t2)
 
-                # 3. Z-Score anomaly detection with macro baseline fallback
-                _t3 = time.monotonic()
-                raw_elements = await cache.zrange(redis_key, 0, -1)
-                redis_operation_latency_seconds.observe(time.monotonic() - _t3)
-                prices = [
-                    int(_decode_zset_element(element).split(":")[1])
-                    for element in raw_elements
-                    if isinstance(element, (str, bytes))
-                ]
+                    # 3. Z-Score anomaly detection with macro baseline fallback
+                    _t3 = time.monotonic()
+                    raw_elements = await cache.zrange(redis_key, 0, -1)
+                    redis_operation_latency_seconds.observe(time.monotonic() - _t3)
+                    prices = [
+                        int(_decode_zset_element(element).split(":")[1])
+                        for element in raw_elements
+                        if isinstance(element, (str, bytes))
+                    ]
 
-                # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
-                _t4 = time.monotonic()
-                baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
-                redis_operation_latency_seconds.observe(time.monotonic() - _t4)
-                baseline_data: dict | None = json.loads(baseline_raw) if baseline_raw else None
+                    # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
+                    _t4 = time.monotonic()
+                    baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+                    redis_operation_latency_seconds.observe(time.monotonic() - _t4)
+                    baseline_data: dict | None = json.loads(baseline_raw) if baseline_raw else None
 
-                macro_avg = baseline_data.get("rolling_30d_avg_cents") if baseline_data else None
-                macro_vol = baseline_data.get("volatility_cents") if baseline_data else None
-                macro_cv = baseline_data.get("coefficient_of_variation") if baseline_data else None
+                    macro_avg = baseline_data.get("rolling_30d_avg_cents") if baseline_data else None
+                    macro_vol = baseline_data.get("volatility_cents") if baseline_data else None
+                    macro_cv = baseline_data.get("coefficient_of_variation") if baseline_data else None
 
-                result = calculate_z_score(prices, macro_avg, macro_vol, macro_cv)
-                if result is not None:
-                    z_score, mean_cents, source = result
+                    result = calculate_z_score(prices, macro_avg, macro_vol, macro_cv)
+                    if result is not None:
+                        z_score, mean_cents, source = result
 
-                    if should_trigger_anomaly(z_score, mean_cents, tick, source):
-                        sticker_count = len(tick.stickers)
-                        sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
-                        logger.info(
-                            "[ANOMALY] Outlier potential detected (%s): %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
-                            source,
-                            tick.market_hash_name,
-                            sticker_tag,
-                            tick.price_usd,
-                            z_score,
-                        )
-                        anomalies_detected_total.labels(source=source).inc()
-                        await anomaly_pool.submit(
-                            partial(
-                                evaluate_and_execute,
-                                tick,
-                                z_score,
-                                cache,
-                                executor,
-                                baseline_data,
+                        if should_trigger_anomaly(z_score, mean_cents, tick, source):
+                            sticker_count = len(tick.stickers)
+                            sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
+                            logger.info(
+                                "[ANOMALY] Outlier potential detected (%s): %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
                                 source,
+                                tick.market_hash_name,
+                                sticker_tag,
+                                tick.price_usd,
+                                z_score,
                             )
-                        )
+                            anomalies_detected_total.labels(source=source).inc()
+                            await anomaly_pool.submit(
+                                partial(
+                                    evaluate_and_execute,
+                                    tick,
+                                    z_score,
+                                    cache,
+                                    executor,
+                                    baseline_data,
+                                    source,
+                                )
+                            )
+                # Broad on purpose: one bad tick must not kill the consumer loop.
+                except Exception as item_err:
+                    logger.error("Error processing tick for '%s': %s", tick.market_hash_name, item_err)
 
-                # 4. When buffer matches target density constraints, dispatch non-blocking task
+                # 4. Persist full buffers outside the per-item exception boundary.
                 if len(batch_buffer) >= CHUNK_LIMIT:
-                    await batch_pool.submit(partial(flush_batch_chunk_to_postgres, platform_target, batch_buffer.copy()))
-                    batch_buffer.clear()
-                    batch_buffer_size.set(0)
-            # Broad on purpose: one bad tick must not kill the consumer loop.
-            except Exception as item_err:
-                logger.error("Error processing tick for '%s': %s", tick.market_hash_name, item_err)
+                    batch_buffer_id = batch_buffer_id or str(uuid4())
+                    await flush_batch_buffer(
+                        platform_target,
+                        batch_buffer,
+                        batch_id=batch_buffer_id,
+                        store=batch_store,
+                        batch_pool=batch_pool,
+                    )
+                    batch_buffer_id = None
             finally:
                 queue.task_done()
     finally:
-        if batch_buffer:
-            await batch_pool.submit(partial(flush_batch_chunk_to_postgres, platform_target, batch_buffer.copy()))
-            batch_buffer.clear()
-            batch_buffer_size.set(0)
-        await cache.aclose()
+        try:
+            if batch_buffer:
+                batch_buffer_id = batch_buffer_id or str(uuid4())
+                await flush_batch_buffer(
+                    platform_target,
+                    batch_buffer,
+                    batch_id=batch_buffer_id,
+                    store=batch_store,
+                    batch_pool=batch_pool,
+                )
+        finally:
+            await cache.aclose()
 
 
 async def start_sidecar_process(scraper) -> None:
@@ -386,6 +452,8 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
     queue: asyncio.Queue[MarketTick | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
     scraper = ScraperFactory.get_scraper(platform_target)
     executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
+    edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
+    redis_password = os.getenv("REDIS_PASSWORD")
 
     # Register graceful shutdown on SIGINT/SIGTERM
     shutdown_event = asyncio.Event()
@@ -401,6 +469,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     try:
         async with (
+            RedisBatchStore.from_url(edge_redis_url, password=redis_password) as batch_store,
             BoundedTaskPool(
                 "anomaly",
                 workers=ANOMALY_WORKERS,
@@ -414,9 +483,10 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                 shutdown_timeout=SHUTDOWN_GRACE_SECONDS,
             ) as batch_pool,
         ):
+            await recover_pending_batches(batch_store, batch_pool)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
-                    tick_consumer(queue, platform_target, anomaly_pool, batch_pool, executor),
+                    tick_consumer(queue, platform_target, anomaly_pool, batch_pool, batch_store, executor),
                     name="tick-consumer",
                 )
                 producer_tasks = [

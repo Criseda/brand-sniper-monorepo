@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -31,5 +32,9 @@ class SearchTrendsPayload(BaseModel):
 class BulkIngestionPayload(BaseModel):
     """Container schema for high-throughput multi-venue price uploads sent from edge nodes."""
 
+    batch_id: UUID | None = Field(
+        default=None,
+        description="Stable idempotency key for retries of the same batch",
+    )
     source: NonEmptyText = Field(..., description="The platform origin, e.g., 'skinport' or 'steam'")
     ticks: list[BulkPriceTick] = Field(..., description="Array of collected market snapshot blocks")

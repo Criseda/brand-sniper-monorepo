@@ -10,6 +10,7 @@ dependencies = [
     "shared-utils",
     "prometheus-client>=0.26.0",
     "brotli>=1.1.0",
+    "aiohttp>=3.14.3",
 ]
 
 [tool.uv.sources]

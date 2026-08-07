@@ -173,13 +173,64 @@ additional environment variables from the compose file for Docker-internal netwo
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `REDIS_PASSWORD` | Strong password used for securing the Edge Redis cache service |
-| `MLFLOW_DATABASE_URL` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |
+| `MLFLOW_BACKEND_STORE_URI` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |
 
 ### Configuration Variables
 
 | Variable | Description | Default (Local Dev) |
 |----------|-------------|---------------------|
 | `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. Used to explicitly whitelist domains since credentials are enabled (wildcards are not permitted with credentials). | `http://localhost:3000,http://localhost:8080` |
+| `LISTENER_BATCH_MAX_ATTEMPTS` | Maximum delivery attempts for retryable bulk-ingestion failures. | `5` |
+| `LISTENER_BATCH_RETRY_BASE_SECONDS` | Initial exponential-backoff delay for batch retries. | `0.5` |
+| `LISTENER_BATCH_RETRY_MAX_SECONDS` | Maximum exponential-backoff delay for batch retries. | `8` |
+
+### Bulk-ingestion recovery
+
+The listener writes each outbound batch to the Edge Redis pending stream before
+clearing its in-memory buffer. Successful requests are removed from the stream;
+permanent errors and exhausted retries are moved to a dead-letter stream. Pending
+batches are rescheduled automatically when the listener starts.
+
+To replay up to 100 dead-letter batches after correcting the underlying error:
+
+```bash
+cd apps/listener
+uv run python replay_batches.py --limit 100
+```
+
+The limit applies to attempted batches. The command exits non-zero if any
+attempt fails, making it safe to use from operational automation. Malformed
+stream records are isolated in `listener:ingest:malformed` so that one poison
+record cannot block recovery of valid pending or dead-letter batches.
+
+Batch IDs make replays idempotent at the backend. Reusing an ID with different
+content returns HTTP 409. The stream uses the existing volatile Edge Redis
+configuration, so it protects against listener/backend restarts but not an Edge
+Redis restart or host loss. Use persistent Redis if that durability boundary is
+not acceptable for a deployment.
+
+### MLflow resource and credential settings
+
+The repository uses synchronous MLflow tracking calls and does not use MLflow
+job execution. The server stack therefore disables job execution, runs one web
+worker, and enforces a 1 GiB memory limit. The server database URI is read from
+`MLFLOW_BACKEND_STORE_URI`; it is not included in the process command line.
+`MLFLOW_DATABASE_URL` remains a temporary entrypoint fallback for stale local
+environment files and should be migrated.
+
+Deployments that use MLflow online scoring or other server-managed jobs can opt
+back in through a Compose override:
+
+```yaml
+services:
+  mlflow-server:
+    environment:
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "true"
+```
+
+After deploying this change, rotate any MLflow database credential that was
+previously visible in container process arguments, update the environment file,
+and recreate the MLflow container.
 
 ## Database Migrations
 
