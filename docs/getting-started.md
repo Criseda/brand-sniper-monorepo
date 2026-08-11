@@ -8,7 +8,7 @@ Open the repo in a pre-provisioned container — Python 3.12, uv, and the VS Cod
 
 1. Click **Code > Codespaces > Create codespace on main** on the repo page (or run `gh codespace create`).
 2. Wait for `postCreateCommand` to finish — it runs `uv sync --all-packages --group dev`, copies `.env.example` to `.env` if missing, and installs the pre-commit hooks.
-3. You still need the **Docker service stacks** (Redis, Prefect, MLflow, Grafana): the container does not bundle Docker or Compose, so run `docker compose up -d` in `deployments/server-stack/` on your host — ports `8080`, `6380`, `5432`, `4200` are forwarded automatically into the IDE.
+3. You still need the **Docker service stacks** (Redis, Prefect, MLflow, Grafana): the container does not bundle Docker or Compose, so run `docker compose up -d` in `deployments/server-stack/` on your Docker host. Redis is container-internal; the backend is published on `8080`, while administrative UIs bind to the Docker host's loopback interface.
 
 ## Option: Manual setup
 
@@ -27,7 +27,7 @@ cp .env.example .env
 ```
 
 Open `.env` and at minimum set:
-- `DATABASE_URL` — use Azure PostgreSQL, or uncomment `postgres:` in `deployments/server-stack/docker-compose.yml` for local dev
+- `DATABASE_URL` — use Azure PostgreSQL, or copy `deployments/server-stack/docker-compose.override.example.yml` to `docker-compose.override.yml` for local PostgreSQL
 - `GROQ_API_KEY` — get a free key at [console.groq.com/keys](https://console.groq.com/keys)
 - `SKINPORT_CLIENT_ID` / `SKINPORT_CLIENT_SECRET` — your [Skinport API](https://docs.skinport.com/) creds
 
@@ -44,18 +44,20 @@ cd deployments/server-stack
 docker compose up -d
 ```
 
-This starts 8 services:
+This starts 8 long-running services. Infrastructure ports marked "loopback" are reachable only from the Docker host:
 
-| Service | Port | Role |
-|---------|------|------|
-| Grafana | `3000` | Dashboards (configured in `.env`) |
-| Prometheus | `9090` | Metrics collection |
-| Prefect Server | `4200` | Pipeline orchestration |
-| MLflow | `5000` | Model registry & audit logs |
-| Redis | `6379` | Market cache (volatile RAM) |
-| Backend | `8080` | REST API + health |
-| Listener | — | Market data ingestion |
-| Analytics | — | CFO evaluation (manual profile) |
+| Service | Host port | Role |
+|---------|-----------|------|
+| Grafana | `127.0.0.1:3000` | Dashboards (configured in `.env`) |
+| Prometheus | `127.0.0.1:9090` | Metrics collection |
+| Prefect Server | `127.0.0.1:4200` | Pipeline orchestration |
+| MLflow | `127.0.0.1:5000` | Model registry and audit logs |
+| Redis | Not published | Market cache (volatile RAM) |
+| Redis exporter | Not published | Redis metrics bridge |
+| Backend | `0.0.0.0:8080` | REST API and health |
+| Listener | Not published | Market data ingestion |
+
+Analytics uses the manual profile and starts only with `docker compose run --rm analytics`.
 
 Verify the backend is healthy:
 

@@ -4,22 +4,26 @@
     "dockerfile": "Dockerfile"
   },
   "postCreateCommand": "uv sync --all-packages --group dev && (test -f .env || cp .env.example .env) && uv run pre-commit install",
-  "forwardPorts": [8080, 6380, 5432, 4200],
+  "forwardPorts": [8080, 3000, 4200, 5000, 9090],
   "portsAttributes": {
     "8080": {
       "label": "Backend API",
       "onAutoForward": "notify"
     },
-    "6380": {
-      "label": "Edge Redis",
-      "onAutoForward": "notify"
-    },
-    "5432": {
-      "label": "PostgreSQL (local dev, optional)",
+    "3000": {
+      "label": "Grafana",
       "onAutoForward": "notify"
     },
     "4200": {
       "label": "Prefect Server",
+      "onAutoForward": "notify"
+    },
+    "5000": {
+      "label": "MLflow",
+      "onAutoForward": "notify"
+    },
+    "9090": {
+      "label": "Prometheus",
       "onAutoForward": "notify"
     }
   },

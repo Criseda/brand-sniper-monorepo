@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ---------------------------------------------------------------------------
   # EDGE CACHE LAYER: Volatile Sliding-Window Memory
@@ -11,14 +17,21 @@ services:
     # Data stays entirely in RAM, preventing flash/SD-card wear and maximizing IOPS.
     command: ["sh", "-c", "redis-server --save '' --appendonly no --requirepass $$REDIS_PASSWORD"]
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     networks:
       - sniper_edge_network
     restart: unless-stopped
+    logging: *default-logging
     deploy:
       resources:
         limits:
-          memory: 1gb
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
 
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Edge Telemetry Daemon & Ingestion Stream
@@ -40,9 +53,20 @@ services:
     networks:
       - sniper_edge_network
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/metrics', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
 
 networks:
   sniper_edge_network:

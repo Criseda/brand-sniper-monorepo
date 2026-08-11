@@ -18,12 +18,13 @@ docker compose up -d
 
 | Service | Image | Container Name | Profile |
 |---------|-------|----------------|---------|
-| Redis 8 | `redis:8-alpine` | `sniper_edge_redis` | always |
-| PostgreSQL 18 | `postgres:18-alpine` | `sniper_postgres` | disabled (uncomment to enable local dev) |
-| Prefect Server | `prefecthq/prefect:3-latest` | `sniper_prefect_server` | always |
+| Redis 8 | `redis:8.10.0-alpine` | `sniper_edge_redis` | always |
+| PostgreSQL 18 | `postgres:18-alpine` | `sniper_postgres` | optional local override |
+| Prefect Server | `prefecthq/prefect:3.8.2.dev1-python3.12` | `sniper_prefect_server` | always |
 | MLflow | `ghcr.io/mlflow/mlflow:v3.14.0` | `sniper_mlflow_server` | always |
-| Prometheus | `prom/prometheus:latest` | `sniper_prometheus` | always |
-| Grafana | `grafana/grafana:latest` | `sniper_grafana` | always |
+| Prometheus | `prom/prometheus:v3.13.2` | `sniper_prometheus` | always |
+| Grafana | `grafana/grafana:13.1.1` | `sniper_grafana` | always |
+| Redis exporter | `oliver006/redis_exporter:v1.88.0-alpine` | `sniper_redis_exporter` | always |
 | Backend | custom build | `sniper_backend` | always |
 | Listener | custom build | `sniper_listener` | always |
 | Analytics | custom build | `sniper_analytics` | manual (`docker compose run --rm analytics`) |
@@ -37,11 +38,33 @@ docker compose up -d
 
 | Service | Container Name | Notes |
 |---------|----------------|-------|
-| Redis 8 | `sniper_edge_redis` | Port 6380, `--save "" --appendonly no` (volatile RAM only) |
-| Listener | `sniper_listener` | Connects to a remote backend via `COMPUTE_NODE_URL` env var |
+| Redis 8 | `sniper_edge_redis` | Loopback port 6380, `--save "" --appendonly no` (volatile RAM only) |
+| Listener | `sniper_listener` | Connects to a remote backend via `COMPUTE_NODE_IP` |
 
 The edge stack is designed for constrained environments (Raspberry Pi, low-power VPS).
 It contains only the hot-path services; the server node handles the cold path and infra.
+
+## Runtime Hardening
+
+Every service uses Docker's `json-file` logging driver with three 10 MiB rotated files. Long-running services expose functional healthchecks, and dependent services wait for `service_healthy` instead of merely waiting for a container process to start. Analytics is exempt from healthchecks because it is an intentional one-shot job.
+
+Memory limits are hard caps, not reservations:
+
+| Service | Limit |
+|---------|-------|
+| Redis, Prefect, MLflow, Analytics, optional PostgreSQL | 1 GiB each |
+| Prometheus, Grafana, Backend, Listener | 512 MiB each |
+| Redis exporter | 128 MiB |
+
+Use `docker compose ps` to inspect health and `docker stats` to observe live resource use. Adjust limits through an explicit deployment override only after measuring the target host.
+
+When upgrading an existing server stack from the former flat network, recreate containers so Docker assigns service aliases on every new network:
+
+```bash
+docker compose up -d --force-recreate --wait
+```
+
+This preserves named volumes. After confirming the new stack is healthy, the unused `server-stack_sniper_network` bridge from the previous configuration can be removed if it still exists and has no attached containers.
 
 ## Local Docker Compose Overrides
 
@@ -70,7 +93,7 @@ The edge-stack override requires `COMPUTE_NODE_IP` to be set in the shell
 environment or `deployments/edge-stack/.env` (it is not read from the root
 `.env`). Point it at the central backend, e.g. `COMPUTE_NODE_IP=192.168.1.20`.
 
-The override file is for local-only changes such as adding a local PostgreSQL service, setting development environment variables, or adding bind mounts while working on app code. To be explicit about the files Compose should use, run:
+The server override enables local PostgreSQL on `127.0.0.1:5432`, attaches it only to the data network, and points the relevant services at it. Override files are also suitable for local environment values or bind mounts while working on app code. To be explicit about the files Compose should use, run:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
@@ -263,19 +286,38 @@ docker compose build backend listener analytics
 
 ## Container Networking
 
-Services communicate by container name within the Docker network (`sniper_network`):
+The server stack separates service tiers across three bridge networks:
 
-- Backend: `http://backend:8080`
-- Redis: `redis://redis:6379`
-- Prefect: `http://prefect-server:4200`
-- MLflow: `http://mlflow-server:5000`
+| Service | `data` | `application` | `observability` |
+|---------|:------:|:-------------:|:---------------:|
+| Redis | yes | | |
+| Prefect | | yes | |
+| MLflow | yes | yes | |
+| Prometheus | | | yes |
+| Grafana | | | yes |
+| Redis exporter | yes | | yes |
+| Backend | yes | yes | yes |
+| Listener | yes | yes | yes |
+| Analytics | yes | yes | |
+| Optional PostgreSQL | yes | | |
 
-Docker-internal URLs are set via environment overrides in the compose file
-and take precedence over the root `.env` values.
+The `data` network is internal. The `application` network permits required outbound access, while the separate `observability` bridge permits loopback-only host access to Grafana and Prometheus. Services continue to resolve one another by Compose service name, for example `redis:6379`, `backend:8080`, `prefect-server:4200`, and `mlflow-server:5000`.
+
+The edge stack intentionally retains one bridge network because it contains only Redis and the listener.
+
+### Host-published ports
+
+- Backend `8080` remains externally bound so remote edge nodes can ingest into it.
+- Grafana `3000`, Prefect `4200`, MLflow `5000`, and Prometheus `9090` bind to `127.0.0.1`.
+- Server Redis and Redis exporter are container-internal and have no host-published ports.
+- Edge Redis binds to `127.0.0.1:6380`.
+- Optional local PostgreSQL binds to `127.0.0.1:5432`.
+
+Use an authenticated reverse proxy, VPN, or SSH tunnel when an administrative UI must be accessed remotely. Do not republish Redis or Redis exporter on an untrusted interface.
 
 ## Monitoring
 
-- **Prometheus** — `http://localhost:9090` — scrapes `backend:8080/metrics`
+- **Prometheus** — `http://localhost:9090` — scrapes backend, listener, and Redis exporter metrics
 - **Grafana** — `http://localhost:3000` — pre-built dashboards (using credentials in `.env`)
 - **MLflow** — `http://localhost:5000` — model registry, CFO audit traces
 - **Prefect** — `http://localhost:4200` — pipeline runs and task logs
@@ -283,6 +325,7 @@ and take precedence over the root `.env` values.
 ## Production Considerations
 
 - Configure Grafana admin credentials via `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD` in `.env`
+- Put externally reachable HTTP services behind TLS and authentication; administrative ports are loopback-only by default
 - Use a managed PostgreSQL (Azure, RDS) instead of the local postgres service
 - Set `MLFLOW_TRACKING_URI` and `PREFECT_API_URL` to reachable endpoints
 - Configure Prometheus retention and alerting rules for production uptime

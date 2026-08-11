@@ -8,6 +8,8 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'mypy.ini'
+      - 'deployments/**'
+      - 'scripts/check_compose_hardening.py'
       - '.github/workflows/ci.yml'
   pull_request:
   workflow_dispatch:
@@ -25,6 +27,14 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-packages --group dev
+
+      - name: Validate Docker Compose hardening
+        run: |
+          cp .env.example .env
+          cp apps/backend/.env.example apps/backend/.env
+          cp apps/listener/.env.example apps/listener/.env
+          cp apps/analytics/.env.example apps/analytics/.env
+          uv run python scripts/check_compose_hardening.py
 
       - name: Audit dependencies
         run: uv audit
