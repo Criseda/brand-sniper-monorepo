@@ -9,7 +9,6 @@ from shared_utils import setup_script_environment
 
 setup_script_environment(__file__)
 
-import mlflow
 from mlflow.client import MlflowClient
 from mlflow.exceptions import MlflowException
 from openai import OpenAI
@@ -41,7 +40,6 @@ _model_index_var: contextvars.ContextVar[int] = contextvars.ContextVar("_model_i
 _MAX_TOOL_ROUNDS = 5
 
 _tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-mlflow.set_tracking_uri(_tracking_uri)
 
 _experiment_id = None
 
@@ -63,6 +61,48 @@ def get_experiment_id():
     except MlflowException:
         _experiment_id = "1"
     return _experiment_id
+
+
+def _log_cfo_evaluation(
+    trade: SimulatedTrade,
+    item_name: str,
+    safe_reasoning: str,
+    score: int,
+    eval_status: str,
+) -> None:
+    """Log one CFO evaluation through the synchronous MLflow client."""
+    mlflow_client: MlflowClient | None = None
+    run_id: str | None = None
+
+    try:
+        mlflow_client = MlflowClient(tracking_uri=_tracking_uri)
+        run = mlflow_client.create_run(
+            experiment_id=get_experiment_id(),
+            run_name=f"audit_{item_name}",
+        )
+        run_id = run.info.run_id
+
+        mlflow_client.log_param(run_id, "market_hash_name", item_name)
+        mlflow_client.log_param(run_id, "purchase_price_cents", trade.purchase_price_cents)
+        mlflow_client.log_param(run_id, "bot_estimated_profit", trade.estimated_profit_cents)
+        mlflow_client.log_metric(run_id, "cfo_confidence_score", score)
+        mlflow_client.set_tag(run_id, "eval_status", eval_status)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = os.path.join(temp_dir, "cfo_reasoning.txt")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(safe_reasoning)
+            mlflow_client.log_artifact(run_id, temp_path)
+
+        final_status = "FAILED" if eval_status == "ERROR" else "FINISHED"
+        mlflow_client.set_terminated(run_id, status=final_status)
+    except (MlflowException, OSError) as e:
+        logger.error("[CFO] MLflow logging failed for %s: %s", item_name, e)
+        if mlflow_client is not None and run_id is not None:
+            try:
+                mlflow_client.set_terminated(run_id, status="FAILED")
+            except (MlflowException, OSError):
+                pass
 
 
 openai_client: OpenAI | None = None
@@ -279,30 +319,14 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
     safe_reasoning = reasoning.encode("ascii", "ignore").decode("ascii")
     logger.info("CFO eval status=%s score=%d for %s", eval_status, score, item_name)
 
-    mlflow_client = MlflowClient(tracking_uri=_tracking_uri)
-    run = mlflow_client.create_run(experiment_id=get_experiment_id(), run_name=f"audit_{item_name}")
-    run_id = run.info.run_id
-    try:
-        mlflow_client.log_param(run_id, "market_hash_name", item_name)
-        mlflow_client.log_param(run_id, "purchase_price_cents", trade.purchase_price_cents)
-        mlflow_client.log_param(run_id, "bot_estimated_profit", trade.estimated_profit_cents)
-        mlflow_client.log_metric(run_id, "cfo_confidence_score", score)
-        mlflow_client.set_tag(run_id, "eval_status", eval_status)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = os.path.join(temp_dir, "cfo_reasoning.txt")
-            with open(temp_path, "w", encoding="utf-8") as f:
-                f.write(safe_reasoning)
-            mlflow_client.log_artifact(run_id, temp_path)
-
-        final_status = "FAILED" if eval_status == "ERROR" else "FINISHED"
-        mlflow_client.set_terminated(run_id, status=final_status)
-    except (MlflowException, OSError) as e:
-        logger.error("MLflow logging failed for %s: %s", item_name, e)
-        try:
-            mlflow_client.set_terminated(run_id, status="FAILED")
-        except MlflowException:
-            pass
+    await asyncio.to_thread(
+        _log_cfo_evaluation,
+        trade,
+        item_name,
+        safe_reasoning,
+        score,
+        eval_status,
+    )
 
 
 @flow(name="Daily CFO Evaluation")
