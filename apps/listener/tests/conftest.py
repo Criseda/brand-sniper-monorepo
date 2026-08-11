@@ -3,6 +3,11 @@ import json
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _backend_api_key(monkeypatch):
+    monkeypatch.setenv("BACKEND_API_KEY", "listener-test-key-that-is-at-least-32-characters")
+
+
 class MockRedis:
     def __init__(self):
         self.data = {}

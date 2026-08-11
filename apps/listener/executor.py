@@ -2,7 +2,7 @@ import abc
 
 import aiohttp
 from listener_telemetry import trade_submissions_total
-from shared_utils import get_logger
+from shared_utils import backend_api_headers, get_logger
 
 logger = get_logger("listener.executor")
 
@@ -13,7 +13,7 @@ async def _get_session() -> aiohttp.ClientSession:
     global _session
     if _session is None or _session.closed:
         timeout = aiohttp.ClientTimeout(total=5, connect=2)
-        _session = aiohttp.ClientSession(timeout=timeout)
+        _session = aiohttp.ClientSession(headers=backend_api_headers(), timeout=timeout)
     return _session
 
 

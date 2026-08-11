@@ -1,33 +1,14 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ---------------------------------------------------------------------------
-  # DATA LAYER: Main Application Database (Optional — uncomment for local dev)
-  # By default, set DATABASE_URL in your .env to point to an external (e.g. Azure)
-  # PostgreSQL instance. Uncomment the block below to run PostgreSQL locally.
+  # Optional local PostgreSQL is defined in docker-compose.override.example.yml.
   # ---------------------------------------------------------------------------
-  # postgres:
-  #   image: postgres:18-alpine
-  #   container_name: sniper_postgres
-  #   environment:
-  #     POSTGRES_USER: postgres
-  #     POSTGRES_PASSWORD: postgres
-  #     POSTGRES_DB: brand_sniper
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     # Mount at /var/lib/postgresql: the postgres:18 image moved PGDATA to
-  #     # /var/lib/postgresql/18/docker and no longer writes to /var/lib/postgresql/data.
-  #     - postgres_data:/var/lib/postgresql
-  #   networks:
-  #     - sniper_network
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 5
-
-  # ---------------------------------------------------------------------------
-  # EDGE CACHE LAYER: Volatile Sliding-Window Memory (port 6380)
+  # EDGE CACHE LAYER: Volatile Sliding-Window Memory
   # ---------------------------------------------------------------------------
   redis:
     image: redis:8.10.0-alpine
@@ -35,11 +16,20 @@ services:
     env_file:
       - ../../.env
     command: ["sh", "-c", "redis-server --save '' --appendonly no --requirepass $$REDIS_PASSWORD"]
-    ports:
-      - "6380:6379"
     networks:
-      - sniper_network
+      - data
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 5
 
   # ---------------------------------------------------------------------------
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
@@ -52,12 +42,23 @@ services:
       - PREFECT_API_URL=http://localhost:4200/api
       - PREFECT_SERVER_API_HOST=0.0.0.0
     ports:
-      - "4200:4200"
+      - "127.0.0.1:4200:4200"
     volumes:
       - prefect_data:/root/.prefect
     networks:
-      - sniper_network
+      - application
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
 
   # ---------------------------------------------------------------------------
   # MLOPS LAYER: MLflow Metric Tracking & Model Registry
@@ -75,13 +76,18 @@ services:
       MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
       MLFLOW_WORKERS: "1"
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - mlflow_data:/mlruns
     networks:
-      - sniper_network
+      - application
+      - data
     restart: unless-stopped
-    mem_limit: 1g
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -97,14 +103,25 @@ services:
     image: prom/prometheus:v3.13.2
     container_name: sniper_prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./config/alerting_rules.yml:/etc/prometheus/alerting_rules.yml:ro
       - prometheus_data:/prometheus
     networks:
-      - sniper_network
+      - observability
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   grafana:
     image: grafana/grafana:13.1.1
@@ -112,30 +129,54 @@ services:
     env_file:
       - ../../.env
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
       - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     networks:
-      - sniper_network
+      - observability
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.88.0
+    image: oliver006/redis_exporter:v1.88.0-alpine
     container_name: sniper_redis_exporter
     env_file:
       - ../../.env
     environment:
       - REDIS_ADDR=redis://redis:6379
-    ports:
-      - "9121:9121"
     networks:
-      - sniper_network
+      - data
+      - observability
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128m
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Core Compute Engine REST API & FastMCP Agent Server
@@ -154,11 +195,18 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - sniper_network
+      - application
+      - data
+      - observability
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
@@ -183,13 +231,26 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     networks:
-      - sniper_network
+      - application
+      - data
+      - observability
     restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
 
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Macro Analytics & Adversarial CFO Pipeline  (one-shot batch job)
@@ -211,28 +272,38 @@ services:
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
       - PREFECT_API_URL=http://prefect-server:4200/api
     networks:
-      - sniper_network
+      - application
+      - data
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       backend:
-        condition: service_started
+        condition: service_healthy
       mlflow-server:
-        condition: service_started
+        condition: service_healthy
       prefect-server:
-        condition: service_started
+        condition: service_healthy
 
 
 # ---------------------------------------------------------------------------
 # PERSISTENT STORAGE BOUNDARIES
 # ---------------------------------------------------------------------------
 volumes:
-  # postgres_data:   # Uncomment when using local postgres service
   prefect_data:
   mlflow_data:
   prometheus_data:
   grafana_data:
 
 networks:
-  sniper_network:
+  data:
+    driver: bridge
+    internal: true
+  application:
+    driver: bridge
+  observability:
     driver: bridge

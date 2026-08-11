@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import aiohttp
+from aiohttp import web
 from dotenv import load_dotenv
 
 # Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
@@ -45,7 +46,7 @@ from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
 from scrapers.factory import ScraperFactory
-from shared_utils import get_logger
+from shared_utils import backend_api_headers, get_backend_api_key, get_logger
 from task_supervisor import BoundedTaskPool
 from zscore import calculate_z_score, should_trigger_anomaly
 
@@ -89,6 +90,7 @@ SHUTDOWN_GRACE_SECONDS = _positive_int_env("LISTENER_SHUTDOWN_GRACE_SECONDS", 30
 BATCH_MAX_ATTEMPTS = _positive_int_env("LISTENER_BATCH_MAX_ATTEMPTS", 5)
 BATCH_RETRY_BASE_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_BASE_SECONDS", 0.5)
 BATCH_RETRY_MAX_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_MAX_SECONDS", 8)
+LISTENER_HEALTH_PORT = _positive_int_env("LISTENER_HEALTH_PORT", 9101)
 
 # Shared aiohttp session (initialized at startup, closed at shutdown)
 _http_session: aiohttp.ClientSession | None = None
@@ -100,7 +102,7 @@ async def get_http_session() -> aiohttp.ClientSession:
     global _http_session
     if _http_session is None or _http_session.closed:
         timeout = aiohttp.ClientTimeout(total=10, connect=3)
-        _http_session = aiohttp.ClientSession(timeout=timeout)
+        _http_session = aiohttp.ClientSession(headers=backend_api_headers(), timeout=timeout)
     return _http_session
 
 
@@ -110,6 +112,28 @@ async def close_http_session() -> None:
     if _http_session and not _http_session.closed:
         await _http_session.close()
         _http_session = None
+
+
+async def listener_health(_request: web.Request) -> web.Response:
+    """Respond from the listener event loop so a successful probe proves loop liveness."""
+    return web.json_response({"status": "healthy"})
+
+
+def create_listener_health_app() -> web.Application:
+    """Create the listener's container-internal health application."""
+    app = web.Application()
+    app.router.add_get("/health", listener_health)
+    return app
+
+
+async def start_listener_health_server(port: int) -> web.AppRunner:
+    """Start the container-internal listener health endpoint."""
+    runner = web.AppRunner(create_listener_health_app())
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", port)
+    await site.start()
+    logger.info("[HEALTH] Listener health endpoint listening on 127.0.0.1:%d/health", port)
+    return runner
 
 
 def _decode_zset_element(element: str | bytes) -> str:
@@ -404,8 +428,10 @@ async def tick_consumer(
 async def start_sidecar_process(scraper) -> None:
     """Spawns the Node.js WebSocket scraper sidecar as an async subprocess and handles its lifetime."""
     sidecar_path = scraper.sidecar_script_path
-    if not sidecar_path or not sidecar_path.exists():
+    if not sidecar_path:
         return
+    if not sidecar_path.exists():
+        raise FileNotFoundError(f"Node.js sidecar script does not exist: {sidecar_path}")
 
     logger.info("Spawning Node.js sidecar: %s", sidecar_path)
     proc = None
@@ -426,8 +452,10 @@ async def start_sidecar_process(scraper) -> None:
             task_group.create_task(log_stream(proc.stderr, "[SKINPORT WS ERR] "))
             await proc.wait()
         logger.info("Node.js sidecar process exited with code %s", proc.returncode)
+        raise RuntimeError(f"Node.js sidecar exited unexpectedly with code {proc.returncode}")
     except (OSError, subprocess.SubprocessError) as e:
         logger.error("Error running Node.js sidecar: %s", e)
+        raise RuntimeError("Node.js sidecar failed") from e
     finally:
         if proc and proc.returncode is None:
             logger.info("Terminating Node.js sidecar process...")
@@ -439,6 +467,8 @@ async def start_sidecar_process(scraper) -> None:
 
 
 async def process_live_telemetry_stream(platform_target: str) -> None:
+    get_backend_api_key()
+
     # Start Prometheus metrics HTTP server on a background thread
     _metrics_port = int(os.getenv("LISTENER_METRICS_PORT", "9100"))
     start_http_server(_metrics_port)
@@ -457,6 +487,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     # Register graceful shutdown on SIGINT/SIGTERM
     shutdown_event = asyncio.Event()
+    health_runner: web.AppRunner | None = None
 
     def _signal_handler():
         logger.info("Signal received. Cleaning up...")
@@ -497,6 +528,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                 if scraper.sidecar_script_path:
                     sidecar_task = task_group.create_task(start_sidecar_process(scraper), name="websocket-sidecar")
 
+                health_runner = await start_listener_health_server(LISTENER_HEALTH_PORT)
                 await shutdown_event.wait()
 
                 for task in producer_tasks:
@@ -519,6 +551,8 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                 if sidecar_task is not None:
                     sidecar_task.cancel()
     finally:
+        if health_runner is not None:
+            await health_runner.cleanup()
         if os.name != "nt":
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):

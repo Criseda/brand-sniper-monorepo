@@ -1,14 +1,17 @@
 import hashlib
 import json
 import os
+import secrets
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from sqlalchemy import Integer, String, cast
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
@@ -31,7 +34,15 @@ from database import engine, session_scope
 from queries import close_http_session, get_item_market_context
 from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
-from shared_utils import get_logger, parse_item_meta, utc_fromtimestamp_naive, utc_now_naive
+from shared_utils import (
+    BACKEND_API_KEY_HEADER,
+    BackendApiKeyConfigError,
+    get_backend_api_key,
+    get_logger,
+    parse_item_meta,
+    utc_fromtimestamp_naive,
+    utc_now_naive,
+)
 from shared_utils.models import IngestionBatch, LiveMarketTick, MarketItem, SimulatedTrade
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
 
@@ -41,6 +52,8 @@ logger = get_logger("backend.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Guarantees the database schemas exist and seeds the local memory cache."""
+    get_backend_api_key()
+
     # Ensure tables are created
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
@@ -65,6 +78,28 @@ app = FastAPI(
     title="Algorithmic Market Sniper Engine", description="Core Compute REST API Node", version="1.0.0", lifespan=lifespan
 )
 register_error_handlers(app)
+
+api_key_header = APIKeyHeader(name=BACKEND_API_KEY_HEADER, auto_error=False, scheme_name="BackendApiKey")
+
+
+async def require_backend_api_key(
+    provided_api_key: Annotated[str | None, Security(api_key_header)],
+) -> None:
+    """Reject unauthenticated access to application API routes."""
+    try:
+        expected_api_key = get_backend_api_key()
+    except BackendApiKeyConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Backend API authentication is not configured.",
+        ) from exc
+
+    if provided_api_key is None or not secrets.compare_digest(provided_api_key, expected_api_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="A valid backend API key is required.",
+        )
+
 
 # Configure allowed CORS origins
 cors_origins_raw = os.getenv("CORS_ORIGINS", "")
@@ -101,6 +136,7 @@ async def health_check():
 
 @app.get(
     "/api/v1/market/context/{market_hash_name:path}",
+    dependencies=[Depends(require_backend_api_key)],
     responses={
         status.HTTP_404_NOT_FOUND: problem_response("Market item not found"),
         **COMMON_ERROR_RESPONSES,
@@ -116,7 +152,11 @@ async def market_context(market_hash_name: str):
     return context
 
 
-@app.post("/api/v1/market/search-trends", responses=COMMON_ERROR_RESPONSES)
+@app.post(
+    "/api/v1/market/search-trends",
+    dependencies=[Depends(require_backend_api_key)],
+    responses=COMMON_ERROR_RESPONSES,
+)
 async def search_trends(payload: SearchTrendsPayload):
     results = await query_macro_trends(payload.query)
     return {"query": payload.query, "results": results}
@@ -210,7 +250,11 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
     return False
 
 
-@app.post("/api/v1/ingest/trade", status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/api/v1/ingest/trade",
+    dependencies=[Depends(require_backend_api_key)],
+    status_code=status.HTTP_201_CREATED,
+)
 async def ingest_simulated_trade(payload: SimulatedTradePayload):
     logger.info("Logging Simulated Trade: %s for $%.2f", payload.market_hash_name, payload.purchase_price_cents / 100)
 
@@ -235,6 +279,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
 
 @app.post(
     "/api/v1/ingest/bulk",
+    dependencies=[Depends(require_backend_api_key)],
     status_code=status.HTTP_201_CREATED,
     responses={
         status.HTTP_409_CONFLICT: problem_response("Batch ID already used with different content"),

@@ -14,7 +14,7 @@ from mlflow.exceptions import MlflowException
 from openai import OpenAI
 from prefect import flow, task
 from pydantic import BaseModel, Field
-from shared_utils import get_logger, validate_required_env
+from shared_utils import get_backend_api_key, get_logger, validate_required_env
 from shared_utils.db_connection import async_engine
 from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
 from sqlalchemy import desc
@@ -343,5 +343,6 @@ async def run_cfo_evaluation_pipeline():
 
 
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
-    validate_required_env(["GROQ_API_KEY", "MLFLOW_TRACKING_URI"])
+    validate_required_env(["BACKEND_API_KEY", "GROQ_API_KEY", "MLFLOW_TRACKING_URI"])
+    get_backend_api_key()
     asyncio.run(run_cfo_evaluation_pipeline())

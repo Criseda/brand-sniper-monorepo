@@ -239,6 +239,7 @@ async def test_get_http_session_creates_new_when_none(monkeypatch):
 
     assert isinstance(session, aiohttp.ClientSession)
     assert not session.closed
+    assert session.headers["X-API-Key"] == "analytics-test-key-that-is-at-least-32-characters"
     await tools.close_http_session()
     assert tools._http_session is None
 
@@ -253,6 +254,7 @@ async def test_get_http_session_recreates_when_closed(monkeypatch):
 
     assert isinstance(session, aiohttp.ClientSession)
     assert not session.closed
+    assert session.headers["X-API-Key"] == "analytics-test-key-that-is-at-least-32-characters"
     await tools.close_http_session()
     assert tools._http_session is None
 

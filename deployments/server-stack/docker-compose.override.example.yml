@@ -12,18 +12,28 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-brand_sniper}
     ports:
-      - "${LOCAL_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${LOCAL_POSTGRES_PORT:-5432}:5432"
     # Mount at /var/lib/postgresql: the postgres:18 image moved PGDATA to
     # /var/lib/postgresql/18/docker and no longer writes to /var/lib/postgresql/data.
     volumes:
       - postgres_data:/var/lib/postgresql
     networks:
-      - sniper_network
+      - data
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
+      start_period: 10s
       retries: 5
 
   mlflow-server:
@@ -40,7 +50,7 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     # Uncomment for live-editing backend code from the host.
     # volumes:
     #   - ../../apps/backend:/app/apps/backend

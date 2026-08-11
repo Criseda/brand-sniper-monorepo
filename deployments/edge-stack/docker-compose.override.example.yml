@@ -18,6 +18,6 @@ services:
     #   - ../../apps/listener:/app/apps/listener
     #   - ../../packages/shared_utils:/app/packages/shared_utils
 
-# The base stack already exposes Redis on 6380. To change that host port without
-# also publishing 6380, use an explicit full Compose file set rather than a
-# partial override that only appends another ports entry.
+# The base stack already exposes Redis on loopback port 6380. To change that
+# binding without also publishing 6380, use an explicit full Compose file set
+# rather than a partial override that only appends another ports entry.
