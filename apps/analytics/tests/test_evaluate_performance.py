@@ -81,6 +81,27 @@ def test_get_experiment_id_falls_back_on_error(mock_mlflow_client_cls):
     assert get_experiment_id() == "1"
 
 
+def test_log_cfo_evaluation_handles_create_run_failure(caplog):
+    mock_client = MagicMock()
+    mock_client.create_run.side_effect = MlflowException("mlflow unavailable")
+
+    with (
+        patch("evaluate_performance.MlflowClient", return_value=mock_client),
+        patch("evaluate_performance.get_experiment_id", return_value="1") as mock_get_experiment_id,
+    ):
+        evaluate_performance._log_cfo_evaluation(
+            _trade(),
+            "AK-47 | Redline (Field-Tested)",
+            "CFO reasoning",
+            70,
+            "APPROVED",
+        )
+
+    assert "MLflow logging failed" in caplog.text
+    mock_get_experiment_id.assert_called_once_with()
+    mock_client.set_terminated.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

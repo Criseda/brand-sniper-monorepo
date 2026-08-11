@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import evaluate_performance
 import pytest
@@ -11,7 +11,7 @@ from shared_utils.models import SimulatedTrade
 @patch("evaluate_performance.MlflowClient")
 @patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls, monkeypatch):
     mock_client = MagicMock()
     mock_run = MagicMock()
     mock_run.info.run_id = "test_run_id"
@@ -38,6 +38,12 @@ async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_m
 
     mock_openai_client.chat.completions.create.side_effect = [mock_phase1, mock_phase2]
 
+    async def run_inline(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    mock_to_thread = AsyncMock(side_effect=run_inline)
+    monkeypatch.setattr(evaluate_performance.asyncio, "to_thread", mock_to_thread)
+
     await evaluate_trade(mock_trade, "AK-47 | Redline (Field-Tested)", None)
 
     assert mock_openai_client.chat.completions.create.call_count == 2
@@ -50,6 +56,15 @@ async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_m
     assert args[0] == "test_run_id"
     assert args[1].endswith("cfo_reasoning.txt")
     mock_client.set_terminated.assert_called_with("test_run_id", status="FINISHED")
+    mock_to_thread.assert_any_await(
+        evaluate_performance._log_cfo_evaluation,
+        mock_trade,
+        "AK-47 | Redline (Field-Tested)",
+        "Live market floor is 900 cents, bots baseline of 1500 is stale.",
+        25,
+        "REJECTED",
+    )
+    assert sum(awaited.args[0] is evaluate_performance._log_cfo_evaluation for awaited in mock_to_thread.await_args_list) == 1
 
 
 @pytest.mark.asyncio
