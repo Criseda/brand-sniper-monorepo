@@ -28,7 +28,10 @@ Copy the example environment file:
 ```bash
 cp .env.example .env
 ```
-*(No AI API keys are required for the Backend app).*
+Set `BACKEND_API_KEY` in the root `.env` to a random value of at least 32
+characters. All `/api/v1/**` routes require it through the `X-API-Key` header;
+`/health`, `/metrics`, and the OpenAPI documentation remain public for local
+operations. The Swagger UI exposes an **Authorize** control for entering the key.
 
 ### 2. Run the API Server
 Ensure your Docker Compose stack (Postgres, Prometheus, Grafana) is running first, then launch FastAPI:

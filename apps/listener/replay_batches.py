@@ -7,7 +7,7 @@ from pathlib import Path
 import aiohttp
 from batch_delivery import RedisBatchStore, send_batch_with_retry
 from dotenv import load_dotenv
-from shared_utils import get_logger
+from shared_utils import backend_api_headers, get_logger
 
 project_root = Path(__file__).resolve().parents[2]
 load_dotenv(dotenv_path=project_root / ".env")
@@ -51,7 +51,7 @@ async def replay(limit: int) -> ReplayResult:
 
     async with (
         RedisBatchStore.from_url(redis_url, password=redis_password) as store,
-        aiohttp.ClientSession() as session,
+        aiohttp.ClientSession(headers=backend_api_headers()) as session,
     ):
 
         async def get_session() -> aiohttp.ClientSession:

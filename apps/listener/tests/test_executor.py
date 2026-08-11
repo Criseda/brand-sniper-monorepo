@@ -90,6 +90,7 @@ async def test_get_session_reuses_singleton():
     second = await _get_session()
     try:
         assert first is second
+        assert first.headers["X-API-Key"] == "listener-test-key-that-is-at-least-32-characters"
     finally:
         await close_http_session()
 

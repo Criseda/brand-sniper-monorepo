@@ -28,6 +28,12 @@ class FakeBatchStore:
 
 
 class FakeClientSession:
+    last_headers: dict[str, str] = {}
+
+    def __init__(self, *, headers):
+        self.headers = headers
+        type(self).last_headers = headers
+
     async def __aenter__(self):
         return self
 
@@ -61,6 +67,7 @@ async def test_replay_acknowledges_success_and_honors_limit(monkeypatch):
 
     assert result == ReplayResult(attempted=1, succeeded=1, failed=0)
     assert store.acknowledged == ["1"]
+    assert FakeClientSession.last_headers == {"X-API-Key": "listener-test-key-that-is-at-least-32-characters"}
     send.assert_awaited_once()
 
 

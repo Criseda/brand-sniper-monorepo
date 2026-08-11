@@ -34,7 +34,7 @@ A **Deterministic Rules Engine (DRE)** on the hot path instantly paper-trades st
 ## Quick Start
 
 ```bash
-cp .env.example .env          # Fill in DATABASE_URL, GROQ_API_KEY, SKINPORT_*
+cp .env.example .env          # Fill in DATABASE_URL, BACKEND_API_KEY, GROQ_API_KEY, SKINPORT_*
 uv sync --all-packages
 cd deployments/server-stack && docker compose up -d
 curl http://localhost:8080/health

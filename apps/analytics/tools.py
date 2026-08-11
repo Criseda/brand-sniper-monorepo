@@ -5,7 +5,7 @@ import urllib.parse
 import aiohttp
 from openai import pydantic_function_tool
 from pydantic import BaseModel, Field
-from shared_utils import get_logger
+from shared_utils import backend_api_headers, get_logger
 
 logger = get_logger("analytics.tools")
 
@@ -18,7 +18,7 @@ async def _get_http_session() -> aiohttp.ClientSession:
     """Returns a shared lazy aiohttp session, recreating it if it was closed."""
     global _http_session
     if _http_session is None or _http_session.closed:
-        _http_session = aiohttp.ClientSession()
+        _http_session = aiohttp.ClientSession(headers=backend_api_headers())
     return _http_session
 
 

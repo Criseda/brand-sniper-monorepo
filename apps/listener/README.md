@@ -35,6 +35,12 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
+The listener also requires the shared `BACKEND_API_KEY` from the repository root
+`.env`. It adds the key to ingestion requests automatically. Its Docker health
+probe uses the container-internal `127.0.0.1:9101/health` endpoint, which is
+served by the main asyncio event loop; an unexpected WebSocket sidecar exit is
+fatal so the container restart policy can recover it.
+
 ### 2. Run the Node
 Assuming the `edge-stack` or local Docker Compose databases are running:
 

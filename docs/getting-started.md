@@ -30,6 +30,11 @@ Open `.env` and at minimum set:
 - `DATABASE_URL` — use Azure PostgreSQL, or copy `deployments/server-stack/docker-compose.override.example.yml` to `docker-compose.override.yml` for local PostgreSQL
 - `GROQ_API_KEY` — get a free key at [console.groq.com/keys](https://console.groq.com/keys)
 - `SKINPORT_CLIENT_ID` / `SKINPORT_CLIENT_SECRET` — your [Skinport API](https://docs.skinport.com/) creds
+- `BACKEND_API_KEY` — generate a shared 256-bit key with `openssl rand -hex 32` (or PowerShell: `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()`)
+
+Use the same `BACKEND_API_KEY` in the root `.env` on the server and every edge
+node. Backend `/api/v1/**` routes reject requests without it; the listener and
+analytics clients attach it automatically.
 
 ## 2. Install Dependencies
 

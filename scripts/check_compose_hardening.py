@@ -111,6 +111,20 @@ def normalized_ports(service: dict[str, Any]) -> set[tuple[str, int, int]]:
     }
 
 
+def has_enabled_healthcheck(service: dict[str, Any]) -> bool:
+    """Return whether a rendered service has an executable healthcheck."""
+    healthcheck = service.get("healthcheck")
+    if not isinstance(healthcheck, dict) or healthcheck.get("disable"):
+        return False
+
+    test = healthcheck.get("test")
+    if not test:
+        return False
+    if isinstance(test, list) and str(test[0]).upper() == "NONE":
+        return False
+    return True
+
+
 def validate_stack(
     label: str,
     config: dict[str, Any],
@@ -131,8 +145,8 @@ def validate_stack(
         if memory is None or int(memory) <= 0:
             failures.append(f"{label}:{service_name} has no positive memory limit")
 
-        if service_name not in exemptions and not service.get("healthcheck"):
-            failures.append(f"{label}:{service_name} has no healthcheck")
+        if service_name not in exemptions and not has_enabled_healthcheck(service):
+            failures.append(f"{label}:{service_name} has no enabled healthcheck")
 
         actual_networks = set(service.get("networks", {}))
         wanted_networks = expected_networks.get(service_name)
@@ -147,6 +161,11 @@ def validate_stack(
         wanted_ports = expected_ports.get(service_name, set())
         if actual_ports != wanted_ports:
             failures.append(f"{label}:{service_name} ports are {sorted(actual_ports)}, expected {sorted(wanted_ports)}")
+
+        for dependency, dependency_config in service.get("depends_on", {}).items():
+            condition = dependency_config.get("condition")
+            if condition != "service_healthy":
+                failures.append(f"{label}:{service_name} waits for {dependency} with {condition!r}, expected 'service_healthy'")
 
     for service_name, dependencies in expected_dependencies.items():
         actual_dependencies = services[service_name].get("depends_on", {})

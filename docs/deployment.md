@@ -53,7 +53,9 @@ Memory limits are hard caps, not reservations:
 | Service | Limit |
 |---------|-------|
 | Redis, Prefect, MLflow, Analytics, optional PostgreSQL | 1 GiB each |
-| Prometheus, Grafana, Backend, Listener | 512 MiB each |
+| Server Listener | 1 GiB |
+| Edge Listener | 768 MiB |
+| Prometheus, Grafana, Backend | 512 MiB each |
 | Redis exporter | 128 MiB |
 
 Use `docker compose ps` to inspect health and `docker stats` to observe live resource use. Adjust limits through an explicit deployment override only after measuring the target host.
@@ -196,7 +198,28 @@ additional environment variables from the compose file for Docker-internal netwo
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `REDIS_PASSWORD` | Strong password used for securing the Edge Redis cache service |
+| `BACKEND_API_KEY` | Random shared secret of at least 32 characters; the same value is installed on the server and every edge node |
 | `MLFLOW_BACKEND_STORE_URI` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |
+
+Generate a 256-bit backend key once per deployment, then place the same value in
+the root `.env` on the server and every edge node. Do not send it over chat or
+commit it:
+
+```bash
+openssl rand -hex 32
+```
+
+PowerShell equivalent:
+
+```powershell
+[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()
+```
+
+All `/api/v1/**` routes require the value in the `X-API-Key` header. `/health`,
+`/metrics`, and the OpenAPI documentation remain unauthenticated for local
+operations. The listener, replay command, and analytics clients add the header
+automatically from `BACKEND_API_KEY`. Rotate the key by updating the server and
+edge `.env` files together and recreating their containers.
 
 ### Configuration Variables
 
@@ -206,6 +229,7 @@ additional environment variables from the compose file for Docker-internal netwo
 | `LISTENER_BATCH_MAX_ATTEMPTS` | Maximum delivery attempts for retryable bulk-ingestion failures. | `5` |
 | `LISTENER_BATCH_RETRY_BASE_SECONDS` | Initial exponential-backoff delay for batch retries. | `0.5` |
 | `LISTENER_BATCH_RETRY_MAX_SECONDS` | Maximum exponential-backoff delay for batch retries. | `8` |
+| `LISTENER_HEALTH_PORT` | Container-internal event-loop health endpoint port. | `9101` |
 
 ### Bulk-ingestion recovery
 
@@ -307,7 +331,7 @@ The edge stack intentionally retains one bridge network because it contains only
 
 ### Host-published ports
 
-- Backend `8080` remains externally bound so remote edge nodes can ingest into it.
+- Backend `8080` remains externally bound so authenticated remote edge nodes can ingest into it.
 - Grafana `3000`, Prefect `4200`, MLflow `5000`, and Prometheus `9090` bind to `127.0.0.1`.
 - Server Redis and Redis exporter are container-internal and have no host-published ports.
 - Edge Redis binds to `127.0.0.1:6380`.
@@ -325,7 +349,7 @@ Use an authenticated reverse proxy, VPN, or SSH tunnel when an administrative UI
 ## Production Considerations
 
 - Configure Grafana admin credentials via `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD` in `.env`
-- Put externally reachable HTTP services behind TLS and authentication; administrative ports are loopback-only by default
+- Put externally reachable HTTP services behind TLS or a private VPN. The API key authenticates requests but does not encrypt them; administrative ports are loopback-only by default
 - Use a managed PostgreSQL (Azure, RDS) instead of the local postgres service
 - Set `MLFLOW_TRACKING_URI` and `PREFECT_API_URL` to reachable endpoints
 - Configure Prometheus retention and alerting rules for production uptime

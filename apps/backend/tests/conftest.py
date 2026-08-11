@@ -1,6 +1,12 @@
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+
+@pytest.fixture(autouse=True)
+def _backend_api_key(monkeypatch):
+    monkeypatch.setenv("BACKEND_API_KEY", "backend-test-key-that-is-at-least-32-characters")
 
 
 @pytest_asyncio.fixture()

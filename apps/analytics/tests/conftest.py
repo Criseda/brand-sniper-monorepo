@@ -5,6 +5,7 @@ from prefect.testing.utilities import prefect_test_harness
 @pytest.fixture(autouse=True)
 def _mock_groq_key(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "MOCK_API_KEY")
+    monkeypatch.setenv("BACKEND_API_KEY", "analytics-test-key-that-is-at-least-32-characters")
 
 
 @pytest.fixture(autouse=True, scope="session")

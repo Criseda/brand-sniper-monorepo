@@ -1,15 +1,32 @@
 import asyncio
+import importlib.util
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from shared_utils import BACKEND_API_KEY_HEADER, BackendApiKeyConfigError
 from shared_utils.db_connection import DatabaseConnectionError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 _test_engine = create_async_engine("sqlite+aiosqlite://", echo=False)
 _test_session_maker = async_sessionmaker(bind=_test_engine, class_=AsyncSession, expire_on_commit=False)
+_test_backend_api_key = "backend-test-key-that-is-at-least-32-characters"
+
+
+def load_backend_main():
+    module_path = Path(__file__).resolve().parents[1] / "main.py"
+    spec = importlib.util.spec_from_file_location("backend_main_test", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load backend main module for tests")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+backend_main = load_backend_main()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -22,15 +39,55 @@ def _dispose_test_engine():
 def client_fixture(monkeypatch):
     from shared_utils import db_connection
 
-    import main as backend_main
-
+    monkeypatch.setenv("BACKEND_API_KEY", _test_backend_api_key)
     backend_main.engine = _test_engine
     monkeypatch.setattr(db_connection, "async_session_maker", _test_session_maker)
 
-    from main import app
-
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(
+        backend_main.app,
+        headers={BACKEND_API_KEY_HEADER: _test_backend_api_key},
+        raise_server_exceptions=False,
+    ) as client:
         yield client
+
+
+def test_api_routes_require_valid_api_key(client):
+    response = client.get(
+        "/api/v1/market/context/Test Item",
+        headers={BACKEND_API_KEY_HEADER: "wrong-key"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "A valid backend API key is required."
+
+
+def test_api_routes_reject_missing_api_key(client):
+    configured_key = client.headers.pop(BACKEND_API_KEY_HEADER)
+    try:
+        response = client.get("/api/v1/market/context/Test Item")
+    finally:
+        client.headers[BACKEND_API_KEY_HEADER] = configured_key
+
+    assert response.status_code == 401
+
+
+def test_health_remains_public(client):
+    configured_key = client.headers.pop(BACKEND_API_KEY_HEADER)
+    try:
+        response = client.get("/health")
+    finally:
+        client.headers[BACKEND_API_KEY_HEADER] = configured_key
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
+
+
+def test_backend_fails_startup_without_api_key(monkeypatch):
+    monkeypatch.delenv("BACKEND_API_KEY")
+
+    with pytest.raises(BackendApiKeyConfigError, match="is not set"):
+        with TestClient(backend_main.app):
+            pass
 
 
 def test_ingest_simulated_trade_success(client):
@@ -122,8 +179,6 @@ def test_ingest_bulk_rejects_reused_batch_id_with_different_payload(client):
 async def test_concurrent_bulk_requests_keep_new_item_ids_local_until_commit(monkeypatch):
     from schemas import BulkIngestionPayload
 
-    import main as backend_main
-
     market_hash_name = "Concurrent Uncommitted Item"
     backend_main.item_cache.pop(market_hash_name, None)
     both_waiting_to_commit = asyncio.Event()
@@ -205,8 +260,6 @@ def test_market_context_unknown_item_returns_404(client):
 
 
 def test_market_context_database_failure_returns_503(client, monkeypatch):
-    import main as backend_main
-
     async def fail_market_context(_market_hash_name: str):
         raise DatabaseConnectionError("postgres password leaked here")
 
@@ -220,8 +273,6 @@ def test_market_context_database_failure_returns_503(client, monkeypatch):
 
 
 def test_search_trends_database_failure_returns_503(client, monkeypatch):
-    import main as backend_main
-
     async def fail_search(_query: str):
         raise DatabaseConnectionError("database down")
 
@@ -234,8 +285,6 @@ def test_search_trends_database_failure_returns_503(client, monkeypatch):
 
 
 def test_bulk_ingestion_database_failure_returns_503(client, monkeypatch):
-    import main as backend_main
-
     async def fail_item_resolution(*_args):
         raise DatabaseConnectionError("database down")
 
@@ -254,8 +303,6 @@ def test_bulk_ingestion_database_failure_returns_503(client, monkeypatch):
 
 
 def test_item_cache_is_not_updated_when_commit_fails(client, monkeypatch):
-    import main as backend_main
-
     market_hash_name = "Uncommitted Cache Item"
     backend_main.item_cache.pop(market_hash_name, None)
 
@@ -290,8 +337,6 @@ def test_item_cache_is_not_updated_when_commit_fails(client, monkeypatch):
 
 
 def test_search_trends_unexpected_failure_returns_safe_500(client, monkeypatch):
-    import main as backend_main
-
     async def fail_search(_query: str):
         raise RuntimeError("internal implementation detail")
 
@@ -324,8 +369,16 @@ def test_blank_text_fields_return_problem_422(client, path, payload):
 
 def test_openapi_documents_problem_json_responses(client):
     schema = client.get("/openapi.json").json()
-    responses = schema["paths"]["/api/v1/ingest/bulk"]["post"]["responses"]
+    operation = schema["paths"]["/api/v1/ingest/bulk"]["post"]
+    responses = operation["responses"]
 
+    assert operation["security"] == [{"BackendApiKey": []}]
+    assert schema["components"]["securitySchemes"]["BackendApiKey"]["name"] == BACKEND_API_KEY_HEADER
+    for path, path_item in schema["paths"].items():
+        if path.startswith("/api/v1/"):
+            for method, api_operation in path_item.items():
+                if method in {"delete", "get", "patch", "post", "put"}:
+                    assert api_operation["security"] == [{"BackendApiKey": []}]
     assert "application/problem+json" in responses["409"]["content"]
     assert "application/problem+json" in responses["422"]["content"]
     assert "application/problem+json" in responses["503"]["content"]
