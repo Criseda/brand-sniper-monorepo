@@ -124,7 +124,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana:13.1.1
+    image: grafana/grafana:13.1.3
     container_name: sniper_grafana
     env_file:
       - ../../.env
