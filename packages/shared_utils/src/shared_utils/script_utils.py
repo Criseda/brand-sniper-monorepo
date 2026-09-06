@@ -36,6 +36,20 @@ def _find_repo_root(script_file: Path) -> Path:
     )
 
 
+def _configure_utf8_streams() -> None:
+    """Forces standard streams to UTF-8 where the runtime supports it."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
+
+def _load_env_files(project_root: Path, app_dir: Path) -> None:
+    """Loads the root .env (shared) first, then app-specific overrides."""
+    load_dotenv(dotenv_path=project_root / ".env")
+    load_dotenv(dotenv_path=app_dir / ".env", override=True)
+
+
 def setup_script_environment(script_path: str | Path) -> Path:
     """Bootstraps a runnable app script: path alignment, UTF-8 streams, and .env loading.
 
@@ -52,14 +66,27 @@ def setup_script_environment(script_path: str | Path) -> Path:
     if str(project_root) not in sys.path:
         sys.path.append(str(project_root))
 
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
+    _configure_utf8_streams()
+    _load_env_files(project_root, script_file.parent)
 
-    load_dotenv(dotenv_path=project_root / ".env")
-    app_env = script_file.parent / ".env"
-    load_dotenv(dotenv_path=app_env, override=True)
+    return project_root
+
+
+def setup_service_environment(service_path: str | Path) -> Path:
+    """Bootstraps a long-lived service entrypoint: UTF-8 streams and .env loading.
+
+    Shared by service daemons (uvicorn/asyncio) so they do not duplicate the
+    dotenv and stream setup. Unlike setup_script_environment, the repository
+    root is not added to sys.path: services resolve workspace packages via
+    the installed environment and local modules via their own directory.
+    Returns the repository root. Raises RuntimeError when the root marker
+    cannot be found.
+    """
+    service_file = Path(service_path).resolve()
+    project_root = _find_repo_root(service_file)
+
+    _configure_utf8_streams()
+    _load_env_files(project_root, service_file.parent)
 
     return project_root
 

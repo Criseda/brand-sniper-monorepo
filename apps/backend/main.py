@@ -2,32 +2,21 @@ import hashlib
 import json
 import os
 import secrets
-import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Annotated
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
+from shared_utils import setup_service_environment
 from sqlalchemy import Integer, String, cast
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 # Load root .env (shared) first, then backend-specific overrides
-project_root = Path(__file__).resolve().parents[2]
-load_dotenv(dotenv_path=project_root / ".env")
-backend_env_path = Path(__file__).resolve().parent / ".env"
-load_dotenv(dotenv_path=backend_env_path, override=True)
-
-# Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+setup_service_environment(__file__)
 
 from api_errors import COMMON_ERROR_RESPONSES, problem_response, register_error_handlers
 from database import engine, session_scope
