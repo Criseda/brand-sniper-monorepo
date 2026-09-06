@@ -11,6 +11,7 @@ def script_env(tmp_path, monkeypatch):
     root = tmp_path
     app_dir = root / "apps" / "analytics"
     app_dir.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[tool.uv.workspace]\nmembers = []\n", encoding="utf-8")
     (root / ".env").write_text("ROOT_ONLY=1\nSHARED_VAR=root\n", encoding="utf-8")
     (app_dir / ".env").write_text("APP_ONLY=1\nSHARED_VAR=app\n", encoding="utf-8")
     monkeypatch.setattr(sys, "path", [p for p in sys.path])
@@ -58,6 +59,67 @@ def test_setup_script_environment_loads_env_with_app_override(script_env, monkey
     assert os.getenv("APP_ONLY") == "1"
     assert os.getenv("SHARED_VAR") == "app"
     assert str(root) in sys.path
+
+
+def test_setup_script_environment_finds_root_from_nested_subdir(tmp_path, monkeypatch):
+    root = tmp_path
+    nested = root / "apps" / "analytics" / "subdir"
+    nested.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[tool.uv.workspace]\nmembers = []\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    assert setup_script_environment(nested / "script.py") == root
+    assert str(root) in sys.path
+
+
+def test_setup_script_environment_skips_nested_app_manifest(tmp_path, monkeypatch):
+    root = tmp_path
+    app_dir = root / "apps" / "analytics"
+    app_dir.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[tool.uv.workspace]\nmembers = []\n", encoding="utf-8")
+    (app_dir / "pyproject.toml").write_text('[project]\nname = "analytics"\n', encoding="utf-8")
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    assert setup_script_environment(app_dir / "script.py") == root
+
+
+def test_setup_script_environment_falls_back_to_git_root(tmp_path, monkeypatch):
+    root = tmp_path
+    app_dir = root / "apps" / "analytics"
+    app_dir.mkdir(parents=True)
+    (root / ".git").mkdir()
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    assert setup_script_environment(app_dir / "script.py") == root
+
+
+def test_setup_script_environment_raises_without_root_marker(tmp_path, monkeypatch):
+    nested = tmp_path / "naked" / "a" / "b"
+    nested.mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    with pytest.raises(RuntimeError, match="repository root"):
+        setup_script_environment(nested / "script.py")
+
+
+def test_setup_script_environment_tolerates_unreadable_nested_manifest(tmp_path, monkeypatch):
+    root = tmp_path
+    app_dir = root / "apps" / "analytics"
+    app_dir.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[tool.uv.workspace]\nmembers = []\n", encoding="utf-8")
+    (app_dir / "pyproject.toml").write_bytes(b"\xff\xfe not valid utf-8 \x00")
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    assert setup_script_environment(app_dir / "script.py") == root
+
+
+def test_setup_script_environment_does_not_duplicate_sys_path(script_env, monkeypatch):
+    script_path, root = script_env
+
+    setup_script_environment(script_path)
+    setup_script_environment(script_path)
+
+    assert sys.path.count(str(root)) == 1
 
 
 def test_validate_required_env_passes_when_all_present(monkeypatch):
