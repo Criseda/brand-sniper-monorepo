@@ -3,28 +3,17 @@ import json
 import os
 import signal
 import subprocess
-import sys
 import time
 from collections import OrderedDict
 from functools import partial
-from pathlib import Path
 from uuid import uuid4
 
 import aiohttp
 from aiohttp import web
-from dotenv import load_dotenv
-
-# Force standard streams to use UTF-8 to support Unicode characters (like ★) on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
+from shared_utils import setup_service_environment
 
 # Load root .env (shared) first, then listener-specific overrides.
-project_root = Path(__file__).resolve().parents[2]
-load_dotenv(dotenv_path=project_root / ".env")
-listener_env_path = Path(__file__).parent / ".env"
-load_dotenv(dotenv_path=listener_env_path, override=True)
+setup_service_environment(__file__)
 
 from batch_delivery import RedisBatchStore, StoredBatch, deliver_stored_batch
 from executor import ExecutionService, PaperExecutor

@@ -2,16 +2,13 @@ import argparse
 import asyncio
 import os
 from dataclasses import dataclass
-from pathlib import Path
 
 import aiohttp
 from batch_delivery import RedisBatchStore, send_batch_with_retry
-from dotenv import load_dotenv
-from shared_utils import backend_api_headers, get_logger
+from shared_utils import backend_api_headers, get_logger, setup_service_environment
 
-project_root = Path(__file__).resolve().parents[2]
-load_dotenv(dotenv_path=project_root / ".env")
-load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
+# Load root .env (shared) first, then listener-specific overrides.
+setup_service_environment(__file__)
 
 logger = get_logger("listener.replay_batches")
 

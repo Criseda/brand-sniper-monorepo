@@ -2,7 +2,7 @@ import os
 import sys
 
 import pytest
-from shared_utils import setup_script_environment, validate_required_env
+from shared_utils import setup_script_environment, setup_service_environment, validate_required_env
 
 
 @pytest.fixture
@@ -120,6 +120,52 @@ def test_setup_script_environment_does_not_duplicate_sys_path(script_env, monkey
     setup_script_environment(script_path)
 
     assert sys.path.count(str(root)) == 1
+
+
+def test_setup_service_environment_loads_env_with_app_override(script_env, monkeypatch):
+    script_path, root = script_env
+    monkeypatch.delenv("SHARED_VAR", raising=False)
+    monkeypatch.delenv("ROOT_ONLY", raising=False)
+    monkeypatch.delenv("APP_ONLY", raising=False)
+
+    assert setup_service_environment(script_path) == root
+
+    assert os.getenv("ROOT_ONLY") == "1"
+    assert os.getenv("APP_ONLY") == "1"
+    assert os.getenv("SHARED_VAR") == "app"
+
+
+def test_setup_service_environment_does_not_touch_sys_path(script_env, monkeypatch):
+    script_path, root = script_env
+    before = [p for p in sys.path]
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    setup_service_environment(script_path)
+
+    assert sys.path == before
+    assert str(root) not in sys.path
+
+
+def test_setup_service_environment_reconfigures_streams(script_env, monkeypatch):
+    script_path, _ = script_env
+    fake_out = _FakeStream()
+    fake_err = _FakeStream()
+    monkeypatch.setattr(sys, "stdout", fake_out)
+    monkeypatch.setattr(sys, "stderr", fake_err)
+
+    setup_service_environment(script_path)
+
+    assert fake_out.reconfigured
+    assert fake_err.reconfigured
+
+
+def test_setup_service_environment_raises_without_root_marker(tmp_path, monkeypatch):
+    nested = tmp_path / "naked" / "a" / "b"
+    nested.mkdir(parents=True)
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    with pytest.raises(RuntimeError, match="repository root"):
+        setup_service_environment(nested / "script.py")
 
 
 def test_validate_required_env_passes_when_all_present(monkeypatch):
