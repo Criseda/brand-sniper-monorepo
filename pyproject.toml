@@ -24,28 +24,6 @@ dev = [
     "pre-commit>=4.0.0",
 ]
 
-[tool.uv]
-override-dependencies = [
-    # mlflow caps cryptography<50 (3.15.1, latest); GHSA-g6cj-pr64-35w5 is only
-    # fixed in 50.0.0, so force the patched release to keep `uv audit` green.
-    # REMOVE WHEN: mlflow's metadata allows cryptography>=50. Verify with:
-    #   uv lock --upgrade-package mlflow --upgrade-package cryptography==50.0.0
-    # (fails today). On success: delete this block, `uv lock`, `uv audit`, `make check`.
-    # Tracked in issue #144 — also delete the AGENTS.md pointer when removing this.
-    "cryptography>=50.0.0",
-]
-
-[tool.uv.audit]
-ignore-until-fixed = [
-    # GHSA-h7x2-h6g9-p789 (CVE-2026-71211): MLflow AI Gateway permits SSRF
-    # through an unvalidated api_base. No fix versions available (affects
-    # 3.15.1 and 3.15.2) so `uv audit` fails on every PR. This repo only uses
-    # MlflowClient tracking calls and an internal mlflow-server, not the AI
-    # Gateway secret/proxy code path. ignore-until-fixed auto re-enables the
-    # Advisory once a patched release is published — then remove this block.
-    "GHSA-h7x2-h6g9-p789",
-]
-
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
 filterwarnings = [
