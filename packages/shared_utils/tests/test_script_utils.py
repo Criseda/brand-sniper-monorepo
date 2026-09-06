@@ -102,6 +102,26 @@ def test_setup_script_environment_raises_without_root_marker(tmp_path, monkeypat
         setup_script_environment(nested / "script.py")
 
 
+def test_setup_script_environment_tolerates_unreadable_nested_manifest(tmp_path, monkeypatch):
+    root = tmp_path
+    app_dir = root / "apps" / "analytics"
+    app_dir.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[tool.uv.workspace]\nmembers = []\n", encoding="utf-8")
+    (app_dir / "pyproject.toml").write_bytes(b"\xff\xfe not valid utf-8 \x00")
+    monkeypatch.setattr(sys, "path", [p for p in sys.path])
+
+    assert setup_script_environment(app_dir / "script.py") == root
+
+
+def test_setup_script_environment_does_not_duplicate_sys_path(script_env, monkeypatch):
+    script_path, root = script_env
+
+    setup_script_environment(script_path)
+    setup_script_environment(script_path)
+
+    assert sys.path.count(str(root)) == 1
+
+
 def test_validate_required_env_passes_when_all_present(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://x")
     monkeypatch.setenv("GROQ_API_KEY", "key")
