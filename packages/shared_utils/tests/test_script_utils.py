@@ -170,18 +170,18 @@ def test_setup_service_environment_raises_without_root_marker(tmp_path, monkeypa
 
 def test_validate_required_env_passes_when_all_present(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://x")
-    monkeypatch.setenv("GROQ_API_KEY", "key")
+    monkeypatch.setenv("LLM_API_KEY", "key")
 
-    validate_required_env(["DATABASE_URL", "GROQ_API_KEY"])
+    validate_required_env(["DATABASE_URL", "LLM_API_KEY"])
 
 
 def test_validate_required_env_exits_when_missing(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.setenv("GROQ_API_KEY", "key")
+    monkeypatch.setenv("LLM_API_KEY", "key")
 
     with pytest.raises(SystemExit) as excinfo:
-        validate_required_env(["DATABASE_URL", "GROQ_API_KEY"])
+        validate_required_env(["DATABASE_URL", "LLM_API_KEY"])
 
     message = str(excinfo.value)
     assert "DATABASE_URL" in message
-    assert "GROQ_API_KEY" not in message
+    assert "LLM_API_KEY" not in message

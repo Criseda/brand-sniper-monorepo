@@ -5,9 +5,10 @@ import evaluate_performance
 import pytest
 from evaluate_performance import (
     _extract_retry_after,
-    _is_tpd_error,
+    _is_quota_error,
     _json_phase,
     _msg_dict,
+    _retry_delay_for,
     _switch_to_next_model,
     _tool_loop,
     evaluate_trade,
@@ -107,10 +108,19 @@ def test_log_cfo_evaluation_handles_create_run_failure(caplog):
 # ---------------------------------------------------------------------------
 
 
-def test_is_tpd_error():
-    assert _is_tpd_error("TPD limit reached") is True
-    assert _is_tpd_error("exceeded your tokens per day limit") is True
-    assert _is_tpd_error("rate limited") is False
+def test_is_quota_error():
+    assert _is_quota_error(Exception("quota exhausted for the day")) is True
+    assert _is_quota_error(Exception("exceeded your tokens per day limit")) is True
+    assert _is_quota_error(Exception("TPD limit reached")) is True
+    assert _is_quota_error(Exception("rate limited, retry in a second")) is False
+    assert _is_quota_error(Exception("transient failure")) is False
+
+
+def test_retry_delay_prefers_response_header():
+    error = Exception("rate limited")
+    error.response = type("Resp", (), {"headers": {"Retry-After": "7"}})()  # noqa: SLF001
+
+    assert _retry_delay_for(error) == pytest.approx(8.0)
 
 
 @pytest.mark.asyncio
@@ -121,9 +131,8 @@ async def test_sleep_yields_without_delay():
 def test_switch_to_next_model_cycles_until_exhausted():
     evaluate_performance._model_index_var.set(0)
 
-    assert _switch_to_next_model() == "llama-3.3-70b-versatile"
-    assert _switch_to_next_model() == "llama-3.1-8b-instant"
     assert _switch_to_next_model() == "openai/gpt-oss-20b"
+    assert _switch_to_next_model() == "qwen/qwen3.6-27b"
     assert _switch_to_next_model() is None
 
 
@@ -286,7 +295,7 @@ async def test_evaluate_trade_fails_after_three_attempts(
 @patch("evaluate_performance.MlflowClient")
 @patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+async def test_evaluate_trade_switches_model_on_quota(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
     evaluate_performance._model_index_var.set(0)
     mock_client = MagicMock()
     mock_run = MagicMock()
@@ -295,7 +304,7 @@ async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock
     mock_mlflow_client_cls.return_value = mock_client
 
     mock_openai_client.chat.completions.create.side_effect = [
-        Exception("TPD limit reached"),
+        Exception("quota exhausted for the day"),
         _json_response(40, "switched models"),
         _json_response(40, "switched models"),
     ]
@@ -303,7 +312,7 @@ async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock
     await evaluate_trade(_trade(), "AK-47 | Redline (Field-Tested)", None)
 
     assert mock_openai_client.chat.completions.create.call_count == 3
-    assert mock_openai_client.chat.completions.create.call_args_list[1][1]["model"] == "llama-3.3-70b-versatile"
+    assert mock_openai_client.chat.completions.create.call_args_list[1][1]["model"] == "openai/gpt-oss-20b"
     mock_client.set_tag.assert_called_with("run_tpd", "eval_status", "REJECTED")
 
 
@@ -311,7 +320,7 @@ async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock
 @patch("evaluate_performance.MlflowClient")
 @patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade_tpd_exhausted_all_models(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+async def test_evaluate_trade_quota_exhausted_all_models(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
     evaluate_performance._model_index_var.set(0)
     mock_client = MagicMock()
     mock_run = MagicMock()
@@ -319,11 +328,11 @@ async def test_evaluate_trade_tpd_exhausted_all_models(mock_get_experiment_id, m
     mock_client.create_run.return_value = mock_run
     mock_mlflow_client_cls.return_value = mock_client
 
-    mock_openai_client.chat.completions.create.side_effect = Exception("TPD limit reached")
+    mock_openai_client.chat.completions.create.side_effect = Exception("quota exhausted for the day")
 
     await evaluate_trade(_trade(), "AK-47 | Redline (Field-Tested)", None)
 
-    assert mock_openai_client.chat.completions.create.call_count == 4
+    assert mock_openai_client.chat.completions.create.call_count == 3
     mock_client.set_tag.assert_called_with("run_tpd_all", "eval_status", "ERROR")
     mock_client.set_terminated.assert_called_with("run_tpd_all", status="FAILED")
 
@@ -415,6 +424,41 @@ async def test_run_cfo_evaluation_pipeline_closes_session_on_error(monkeypatch):
         await evaluate_performance.run_cfo_evaluation_pipeline()
 
     mock_close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("base_url", "model", "fallbacks"),
+    [
+        ("https://api.hosted-example.com/v1", "openai/gpt-oss-120b", "openai/gpt-oss-20b"),
+        ("http://localhost:11434/v1", "mistral-7b", ""),
+    ],
+)
+def test_openai_client_uses_configured_endpoint(monkeypatch, base_url, model, fallbacks):
+    import evaluate_performance
+
+    evaluate_performance._reset_llm_state()
+    monkeypatch.setenv("LLM_BASE_URL", base_url)
+    monkeypatch.setenv("LLM_MODEL", model)
+    monkeypatch.setenv("LLM_FALLBACK_MODELS", fallbacks)
+    if "localhost" in base_url:
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setenv("LLM_ALLOW_NO_AUTH", "true")
+    else:
+        monkeypatch.setenv("LLM_API_KEY", "provider-key")
+        monkeypatch.delenv("LLM_ALLOW_NO_AUTH", raising=False)
+
+    mock_client = MagicMock()
+    monkeypatch.setattr(evaluate_performance, "OpenAI", MagicMock(return_value=mock_client))
+
+    assert evaluate_performance._get_openai_client() is mock_client
+    _, kwargs = evaluate_performance.OpenAI.call_args
+    assert kwargs["base_url"] == base_url
+    assert kwargs["timeout"] == evaluate_performance._get_llm_settings().request_timeout_seconds
+    if "localhost" in base_url:
+        assert kwargs["api_key"] != ""
+    else:
+        assert kwargs["api_key"] == "provider-key"
+    assert evaluate_performance._get_current_model() == model
 
 
 def test_extract_retry_after_minutes_format():

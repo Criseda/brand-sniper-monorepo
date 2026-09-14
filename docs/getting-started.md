@@ -28,7 +28,7 @@ cp .env.example .env
 
 Open `.env` and at minimum set:
 - `DATABASE_URL` — use Azure PostgreSQL, or copy `deployments/server-stack/docker-compose.override.example.yml` to `docker-compose.override.yml` for local PostgreSQL
-- `GROQ_API_KEY` — get a free key at [console.groq.com/keys](https://console.groq.com/keys)
+- `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` — any OpenAI-compatible Chat Completions endpoint whose model supports function/tool calling (e.g. Groq at `https://api.groq.com/openai/v1` with `openai/gpt-oss-120b` — get a free key at [console.groq.com/keys](https://console.groq.com/keys))
 - `SKINPORT_CLIENT_ID` / `SKINPORT_CLIENT_SECRET` — your [Skinport API](https://docs.skinport.com/) creds
 - `BACKEND_API_KEY` — generate a shared 256-bit key with `openssl rand -hex 32` (or PowerShell: `[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()`)
 

@@ -6,7 +6,7 @@ Its primary function is to act as the **Adversarial CFO**: an Agentic AI pipelin
 
 ## The Adversarial CFO
 
-To prevent the "Circular Feedback Loop" (where an AI grades its own performance using the same stale database metrics that triggered the trade), the CFO is equipped with tool functions that act as adversarial market checkers. These are registered as OpenAI-compatible function tools and passed to the Groq LLM as callable functions.
+To prevent the "Circular Feedback Loop" (where an AI grades its own performance using the same stale database metrics that triggered the trade), the CFO is equipped with tool functions that act as adversarial market checkers. These are registered as OpenAI-compatible function tools and passed to the configured LLM as callable functions. Any OpenAI-compatible Chat Completions endpoint works, provided the model supports function/tool calling.
 
 ### Tool Functions (`tools.py`)
 - `fetch_live_market_floor`: Checks the live floor price of an asset via the backend REST API. Returns simulated data when the backend is unavailable.
@@ -20,7 +20,9 @@ Copy the example environment file and insert your API keys:
 ```bash
 cp .env.example .env
 ```
-Ensure `GROQ_API_KEY` is populated in the root `.env` or `apps/analytics/.env`.
+Ensure the `LLM_*` variables (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, optionally
+`LLM_FALLBACK_MODELS` and `LLM_REQUEST_TIMEOUT_SECONDS`) are populated in the root `.env`
+or `apps/analytics/.env`. See the root `.env.example` for hosted and local examples.
 
 ### 2. Run the Evaluation & Macro flows
 

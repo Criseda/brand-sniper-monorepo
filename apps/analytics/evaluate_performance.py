@@ -9,6 +9,7 @@ from shared_utils import setup_script_environment
 
 setup_script_environment(__file__)
 
+from llm_config import LLMSettings, load_llm_settings
 from mlflow.client import MlflowClient
 from mlflow.exceptions import MlflowException
 from openai import OpenAI
@@ -30,14 +31,31 @@ async def _sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
-_MODELS = [
-    "qwen/qwen3-32b",
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "openai/gpt-oss-20b",
-]
 _model_index_var: contextvars.ContextVar[int] = contextvars.ContextVar("_model_index", default=0)
 _MAX_TOOL_ROUNDS = 5
+
+llm_settings: LLMSettings | None = None
+
+
+def _get_llm_settings() -> LLMSettings:
+    """Returns the cached provider-neutral LLM settings, loading them on first use."""
+    global llm_settings
+    if llm_settings is None:
+        llm_settings = load_llm_settings()
+    return llm_settings
+
+
+def _reset_llm_state() -> None:
+    """Resets cached LLM settings, client, and model index (test seam)."""
+    global llm_settings, openai_client
+    llm_settings = None
+    openai_client = None
+    _model_index_var.set(0)
+
+
+def _get_all_models() -> list[str]:
+    return _get_llm_settings().all_models
+
 
 _tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 
@@ -111,9 +129,11 @@ openai_client: OpenAI | None = None
 def _get_openai_client() -> OpenAI:
     global openai_client
     if openai_client is None:
+        settings = _get_llm_settings()
         openai_client = OpenAI(
-            api_key=os.getenv("GROQ_API_KEY"),
-            base_url="https://api.groq.com/openai/v1",
+            api_key=settings.api_key or "local-no-auth",
+            base_url=settings.base_url,
+            timeout=settings.request_timeout_seconds,
         )
     return openai_client
 
@@ -141,27 +161,63 @@ def _extract_retry_after(error_str: str) -> float:
     return 3.0
 
 
-def _is_tpd_error(error_str: str) -> bool:
-    return "tpd" in error_str.lower() or "tokens per day" in error_str.lower()
+def _is_quota_error(error: BaseException) -> bool:
+    """Detects day-scale quota exhaustion (per-model or per-key) from any compatible endpoint.
+
+    Minute-scale rate limits are transient and retried on the same model; only
+    quota exhaustion rotates to the next configured fallback model.
+    """
+    message = str(error).lower()
+    if any(marker in message for marker in ("tokens per day", "requests per day", "tpd", "quota", "daily limit", "rpd")):
+        return True
+    status_code = getattr(error, "status_code", None)
+    if status_code == 429 and any(marker in message for marker in ("day", "quota", "limit")):
+        return True
+    return False
+
+
+def _retry_delay_for(error: BaseException) -> float:
+    """Prefers the protocol-level Retry-After header, falling back to message parsing."""
+    headers = getattr(getattr(error, "response", None), "headers", None)
+    if headers:
+        try:
+            lowered = {str(k).lower(): v for k, v in dict(headers).items()}
+        except (TypeError, ValueError):
+            lowered = {}
+        for key in ("retry-after-ms", "retry_after_ms"):
+            if key in lowered:
+                try:
+                    return max(float(str(lowered[key]).strip().rstrip("s")) / 1000, 0.0) + 1
+                except ValueError:
+                    break
+        for key in ("retry-after", "retry_after"):
+            if key in lowered:
+                try:
+                    return float(str(lowered[key]).strip().rstrip("s")) + 1
+                except ValueError:
+                    break
+    return _extract_retry_after(str(error))
 
 
 def _get_current_model() -> str:
-    return _MODELS[_model_index_var.get()]
+    models = _get_all_models()
+    return models[min(_model_index_var.get(), len(models) - 1)]
 
 
 def _switch_to_next_model() -> str | None:
-    idx = _model_index_var.get()
-    if idx < len(_MODELS) - 1:
+    models = _get_all_models()
+    idx = min(_model_index_var.get(), len(models) - 1)
+    if idx < len(models) - 1:
         _model_index_var.set(idx + 1)
         new_idx = _model_index_var.get()
         logger.warning(
-            "TPD limit hit — switching to model %s (#%d/%d)",
-            _MODELS[new_idx],
+            "[CFO] LLM quota exhausted — switching to model %s (#%d/%d)",
+            models[new_idx],
             new_idx + 1,
-            len(_MODELS),
+            len(models),
         )
-        return _MODELS[_model_index_var.get()]
-    logger.error("All %d models exhausted on TPD limit", len(_MODELS))
+        return models[new_idx]
+    logger.error("[CFO] All %d configured models exhausted on quota", len(models))
     return None
 
 
@@ -220,7 +276,7 @@ async def _json_phase(messages):
     response = await _call(messages, temperature=0.3, tools=TOOL_SCHEMAS, tool_choice="none")
     raw = (response.choices[0].message.content or "").strip()
     if not raw:
-        raise ValueError("Groq returned empty content in JSON phase")
+        raise ValueError("LLM provider returned empty content in JSON phase")
     if raw.startswith("```") and "\n" in raw:
         raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
     data = json.loads(raw)
@@ -282,27 +338,27 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
             eval_status = "APPROVED" if score >= 70 else "REJECTED"
             break
 
-        # Broad on purpose: retry loop relies on string-matching arbitrary API
-        # error payloads (TPD detection) and retries transient Groq failures.
+        # Broad on purpose: retry loop relies on duck-typed API error payloads
+        # (quota detection via status/message/headers) and retries transient
+        # provider failures.
         except Exception as e:
-            error_str = str(e)
-            # TPD (tokens-per-day) is per-model — switch to the next model
-            # without counting this as a failed attempt.
-            if _is_tpd_error(error_str):
+            # Day-scale quota exhaustion is per-model — switch to the next
+            # configured model without counting this as a failed attempt.
+            if _is_quota_error(e):
                 if _switch_to_next_model() is not None:
                     continue
-                # All models exhausted on TPD — treat as final failure.
-                logger.error("All models TPD-exhausted for %s: %s", item_name, e)
+                # All models exhausted on quota — treat as final failure.
+                logger.error("[CFO] All configured models quota-exhausted for %s: %s", item_name, e)
                 score = 0
-                reasoning = f"All models TPD-exhausted: {e}"
+                reasoning = f"All configured models quota-exhausted: {e}"
                 eval_status = "ERROR"
                 break
 
             attempt += 1
             if attempt < 3:
-                delay = _extract_retry_after(error_str)
+                delay = _retry_delay_for(e)
                 logger.warning(
-                    "Attempt %d/3 for %s with %s failed (retry in %.1fs): %s",
+                    "[CFO] Attempt %d/3 for %s with %s failed (retry in %.1fs): %s",
                     attempt,
                     item_name,
                     _get_current_model(),
@@ -311,7 +367,7 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
                 )
                 await _sleep(delay)
             else:
-                logger.error("Groq CFO failed for %s after 3 attempts: %s", item_name, e)
+                logger.error("[CFO] LLM evaluation failed for %s after 3 attempts: %s", item_name, e)
                 score = 0
                 reasoning = f"Evaluation failed after 3 attempts: {e}"
                 eval_status = "ERROR"
@@ -332,6 +388,7 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
 @flow(name="Daily CFO Evaluation")
 async def run_cfo_evaluation_pipeline():
     _model_index_var.set(0)
+    _get_llm_settings()
     trades = await fetch_daily_trades()
     logger.info("Found %d trades to evaluate.", len(trades))
 
@@ -343,6 +400,7 @@ async def run_cfo_evaluation_pipeline():
 
 
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
-    validate_required_env(["BACKEND_API_KEY", "GROQ_API_KEY", "MLFLOW_TRACKING_URI"])
+    validate_required_env(["BACKEND_API_KEY", "MLFLOW_TRACKING_URI"])
+    load_llm_settings()
     get_backend_api_key()
     asyncio.run(run_cfo_evaluation_pipeline())
