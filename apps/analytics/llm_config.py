@@ -15,8 +15,8 @@ LEGACY_GROQ_ENV_VAR = "GROQ_API_KEY"
 _MIGRATION_MESSAGE = (
     "Legacy Groq configuration detected (GROQ_API_KEY is set) but the provider-neutral "
     "LLM contract is incomplete. Migrate: set LLM_BASE_URL (e.g. https://api.groq.com/openai/v1), "
-    "LLM_MODEL (e.g. openai/gpt-oss-120b), LLM_API_KEY (your previous Groq key), and optionally "
-    "LLM_FALLBACK_MODELS (e.g. openai/gpt-oss-20b,qwen/qwen3.6-27b,qwen/qwen3.8-27b). "
+    "LLM_MODEL (e.g. qwen/qwen3.8-27b), LLM_API_KEY (your previous Groq key), and optionally "
+    "LLM_FALLBACK_MODELS (e.g. openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.6-27b). "
     "See .env.example. API key values are never logged."
 )
 
