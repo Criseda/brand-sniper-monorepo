@@ -197,7 +197,7 @@ additional environment variables from the compose file for Docker-internal netwo
 | `LLM_BASE_URL` | OpenAI-compatible Chat Completions base URL, including the provider's `/v1` path (e.g. `https://api.groq.com/openai/v1`) |
 | `LLM_MODEL` | Primary model identifier (must support function/tool calling, e.g. `openai/gpt-oss-120b`) |
 | `LLM_API_KEY` | Bearer token for the endpoint; omit only with `LLM_ALLOW_NO_AUTH=true` for a local endpoint that permits unauthenticated access |
-| `LLM_FALLBACK_MODELS` | Optional comma-separated fallback models used after quota exhaustion (e.g. `openai/gpt-oss-20b,qwen/qwen3.6-27b`) |
+| `LLM_FALLBACK_MODELS` | Optional comma-separated fallback models used after quota exhaustion (e.g. `openai/gpt-oss-20b,qwen/qwen3.6-27b,qwen/qwen3.8-27b`) |
 | `LLM_REQUEST_TIMEOUT_SECONDS` | Optional request timeout, default `60` |
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
@@ -209,7 +209,7 @@ Migrating from `GROQ_API_KEY`: set `LLM_BASE_URL="https://api.groq.com/openai/v1
 `LLM_MODEL` (e.g. `"openai/gpt-oss-120b"` — the retired `qwen/qwen3-32b`,
 `llama-3.3-70b-versatile`, and `llama-3.1-8b-instant` IDs no longer work on
 free/developer tiers), `LLM_API_KEY` to your previous Groq key, and optionally
-`LLM_FALLBACK_MODELS="openai/gpt-oss-20b,qwen/qwen3.6-27b"`. The application
+`LLM_FALLBACK_MODELS="openai/gpt-oss-20b,qwen/qwen3.6-27b,qwen/qwen3.8-27b"`. The application
 fails fast with migration instructions if the legacy variable is still present.
 
 Generate a 256-bit backend key once per deployment, then place the same value in
