@@ -123,6 +123,65 @@ def test_retry_delay_prefers_response_header():
     assert _retry_delay_for(error) == pytest.approx(8.0)
 
 
+def test_is_quota_error_from_status_code():
+    error = Exception("request failed with limit hit")
+    error.status_code = 429  # noqa: SLF001
+
+    assert _is_quota_error(error) is True
+
+    transient = Exception("boom")
+    transient.status_code = 500  # noqa: SLF001
+
+    assert _is_quota_error(transient) is False
+
+
+def _error_with_headers(message, headers):
+    error = Exception(message)
+    error.response = MagicMock(headers=headers)
+    return error
+
+
+def test_retry_delay_prefers_ms_header():
+    error = _error_with_headers("slow down", {"Retry-After-Ms": "2500"})
+
+    assert _retry_delay_for(error) == pytest.approx(3.5)
+
+
+def test_retry_delay_supports_underscore_header_variant():
+    error = _error_with_headers("slow down", {"Retry_After": "4"})
+
+    assert _retry_delay_for(error) == pytest.approx(5.0)
+
+
+def test_retry_delay_ignores_unrelated_headers():
+    error = _error_with_headers("Please try again in 5.0s", {"X-Other": "1"})
+
+    assert _retry_delay_for(error) == pytest.approx(6.0)
+
+
+def test_retry_delay_falls_back_on_malformed_headers():
+    bad_ms = _error_with_headers("Please try again in 5.0s", {"Retry-After-Ms": "not-a-number"})
+    assert _retry_delay_for(bad_ms) == pytest.approx(6.0)
+
+    bad_seconds = _error_with_headers("Please try again in 5.0s", {"Retry-After": "not-a-number"})
+    assert _retry_delay_for(bad_seconds) == pytest.approx(6.0)
+
+    non_mapping = _error_with_headers("Please try again in 5.0s", 5)
+    assert _retry_delay_for(non_mapping) == pytest.approx(6.0)
+
+    empty = _error_with_headers("Please try again in 5.0s", {})
+    assert _retry_delay_for(empty) == pytest.approx(6.0)
+
+
+def test_msg_dict_without_content():
+    msg = MagicMock()
+    msg.role = "assistant"
+    msg.content = None
+    msg.tool_calls = None
+
+    assert _msg_dict(msg) == {"role": "assistant"}
+
+
 @pytest.mark.asyncio
 async def test_sleep_yields_without_delay():
     await evaluate_performance._sleep(0)
