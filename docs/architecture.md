@@ -38,12 +38,12 @@ flowchart TD
         Postgres[(PostgreSQL)]
         Prometheus[(Prometheus / Grafana)]
         MLflow[(MLflow Model Registry)]
-        Groq[Groq API qwen/qwen3-32b]
+        LLM[LLM endpoint OpenAI-compatible]
 
         Backend -->|Logs simulated trades| Postgres
         Backend -->|Scrapes Metrics| Prometheus
         Analytics -->|Fetches trades to Audit| Postgres
-        Analytics <-->|"Agentic Reasoning Loop"| Groq
+        Analytics <-->|"Agentic Reasoning Loop"| LLM
         Analytics -->|Logs Audits| MLflow
         Analytics -->|Syncs baselines to Edge| EdgeRedis
     end
@@ -76,7 +76,10 @@ the cached price history. On a confirmed anomaly:
 The **Analytics** app (`apps/analytics`) runs offline as a batch job. Orchestrated by **Prefect**,
 it evaluates every simulated trade logged to PostgreSQL.
 
-The **Adversarial CFO** is a Groq agent (qwen/qwen3-32b) using OpenAI-compatible function tools:
+The **Adversarial CFO** is an agent running against any configured OpenAI-compatible
+endpoint (see `LLM_BASE_URL` / `LLM_MODEL` in `.env.example`) using OpenAI-compatible
+function tools. The model must support function/tool calling — compatibility with the
+Chat Completions shape alone is not sufficient.
 
 | Tool | Role |
 |------|------|

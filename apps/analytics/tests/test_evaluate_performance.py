@@ -1,13 +1,16 @@
 import json
+import time
+from email.utils import formatdate
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import evaluate_performance
 import pytest
 from evaluate_performance import (
     _extract_retry_after,
-    _is_tpd_error,
+    _is_quota_error,
     _json_phase,
     _msg_dict,
+    _retry_delay_for,
     _switch_to_next_model,
     _tool_loop,
     evaluate_trade,
@@ -107,10 +110,110 @@ def test_log_cfo_evaluation_handles_create_run_failure(caplog):
 # ---------------------------------------------------------------------------
 
 
-def test_is_tpd_error():
-    assert _is_tpd_error("TPD limit reached") is True
-    assert _is_tpd_error("exceeded your tokens per day limit") is True
-    assert _is_tpd_error("rate limited") is False
+def test_is_quota_error():
+    assert _is_quota_error(Exception("quota exhausted for the day")) is True
+    assert _is_quota_error(Exception("exceeded your tokens per day limit")) is True
+    assert _is_quota_error(Exception("TPD limit reached")) is True
+    assert _is_quota_error(Exception("rate limited, retry in a second")) is False
+    assert _is_quota_error(Exception("transient failure")) is False
+
+
+def test_retry_delay_prefers_response_header():
+    error = Exception("rate limited")
+    error.response = type("Resp", (), {"headers": {"Retry-After": "7"}})()  # noqa: SLF001
+
+    assert _retry_delay_for(error) == pytest.approx(8.0)
+
+
+def test_is_quota_error_from_status_code():
+    day_quota = Exception("Rate limit reached, resets in a day")
+    day_quota.status_code = 429  # noqa: SLF001
+
+    assert _is_quota_error(day_quota) is True
+
+    minute_limit = Exception("Rate limit reached, retry in 5 seconds")
+    minute_limit.status_code = 429  # noqa: SLF001
+
+    assert _is_quota_error(minute_limit) is False
+
+    transient = Exception("boom")
+    transient.status_code = 500  # noqa: SLF001
+
+    assert _is_quota_error(transient) is False
+
+
+def _error_with_headers(message, headers):
+    error = Exception(message)
+    error.response = MagicMock(headers=headers)
+    return error
+
+
+def test_retry_delay_prefers_ms_header():
+    error = _error_with_headers("slow down", {"Retry-After-Ms": "2500"})
+
+    assert _retry_delay_for(error) == pytest.approx(3.5)
+
+
+def test_retry_delay_supports_underscore_header_variant():
+    error = _error_with_headers("slow down", {"Retry_After": "4"})
+
+    assert _retry_delay_for(error) == pytest.approx(5.0)
+
+
+def test_retry_delay_ignores_unrelated_headers():
+    error = _error_with_headers("Please try again in 5.0s", {"X-Other": "1"})
+
+    assert _retry_delay_for(error) == pytest.approx(6.0)
+
+
+def test_retry_delay_falls_back_on_malformed_headers():
+    bad_ms = _error_with_headers("Please try again in 5.0s", {"Retry-After-Ms": "not-a-number"})
+    assert _retry_delay_for(bad_ms) == pytest.approx(6.0)
+
+    bad_seconds = _error_with_headers("Please try again in 5.0s", {"Retry-After": "not-a-number"})
+    assert _retry_delay_for(bad_seconds) == pytest.approx(6.0)
+
+    non_finite = _error_with_headers("Please try again in 5.0s", {"Retry-After": "nan"})
+    assert _retry_delay_for(non_finite) == pytest.approx(6.0)
+
+    non_mapping = _error_with_headers("Please try again in 5.0s", 5)
+    assert _retry_delay_for(non_mapping) == pytest.approx(6.0)
+
+    without_items = _error_with_headers("Please try again in 5.0s", object())
+    assert _retry_delay_for(without_items) == pytest.approx(6.0)
+
+    empty = _error_with_headers("Please try again in 5.0s", {})
+    assert _retry_delay_for(empty) == pytest.approx(6.0)
+
+
+def test_retry_delay_clamps_negative_header():
+    error = _error_with_headers("slow down", {"Retry-After": "-5"})
+
+    assert _retry_delay_for(error) == pytest.approx(1.0)
+
+
+def test_retry_delay_supports_http_date_header():
+    past = _error_with_headers("slow down", {"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"})
+
+    assert _retry_delay_for(past) == pytest.approx(1.0)
+
+    naive_past = _error_with_headers("slow down", {"Retry-After": "21 Oct 2015 07:28:00"})
+
+    assert _retry_delay_for(naive_past) == pytest.approx(1.0)
+
+    future = formatdate(time.time() + 30, usegmt=True)
+    soon = _error_with_headers("slow down", {"Retry-After": future})
+
+    assert _retry_delay_for(soon) == pytest.approx(31.0, abs=5.0)
+
+
+def test_msg_dict_without_content():
+    msg = MagicMock()
+    msg.role = "assistant"
+    msg.content = None
+    msg.tool_calls = None
+
+    assert _msg_dict(msg) == {"role": "assistant"}
 
 
 @pytest.mark.asyncio
@@ -121,9 +224,8 @@ async def test_sleep_yields_without_delay():
 def test_switch_to_next_model_cycles_until_exhausted():
     evaluate_performance._model_index_var.set(0)
 
-    assert _switch_to_next_model() == "llama-3.3-70b-versatile"
-    assert _switch_to_next_model() == "llama-3.1-8b-instant"
     assert _switch_to_next_model() == "openai/gpt-oss-20b"
+    assert _switch_to_next_model() == "qwen/qwen3.6-27b"
     assert _switch_to_next_model() is None
 
 
@@ -286,7 +388,7 @@ async def test_evaluate_trade_fails_after_three_attempts(
 @patch("evaluate_performance.MlflowClient")
 @patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+async def test_evaluate_trade_switches_model_on_quota(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
     evaluate_performance._model_index_var.set(0)
     mock_client = MagicMock()
     mock_run = MagicMock()
@@ -295,7 +397,7 @@ async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock
     mock_mlflow_client_cls.return_value = mock_client
 
     mock_openai_client.chat.completions.create.side_effect = [
-        Exception("TPD limit reached"),
+        Exception("quota exhausted for the day"),
         _json_response(40, "switched models"),
         _json_response(40, "switched models"),
     ]
@@ -303,7 +405,7 @@ async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock
     await evaluate_trade(_trade(), "AK-47 | Redline (Field-Tested)", None)
 
     assert mock_openai_client.chat.completions.create.call_count == 3
-    assert mock_openai_client.chat.completions.create.call_args_list[1][1]["model"] == "llama-3.3-70b-versatile"
+    assert mock_openai_client.chat.completions.create.call_args_list[1][1]["model"] == "openai/gpt-oss-20b"
     mock_client.set_tag.assert_called_with("run_tpd", "eval_status", "REJECTED")
 
 
@@ -311,7 +413,7 @@ async def test_evaluate_trade_switches_model_on_tpd(mock_get_experiment_id, mock
 @patch("evaluate_performance.MlflowClient")
 @patch("evaluate_performance.openai_client")
 @patch("evaluate_performance.get_experiment_id", return_value="1")
-async def test_evaluate_trade_tpd_exhausted_all_models(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
+async def test_evaluate_trade_quota_exhausted_all_models(mock_get_experiment_id, mock_openai_client, mock_mlflow_client_cls):
     evaluate_performance._model_index_var.set(0)
     mock_client = MagicMock()
     mock_run = MagicMock()
@@ -319,11 +421,11 @@ async def test_evaluate_trade_tpd_exhausted_all_models(mock_get_experiment_id, m
     mock_client.create_run.return_value = mock_run
     mock_mlflow_client_cls.return_value = mock_client
 
-    mock_openai_client.chat.completions.create.side_effect = Exception("TPD limit reached")
+    mock_openai_client.chat.completions.create.side_effect = Exception("quota exhausted for the day")
 
     await evaluate_trade(_trade(), "AK-47 | Redline (Field-Tested)", None)
 
-    assert mock_openai_client.chat.completions.create.call_count == 4
+    assert mock_openai_client.chat.completions.create.call_count == 3
     mock_client.set_tag.assert_called_with("run_tpd_all", "eval_status", "ERROR")
     mock_client.set_terminated.assert_called_with("run_tpd_all", status="FAILED")
 
@@ -415,6 +517,41 @@ async def test_run_cfo_evaluation_pipeline_closes_session_on_error(monkeypatch):
         await evaluate_performance.run_cfo_evaluation_pipeline()
 
     mock_close.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("base_url", "model", "fallbacks"),
+    [
+        ("https://api.hosted-example.com/v1", "openai/gpt-oss-120b", "openai/gpt-oss-20b"),
+        ("http://localhost:11434/v1", "mistral-7b", ""),
+    ],
+)
+def test_openai_client_uses_configured_endpoint(monkeypatch, base_url, model, fallbacks):
+    import evaluate_performance
+
+    evaluate_performance._reset_llm_state()
+    monkeypatch.setenv("LLM_BASE_URL", base_url)
+    monkeypatch.setenv("LLM_MODEL", model)
+    monkeypatch.setenv("LLM_FALLBACK_MODELS", fallbacks)
+    if "localhost" in base_url:
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setenv("LLM_ALLOW_NO_AUTH", "true")
+    else:
+        monkeypatch.setenv("LLM_API_KEY", "provider-key")
+        monkeypatch.delenv("LLM_ALLOW_NO_AUTH", raising=False)
+
+    mock_client = MagicMock()
+    monkeypatch.setattr(evaluate_performance, "OpenAI", MagicMock(return_value=mock_client))
+
+    assert evaluate_performance._get_openai_client() is mock_client
+    _, kwargs = evaluate_performance.OpenAI.call_args
+    assert kwargs["base_url"] == base_url
+    assert kwargs["timeout"] == evaluate_performance._get_llm_settings().request_timeout_seconds
+    if "localhost" in base_url:
+        assert kwargs["api_key"] != ""
+    else:
+        assert kwargs["api_key"] == "provider-key"
+    assert evaluate_performance._get_current_model() == model
 
 
 def test_extract_retry_after_minutes_format():

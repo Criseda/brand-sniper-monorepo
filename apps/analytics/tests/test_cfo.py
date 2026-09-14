@@ -47,7 +47,7 @@ async def test_evaluate_trade(mock_get_experiment_id, mock_openai_client, mock_m
     await evaluate_trade(mock_trade, "AK-47 | Redline (Field-Tested)", None)
 
     assert mock_openai_client.chat.completions.create.call_count == 2
-    assert mock_openai_client.chat.completions.create.call_args_list[0][1]["model"] == "qwen/qwen3-32b"
+    assert mock_openai_client.chat.completions.create.call_args_list[0][1]["model"] == "openai/gpt-oss-120b"
 
     mock_client.log_metric.assert_called_with("test_run_id", "cfo_confidence_score", 25)
     mock_client.set_tag.assert_called_with("test_run_id", "eval_status", "REJECTED")

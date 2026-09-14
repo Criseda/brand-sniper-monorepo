@@ -52,7 +52,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - Backend tests rely on the pytest `pythonpath` entry for `apps/backend` so `import main` resolves to `apps/backend/main.py` over root `main.py`
 - Listener tests need `@pytest.mark.asyncio`
 - Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine — no PostgreSQL needed
-- Analytics tests mock `client` and `mlflow` globally; set `GROQ_API_KEY` env var
+- Analytics tests mock `client` and `mlflow` globally; set the `LLM_*` env vars (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`) — see `apps/analytics/tests/conftest.py`
 - shared_utils tests are pure unit tests (no I/O)
 - No integration test suite that requires Docker services
 - Run `uv run pytest` from any app/package directory (or root)
