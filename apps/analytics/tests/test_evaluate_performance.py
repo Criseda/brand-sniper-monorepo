@@ -1,4 +1,6 @@
 import json
+import time
+from email.utils import formatdate
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import evaluate_performance
@@ -124,10 +126,15 @@ def test_retry_delay_prefers_response_header():
 
 
 def test_is_quota_error_from_status_code():
-    error = Exception("request failed with limit hit")
-    error.status_code = 429  # noqa: SLF001
+    day_quota = Exception("Rate limit reached, resets in a day")
+    day_quota.status_code = 429  # noqa: SLF001
 
-    assert _is_quota_error(error) is True
+    assert _is_quota_error(day_quota) is True
+
+    minute_limit = Exception("Rate limit reached, retry in 5 seconds")
+    minute_limit.status_code = 429  # noqa: SLF001
+
+    assert _is_quota_error(minute_limit) is False
 
     transient = Exception("boom")
     transient.status_code = 500  # noqa: SLF001
@@ -166,11 +173,38 @@ def test_retry_delay_falls_back_on_malformed_headers():
     bad_seconds = _error_with_headers("Please try again in 5.0s", {"Retry-After": "not-a-number"})
     assert _retry_delay_for(bad_seconds) == pytest.approx(6.0)
 
+    non_finite = _error_with_headers("Please try again in 5.0s", {"Retry-After": "nan"})
+    assert _retry_delay_for(non_finite) == pytest.approx(6.0)
+
     non_mapping = _error_with_headers("Please try again in 5.0s", 5)
     assert _retry_delay_for(non_mapping) == pytest.approx(6.0)
 
+    without_items = _error_with_headers("Please try again in 5.0s", object())
+    assert _retry_delay_for(without_items) == pytest.approx(6.0)
+
     empty = _error_with_headers("Please try again in 5.0s", {})
     assert _retry_delay_for(empty) == pytest.approx(6.0)
+
+
+def test_retry_delay_clamps_negative_header():
+    error = _error_with_headers("slow down", {"Retry-After": "-5"})
+
+    assert _retry_delay_for(error) == pytest.approx(1.0)
+
+
+def test_retry_delay_supports_http_date_header():
+    past = _error_with_headers("slow down", {"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"})
+
+    assert _retry_delay_for(past) == pytest.approx(1.0)
+
+    naive_past = _error_with_headers("slow down", {"Retry-After": "21 Oct 2015 07:28:00"})
+
+    assert _retry_delay_for(naive_past) == pytest.approx(1.0)
+
+    future = formatdate(time.time() + 30, usegmt=True)
+    soon = _error_with_headers("slow down", {"Retry-After": future})
+
+    assert _retry_delay_for(soon) == pytest.approx(31.0, abs=5.0)
 
 
 def test_msg_dict_without_content():

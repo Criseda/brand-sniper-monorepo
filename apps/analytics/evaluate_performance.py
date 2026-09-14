@@ -1,9 +1,12 @@
 import asyncio
 import contextvars
 import json
+import math
 import os
 import re
 import tempfile
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 from shared_utils import setup_script_environment
 
@@ -131,6 +134,8 @@ def _get_openai_client() -> OpenAI:
     if openai_client is None:
         settings = _get_llm_settings()
         openai_client = OpenAI(
+            # The SDK requires a non-empty key even for endpoints that ignore
+            # auth; the placeholder is only sent when no-auth mode is configured.
             api_key=settings.api_key or "local-no-auth",
             base_url=settings.base_url,
             timeout=settings.request_timeout_seconds,
@@ -171,9 +176,28 @@ def _is_quota_error(error: BaseException) -> bool:
     if any(marker in message for marker in ("tokens per day", "requests per day", "tpd", "quota", "daily limit", "rpd")):
         return True
     status_code = getattr(error, "status_code", None)
-    if status_code == 429 and any(marker in message for marker in ("day", "quota", "limit")):
+    if status_code == 429 and any(marker in message for marker in ("day", "quota")):
         return True
     return False
+
+
+def _parse_retry_after_value(value: object) -> float | None:
+    """Parses a Retry-After value as seconds, supporting numeric and HTTP-date forms."""
+    text = str(value).strip()
+    stripped = text[:-1].strip() if text.endswith("s") else text
+    for candidate in (stripped, text):
+        try:
+            parsed = float(candidate)
+        except ValueError:
+            continue
+        return parsed if math.isfinite(parsed) else None
+    try:
+        retry_at = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=UTC)
+    return max((retry_at - datetime.now(UTC)).total_seconds(), 0.0)
 
 
 def _retry_delay_for(error: BaseException) -> float:
@@ -182,20 +206,20 @@ def _retry_delay_for(error: BaseException) -> float:
     if headers:
         try:
             lowered = {str(k).lower(): v for k, v in dict(headers).items()}
-        except (TypeError, ValueError):
+        except Exception:
             lowered = {}
         for key in ("retry-after-ms", "retry_after_ms"):
             if key in lowered:
-                try:
-                    return max(float(str(lowered[key]).strip().rstrip("s")) / 1000, 0.0) + 1
-                except ValueError:
+                parsed = _parse_retry_after_value(lowered[key])
+                if parsed is None:
                     break
+                return max(parsed / 1000, 0.0) + 1
         for key in ("retry-after", "retry_after"):
             if key in lowered:
-                try:
-                    return float(str(lowered[key]).strip().rstrip("s")) + 1
-                except ValueError:
+                parsed = _parse_retry_after_value(lowered[key])
+                if parsed is None:
                     break
+                return max(parsed, 0.0) + 1
     return _extract_retry_after(str(error))
 
 

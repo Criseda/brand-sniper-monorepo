@@ -7,6 +7,7 @@ model identifier is hard-coded here.
 """
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 60.0
@@ -68,7 +69,7 @@ def _parse_timeout(raw: str | None) -> float:
     return timeout
 
 
-def load_llm_settings(env: dict[str, str] | os._Environ[str] | None = None) -> LLMSettings:
+def load_llm_settings(env: Mapping[str, str] | None = None) -> LLMSettings:
     """Load and validate the LLM contract from the environment.
 
     Raises SystemExit with an actionable message (never including secret
