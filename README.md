@@ -29,6 +29,9 @@
 
 A **Deterministic Rules Engine (DRE)** on the hot path instantly paper-trades statistical anomalies, while an **Agentic AI Pipeline (The Adversarial CFO)** independently audits those trades asynchronously using Groq.
 
+> [!NOTE]
+> **Active Milestone**: Currently executing [Milestone 5: Edge-Inference & Distillation Engine](https://github.com/Criseda/brand-sniper-monorepo/milestone/5) to upgrade the hot path to a unified microsecond edge engine and close the CFO active learning distillation loop. See [`docs/roadmap_edge_distillation.md`](docs/roadmap_edge_distillation.md) and [`CHANGELOG.md`](CHANGELOG.md).
+
 ---
 
 ## Quick Start
@@ -97,6 +100,8 @@ Python 3.12 + uv toolchain. Docker service stacks still run via Docker Desktop o
 | [docs/getting-started.md](docs/getting-started.md) | Clone, configure, and run the full stack in 5 minutes |
 | [docs/architecture.md](docs/architecture.md) | Hot path / cold path architecture, topology diagram |
 | [docs/deployment.md](docs/deployment.md) | Docker stacks, env vars, migrations, monitoring |
+| [docs/roadmap_edge_distillation.md](docs/roadmap_edge_distillation.md) | Active execution blueprint for Milestone 5 (v2.0) |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and unreleased issue deliveries |
 
 ---
 

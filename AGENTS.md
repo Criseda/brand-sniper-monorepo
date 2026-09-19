@@ -24,6 +24,40 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir
 - **Infra (Docker)**: `docker compose up -d` from `deployments/server-stack/` or `deployments/edge-stack/`
 
+## Active Milestone: Edge-Inference & Distillation Engine (Milestone 5)
+
+> [!IMPORTANT]
+> **Milestone Lifecycle Notice**:
+> This section is active during execution of GitHub [Milestone 5](https://github.com/Criseda/brand-sniper-monorepo/milestone/5).
+> Detailed architectural blueprints, feature vectors, and mathematical specifications are documented in [`docs/roadmap_edge_distillation.md`](docs/roadmap_edge_distillation.md).
+> **Post-Milestone Action**: Once all 11 milestone issues are closed, delete `docs/roadmap_edge_distillation.md`, update `docs/architecture.md`, trim this section from `AGENTS.md`, and update `README.md`.
+
+### Execution Sequence Matrix
+
+Work MUST proceed in strict sequential order. Agents must not jump ahead to compiled runtimes (Rust) before upstream active learning datasets, ONNX exports, and benchmark baselines are established:
+
+| Step | Issue | Phase | Focus | Upstream Prerequisite |
+|:---:|:---:|:---:|:---|:---|
+| **1** | [#232](https://github.com/Criseda/brand-sniper-monorepo/issues/232) | Phase 1 | `[EID-01]` Reservoir sampling for borderline ticks & near-misses | None |
+| **2** | [#233](https://github.com/Criseda/brand-sniper-monorepo/issues/233) | Phase 1 | `[EID-02]` CFO Oracle automated ground-truth labeling pipeline | #232 |
+| **3** | [#234](https://github.com/Criseda/brand-sniper-monorepo/issues/234) | Phase 1 | `[EID-03]` Walk-forward student model training & ONNX export | #233 |
+| **4** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | Phase 1 | `[EID-04]` Wasserstein distance & PSI distribution drift monitor | #234 |
+| **5** | [#175](https://github.com/Criseda/brand-sniper-monorepo/issues/175) | Phase 2 | `[PERFORMANCE]` Ingress-to-decision latency benchmark suite | None |
+| **6** | [#236](https://github.com/Criseda/brand-sniper-monorepo/issues/236) | Phase 2 | `[EID-05]` In-memory ring buffers & in-process ONNX in Python | #175, #234 |
+| **7** | [#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237) | Phase 3 | `[EID-06]` Unified Rust daemon: direct WebSocket & SIMD-JSON | #236 |
+| **8** | [#238](https://github.com/Criseda/brand-sniper-monorepo/issues/238) | Phase 3 | `[EID-07]` Lock-free in-memory ring buffer & in-process ORT (<50µs) | #237 |
+| **9** | [#239](https://github.com/Criseda/brand-sniper-monorepo/issues/239) | Phase 3 | `[EID-08]` Atomic model hot-reloading & latency collapse report | #238 |
+| **10** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | Phase 4 | `[INGESTION]` Expand multi-venue scrapers (CSFloat & Steam) | #238 |
+| **11** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | Phase 4 | `[FEATURE]` Discord & Telegram real-time trade alerts | #238 |
+
+### Agent Instructions for Working on an Issue
+1. **Check Prerequisites**: Ensure preceding issues in the table are completed before starting downstream work.
+2. **Review Architecture**: Read [`docs/roadmap_edge_distillation.md`](docs/roadmap_edge_distillation.md) for data schemas, mathematical formulations, and anti-patterns to avoid.
+3. **Bound Scope**: Do not expand code changes beyond the assigned issue ticket.
+4. **Update Changelog**: When submitting a PR or closing an issue, add a 1-line entry in [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`.
+5. **Maintain CI Gates**: Ensure `uv run pytest`, `uv run ruff check`, and `uv run mypy` pass with 0 errors and coverage >= 70%.
+
+
 ## Package boundaries
 
 | Path | Role | Entrypoint |
@@ -35,6 +69,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 ## Key conventions
 
+- **Readability over clever compactness**: Prefer clean, explicit, and human-readable code over hyper-compact or "clever" one-liners, provided it does not compromise execution speed or latency budgets. Use descriptive variable names and clear control flow.
 - **No emojis or emoji** in source code, logs, or comments
 - **Prefix-based logging**: `[ANOMALY]`, `[BATCH FLUSH]`, `[ALERT APPROVED]`, `[PAPER TRADE]`, `[CFO]`, `[AGENT]`, `[SKINPORT]`
 - **All DB models** in `packages/shared_utils/src/shared_utils/models.py` — do not add local models in apps
