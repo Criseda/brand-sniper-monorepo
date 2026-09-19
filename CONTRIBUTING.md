@@ -10,6 +10,7 @@
    ```
 
 2. **Make your changes** — follow the conventions in [AGENTS.md](AGENTS.md):
+   - Prefer clean, human-readable, and explicit code over hyper-compact one-liners (without sacrificing speed or latency)
    - Use prefix-based structured logging, not `print()`
    - No emojis in source code, logs, or comments
    - Keep shared models in `packages/shared_utils/src/shared_utils/models.py`
