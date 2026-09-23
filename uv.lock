@@ -2809,7 +2809,7 @@ wheels = [
 
 [[package]]
 name = "prefect"
-version = "3.8.5"
+version = "3.8.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -2870,9 +2870,9 @@ dependencies = [
     { name = "websockets" },
     { name = "whenever", marker = "python_full_version >= '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/79/970fa14809c4aff938535cacae9cb52458984b6c49a98ab7fe368b24bac1/prefect-3.8.5.tar.gz", hash = "sha256:d393bf6809c8bbb1c584c6fbfdbb0bde9e247432e7a3d258351071e7bd818d6e", size = 14627954, upload-time = "2026-09-03T21:42:04.198Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/9b/79ab0ea9eac4f93675033516b76ecf9e30309ff82369e84ce04b24364fea/prefect-3.8.6.tar.gz", hash = "sha256:46c71c36a46660fbfa9f21c4cdf7541d530706c55b2bc5b61bb9b5425761526c", size = 14721653, upload-time = "2026-09-15T00:34:46.881Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/ee/8bb42ac39f1ee09671973be22f39091d787e3be44fdfe49d99013754d69d/prefect-3.8.5-py3-none-any.whl", hash = "sha256:2f48380ada06c8d31f35bddebb0f3aea40b7a23151f9d281832540a7803faece", size = 15575897, upload-time = "2026-09-03T21:42:01.043Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/78/96e76c84b8ce67647d7423269fa695775c30251b66a84b6f796b7a1daa97/prefect-3.8.6-py3-none-any.whl", hash = "sha256:4d2bba656e031bbb749966e0fca4f0c9311a62c520082e8e3e5514d9b47b034a", size = 15652543, upload-time = "2026-09-15T00:34:43.778Z" },
 ]
 
 [[package]]
