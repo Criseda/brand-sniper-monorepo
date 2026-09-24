@@ -94,7 +94,7 @@ compiled runtime is worth it will be decided in a dedicated session that reviews
 ### 4.2 Fee-aware P&L (#233)
 One pure function in `shared_utils`, used by the listener estimate, the labeler, backtests, and alerts:
 
-$$\text{net\_margin} = P_{\text{resale}} \times (1 - f_{\text{seller}}) - P_{\text{buy}}$$
+$$\mathrm{net\_margin} = P_{\text{resale}} \times (1 - f_{\text{seller}}) - P_{\text{buy}}$$
 
 with venue seller fee $f_{\text{seller}}$, trade-hold/holding period, and minimum margin as configurable
 parameters. Document the source of current fee and hold values.

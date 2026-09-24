@@ -143,6 +143,10 @@ def load_listener_main():
             '{"batch_id":"a3634aa6-364e-4090-958b-1b94932429d5","source":"skinport","ticks":["bad"]}',
             id="invalid_ticks",
         ),
+        pytest.param(
+            '{"batch_id":"a3634aa6-364e-4090-958b-1b94932429d5","source":"skinport","ticks":[],"feed_events":{}}',
+            id="feed_events_not_a_list",
+        ),
     ],
 )
 def test_stored_batch_rejects_invalid_payload_shapes(payload):
@@ -326,6 +330,43 @@ async def test_redis_store_persists_and_dead_letters_batches():
 
 
 @pytest.mark.asyncio
+async def test_redis_store_round_trips_listing_ticks_and_feed_events():
+    redis = FakeRedis()
+    store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter")
+    ticks = [
+        {
+            "market_hash_name": "Test Item",
+            "price_cents": 1000,
+            "timestamp": 1700000000,
+            "event_type": "sold",
+            "listing_id": "58903454",
+            "float_value": 0.36,
+            "pattern": 415,
+            "stickers": [{"name": "Sticker", "slot": 0}],
+        }
+    ]
+    feed_events = [{"event_type": "sold", "received_at_ms": 1700000000123, "payload": {"eventType": "sold", "sales": []}}]
+
+    stored = await store.add("skinport", ticks, feed_events=feed_events)
+    (recovered,) = [batch async for batch in store.iter_pending()]
+
+    assert recovered == stored
+    assert recovered.ticks == ticks
+    assert recovered.feed_events == feed_events
+    assert recovered.payload["feed_events"] == feed_events
+
+
+def test_pre_feed_event_batches_keep_their_wire_format(stored_batch):
+    legacy = json.dumps({"batch_id": stored_batch.batch_id, "source": "skinport", "ticks": stored_batch.ticks})
+
+    batch = StoredBatch.deserialize("1-0", legacy)
+
+    assert batch.feed_events == []
+    assert "feed_events" not in batch.payload
+    assert json.loads(batch.serialize()) == json.loads(legacy)
+
+
+@pytest.mark.asyncio
 async def test_redis_store_lifecycle_and_acknowledgements(monkeypatch):
     redis = FakeRedis()
     monkeypatch.setattr("batch_delivery.Redis.from_url", lambda *_args, **_kwargs: redis)
@@ -370,6 +411,8 @@ async def test_buffer_ownership_transfers_before_scheduling_can_be_cancelled(mon
 
     monkeypatch.setattr(listener_main, "schedule_stored_batch", block_scheduling)
     buffer = stored_batch.ticks.copy()
+    feed_events = [{"event_type": "sold", "received_at_ms": 1_700_000_000_000, "payload": {"eventType": "sold"}}]
+    feed_event_buffer = feed_events.copy()
 
     flush_task = asyncio.create_task(
         listener_main.flush_batch_buffer(
@@ -378,12 +421,19 @@ async def test_buffer_ownership_transfers_before_scheduling_can_be_cancelled(mon
             batch_id=stored_batch.batch_id,
             store=store,
             batch_pool=AsyncMock(),
+            feed_event_buffer=feed_event_buffer,
         )
     )
     await scheduling_started.wait()
 
     assert buffer == []
-    store.add.assert_awaited_once_with(stored_batch.source, stored_batch.ticks, batch_id=stored_batch.batch_id)
+    assert feed_event_buffer == []
+    store.add.assert_awaited_once_with(
+        stored_batch.source,
+        stored_batch.ticks,
+        batch_id=stored_batch.batch_id,
+        feed_events=feed_events,
+    )
 
     flush_task.cancel()
     with pytest.raises(asyncio.CancelledError):

@@ -2,7 +2,7 @@ import asyncio
 import json
 import random
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -28,10 +28,15 @@ class StoredBatch:
     batch_id: str
     source: str
     ticks: list[dict[str, Any]]
+    feed_events: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def payload(self) -> dict[str, Any]:
-        return {"batch_id": self.batch_id, "source": self.source, "ticks": self.ticks}
+        payload: dict[str, Any] = {"batch_id": self.batch_id, "source": self.source, "ticks": self.ticks}
+        # Omitted when empty so batches without raw events keep their pre-#232 wire format.
+        if self.feed_events:
+            payload["feed_events"] = self.feed_events
+        return payload
 
     def serialize(self) -> str:
         return json.dumps(self.payload, separators=(",", ":"))
@@ -47,6 +52,8 @@ class StoredBatch:
         batch_id = data["batch_id"]
         source = data["source"]
         ticks = data["ticks"]
+        # Batches persisted before #232 carry no feed_events key.
+        feed_events = data.get("feed_events", [])
         if not isinstance(batch_id, str) or not batch_id:
             raise ValueError("Stored batch_id must be a non-empty string")
         UUID(batch_id)
@@ -54,12 +61,15 @@ class StoredBatch:
             raise ValueError("Stored batch source must be a non-empty string")
         if not isinstance(ticks, list) or not all(isinstance(tick, dict) for tick in ticks):
             raise ValueError("Stored batch ticks must be a list of objects")
+        if not isinstance(feed_events, list) or not all(isinstance(event, dict) for event in feed_events):
+            raise ValueError("Stored batch feed_events must be a list of objects")
 
         return cls(
             record_id=decoded_id,
             batch_id=batch_id,
             source=source,
             ticks=ticks,
+            feed_events=feed_events,
         )
 
 
@@ -117,12 +127,25 @@ class RedisBatchStore:
         ticks: list[dict[str, Any]],
         *,
         batch_id: str | None = None,
+        feed_events: list[dict[str, Any]] | None = None,
     ) -> StoredBatch:
-        batch = StoredBatch(record_id="", batch_id=batch_id or str(uuid4()), source=source, ticks=ticks)
+        batch = StoredBatch(
+            record_id="",
+            batch_id=batch_id or str(uuid4()),
+            source=source,
+            ticks=ticks,
+            feed_events=feed_events or [],
+        )
         record_id = await self.redis.xadd(self.pending_key, {"payload": batch.serialize()})
         await self._refresh_pending_metric()
         decoded_record_id = record_id.decode() if isinstance(record_id, bytes) else str(record_id)
-        return StoredBatch(record_id=decoded_record_id, batch_id=batch.batch_id, source=source, ticks=ticks)
+        return StoredBatch(
+            record_id=decoded_record_id,
+            batch_id=batch.batch_id,
+            source=source,
+            ticks=ticks,
+            feed_events=batch.feed_events,
+        )
 
     async def iter_pending(self, *, page_size: int = 100) -> AsyncIterator[StoredBatch]:
         async for batch in self._iter_stream(self.pending_key, page_size=page_size):
@@ -249,9 +272,10 @@ async def send_batch_with_retry(
             ) as response:
                 if 200 <= response.status < 300:
                     logger.info(
-                        "[BATCH FLUSH] Committed batch %s with %d items to Compute Node.",
+                        "[BATCH FLUSH] Committed batch %s with %d items and %d feed events to Compute Node.",
                         batch.batch_id,
                         len(batch.ticks),
+                        len(batch.feed_events),
                     )
                     batch_flush_total.labels(status="success").inc()
                     return

@@ -1,7 +1,15 @@
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import JSON, BigInteger, Column, Integer, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Index, SQLModel
+
+# JSONB on PostgreSQL, plain JSON elsewhere (the backend tests run on in-memory SQLite).
+# none_as_null stores Python None as SQL NULL rather than the JSON literal 'null'.
+JsonDocument = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+# BIGINT identity on PostgreSQL; SQLite only autoincrements an INTEGER primary key.
+BigIdentity = BigInteger().with_variant(Integer(), "sqlite")
 
 
 class MarketItem(SQLModel, table=True):
@@ -33,7 +41,14 @@ class LiveMarketTick(SQLModel, table=True):
     marketplace_source: str = Field(default="steam")  # e.g., steam, csfloat, skinport
 
     float_value: float | None = Field(default=None, index=True)  # Exact item wear (0.0 - 1.0)
-    paint_index: int | None = Field(default=None)  # Pattern identifier
+    paint_index: int | None = Field(default=None)  # Finish (skin) identifier, Skinport `finish`
+    pattern: int | None = Field(default=None)  # Paint seed, Skinport `pattern`
+
+    # Listing-level context (#232). Null for aggregate REST snapshots, which carry no listing.
+    listing_id: str | None = Field(default=None, index=True, max_length=64)
+    event_type: str | None = Field(default=None, index=True, max_length=32)  # e.g. listed, sold
+    stickers: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JsonDocument, nullable=True))
+    listing_url: str | None = Field(default=None, max_length=512)  # Deep link that opens the listing
 
     # Let the PostgreSQL server safely generate the UTC timestamp natively
     inserted_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
@@ -52,6 +67,21 @@ class IngestionBatch(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
         index=True,
     )
+
+
+class FeedEvent(SQLModel, table=True):
+    """
+    Append-only capture of every raw venue feed event (listed, sold, ...), stored verbatim.
+    Written through the durable listener batch path, so batch-level idempotency applies.
+    """
+
+    __tablename__: str = "feed_events"
+
+    id: int | None = Field(default=None, sa_column=Column(BigIdentity, primary_key=True, autoincrement=True))
+    source: str = Field(nullable=False, max_length=32)  # e.g. skinport
+    event_type: str = Field(nullable=False, index=True, max_length=32)
+    received_at: datetime = Field(nullable=False, index=True)  # Edge receive time (UTC)
+    payload: dict[str, Any] = Field(sa_column=Column(JsonDocument, nullable=False))
 
 
 class HistoricalPrice(SQLModel, table=True):

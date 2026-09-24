@@ -304,6 +304,22 @@ uv run alembic upgrade head
 uv run alembic revision --autogenerate -m "description of change"
 ```
 
+Apply migrations **before** starting a backend image that adds new tables. Backend startup runs
+`SQLModel.metadata.create_all`. If that creates a new table first, the migration that creates the same table
+then fails.
+
+## Data Retention
+
+| Table | Policy | Status |
+|---|---|---|
+| `feed_events` (raw Skinport feed payloads, #232) | Keep 90 days in PostgreSQL. Export older rows month by month to compressed JSONL/Parquet in object storage, verify the export, and only then delete them (batched, on the `received_at` index) | **Manual. No job exists yet.** Capture started 2026-09-24, so the first export is due by **2026-12-23** |
+| `live_market_ticks` | No expiry during Milestone 5 (training and label corpus) | - |
+
+`feed_events` grows by about 20 to 125 MB per day. Check it with
+`SELECT pg_size_pretty(pg_total_relation_size('feed_events'));`. Never delete raw events without a verified
+export: they are the only way to re-parse fields the listener does not extract today. Sizing and rationale are
+in [`skinport_feed.md`](skinport_feed.md#retention-policy).
+
 ## Building Custom Images
 
 Images are built automatically by `docker compose up` when the Dockerfile changes.
