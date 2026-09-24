@@ -22,6 +22,7 @@ listener_main = load_listener_main()
 
 def _tick(price_usd: float, *, event_type: str | None = None, listing_id: str | None = None) -> MarketTick:
     return MarketTick(
+        venue="skinport",
         market_hash_name="AK-47 | Slate (Field-Tested)",
         price_usd=price_usd,
         timestamp=1_790_000_000,
@@ -108,6 +109,7 @@ async def test_approved_trade_records_the_bought_listing(monkeypatch):
     monkeypatch.setattr(listener_main, "evaluate_opportunity", AsyncMock(return_value=True))
     executor = AsyncMock()
     tick = MarketTick(
+        venue="skinport",
         market_hash_name="Item",
         price_usd=10.0,
         timestamp=1_790_000_000,
@@ -121,8 +123,33 @@ async def test_approved_trade_records_the_bought_listing(monkeypatch):
     executor.execute.assert_awaited_once_with(
         market_hash_name="Item",
         purchase_price_cents=1000,
-        estimated_profit_cents=500,
+        # Resale at 1500 less the 8% Skinport seller fee (120), less the 1000 buy price.
+        estimated_profit_cents=380,
+        profit_estimate_basis="net_of_seller_fee",
         z_score=-3.0,
         listing_id="60823173",
         float_value=0.46,
     )
+
+
+@pytest.mark.asyncio
+async def test_approved_trade_without_baseline_price_records_no_estimate(monkeypatch):
+    monkeypatch.setattr(listener_main, "evaluate_opportunity", AsyncMock(return_value=True))
+    executor = AsyncMock()
+
+    await listener_main.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), executor, {"rolling_30d_avg_cents": 1500})
+
+    assert executor.execute.await_args.kwargs["estimated_profit_cents"] is None
+
+
+@pytest.mark.asyncio
+async def test_approved_trade_on_venue_without_fee_schedule_fails_loudly(monkeypatch):
+    from shared_utils import UnknownVenueError
+
+    monkeypatch.setattr(listener_main, "evaluate_opportunity", AsyncMock(return_value=True))
+    executor = AsyncMock()
+    tick = MarketTick(venue="unlisted-venue", market_hash_name="Item", price_usd=10.0, timestamp=1_790_000_000)
+
+    with pytest.raises(UnknownVenueError):
+        await listener_main.evaluate_and_execute(tick, -3.0, MagicMock(), executor, {"latest_price_cents": 1500})
+    executor.execute.assert_not_awaited()

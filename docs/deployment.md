@@ -174,6 +174,9 @@ In a production environment, schedule these jobs to run once a day. For example,
 
 # Run CFO performance evaluation at 01:00 every day
 0 1 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics >> /var/log/sniper_cfo.log 2>&1
+
+# Label listings whose 14-day outcome horizon has passed, at 02:00 every day (re-labels the last 3 matured days)
+0 2 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics uv run python label_outcomes.py >> /var/log/sniper_labels.log 2>&1
 ```
 
 ## Environment Variables

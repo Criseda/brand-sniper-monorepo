@@ -125,10 +125,48 @@ def test_ingest_simulated_trade_records_the_bought_listing(client):
     assert trades[0].float_value == pytest.approx(0.36)
 
 
+def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(client):
+    from shared_utils.models import SimulatedTrade
+    from sqlmodel import select
+
+    profit_before = backend_main.paper_trading_estimated_profit_total._value.get()
+    payload = {
+        "market_hash_name": "No Baseline Item (Field-Tested)",
+        "purchase_price_cents": 1000,
+        "estimated_profit_cents": None,
+        "profit_estimate_basis": "net_of_seller_fee",
+        "trigger_z_score": -3.5,
+        "listing_id": "70000001",
+    }
+
+    response = client.post("/api/v1/ingest/trade", json=payload)
+
+    assert response.status_code == 201
+    trades = asyncio.run(_fetch_all(select(SimulatedTrade).where(SimulatedTrade.listing_id == "70000001")))
+    assert trades[0].estimated_profit_cents is None
+    assert trades[0].profit_estimate_basis == "net_of_seller_fee"
+    # A trade without an estimate must not move the estimated-profit metric.
+    assert backend_main.paper_trading_estimated_profit_total._value.get() == profit_before
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         pytest.param({"market_hash_name": "Test Item"}, id="missing_field"),
+        pytest.param(
+            {"market_hash_name": "Test Item", "purchase_price_cents": 1000, "trigger_z_score": -3.5},
+            id="estimate_must_be_sent_even_when_null",
+        ),
+        pytest.param(
+            {
+                "market_hash_name": "Test Item",
+                "purchase_price_cents": 1000,
+                "estimated_profit_cents": 500,
+                "profit_estimate_basis": "x" * 33,
+                "trigger_z_score": -3.5,
+            },
+            id="basis_too_long",
+        ),
         pytest.param(
             {
                 "market_hash_name": "Test Item",

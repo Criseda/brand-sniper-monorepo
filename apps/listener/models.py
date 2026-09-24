@@ -10,6 +10,7 @@ LISTED_EVENT_TYPE = "listed"
 # Limits shared with the backend bulk-ingest schema (apps/backend/schemas.py). The backend rejects a
 # whole batch with a non-retryable 422 when one record breaks them, so the edge enforces them first.
 MAX_EVENT_TYPE_LENGTH = 32
+MAX_VENUE_LENGTH = 32
 MAX_LISTING_ID_LENGTH = 64
 MAX_LISTING_URL_LENGTH = 512
 
@@ -17,6 +18,12 @@ MAX_LISTING_URL_LENGTH = 512
 class MarketTick(BaseModel):
     """Strict edge validation schema for real-time asset pricing ticks."""
 
+    venue: str = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_VENUE_LENGTH,
+        description="Marketplace the tick came from (e.g. skinport); selects its fee schedule",
+    )
     market_hash_name: str = Field(..., description="The exact decoded identifier string of the asset")
     price_usd: float = Field(..., gt=0, description="Raw listing price in USD float format")
     timestamp: int = Field(
@@ -53,7 +60,9 @@ class MarketTick(BaseModel):
         return self.event_type is None or self.event_type == LISTED_EVENT_TYPE
 
     def to_batch_record(self) -> dict[str, Any]:
-        """Serialize for the durable bulk-ingest batch; listing fields are omitted when absent."""
+        """Serialize for the durable bulk-ingest batch; listing fields are omitted when absent.
+
+        The venue is not repeated per record: the batch carries it once as its `source`."""
         record: dict[str, Any] = {
             "market_hash_name": self.market_hash_name,
             "price_cents": self.price_cents,

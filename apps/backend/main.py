@@ -258,6 +258,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
             item_id=item_id,
             purchase_price_cents=payload.purchase_price_cents,
             estimated_profit_cents=payload.estimated_profit_cents,
+            profit_estimate_basis=payload.profit_estimate_basis,
             trigger_z_score=payload.trigger_z_score,
             listing_id=payload.listing_id,
             float_value=payload.float_value,
@@ -268,7 +269,8 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
     item_cache.update(pending_items)
 
     paper_trades_executed_total.inc()
-    paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
+    if payload.estimated_profit_cents is not None:
+        paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
     return {"status": "SUCCESS"}
 
 

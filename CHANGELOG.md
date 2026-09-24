@@ -18,15 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_proven_edge.md`).
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
 - Raw Skinport feed capture (all event types, append-only `feed_events` JSONB) and listing-level tick fields (listing ID, event type, float, pattern, stickers, link) end to end, with feed-schema and retention notes in `docs/skinport_feed.md` (#232).
+- Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
 #### Changed
+- The listener's paper-trade profit estimate deducts the venue's seller fee through the shared P&L function; trades record the estimate's basis (`profit_estimate_basis`, existing rows tagged `gross`) and store no estimate when there is no baseline price (#233).
+- Fee schedules are looked up per venue (`fees_for`) and `MarketTick` carries its `venue`; an unregistered venue fails instead of being priced with Skinport fees (#233).
 - Paper trades record the bought listing (`listing_id`, `float_value`), and the CFO audits that listing's float instead of the latest tick for the item (#232).
 - Fixed the net-margin formula in `docs/roadmap_proven_edge.md` failing to render on GitHub (`_` inside `\text{}`).
 - Re-planned Milestone 5 around outcome-labeled learning (Proven Edge); replaced `docs/roadmap_edge_distillation.md` and parked the Rust edge engine (#237-#239) pending a benchmark-driven decision.
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### In Progress / Planned
-- `[PE-02]` Fee-aware P&L function & market-outcome labeling (#233).
 - `[PE-03]` Deterministic replay & backtest harness (#248).
 - `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).
 - `[PE-05]` Ingress-to-decision latency benchmark and Rust decision gate (#175).

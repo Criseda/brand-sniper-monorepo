@@ -21,7 +21,7 @@ def _pin_detection_constants(monkeypatch):
 
 
 def _tick(price_usd: float, stickers: list[dict] | None = None) -> MarketTick:
-    return MarketTick(market_hash_name="Test Item", price_usd=price_usd, stickers=stickers or [])
+    return MarketTick(venue="skinport", market_hash_name="Test Item", price_usd=price_usd, stickers=stickers or [])
 
 
 # ============================================================================

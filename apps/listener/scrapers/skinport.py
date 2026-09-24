@@ -17,6 +17,7 @@ logger = get_logger("listener.skinport")
 # Redis Pub/Sub channel the Node.js sidecar publishes every saleFeed event to.
 SALE_FEED_CHANNEL = "skinport:sale_feed"
 SKINPORT_ITEM_URL = "https://skinport.com/item"
+VENUE = "skinport"
 
 
 async def _sleep(seconds: float) -> None:
@@ -68,6 +69,7 @@ def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTic
     product_id = sale.get("productId")
     try:
         return MarketTick(
+            venue=VENUE,
             market_hash_name=build_versioned_name(market_hash_name, sale.get("version")),
             # salePrice is in USD cents when currency is USD
             price_usd=float(sale_price) / 100.0,
@@ -128,7 +130,7 @@ class SkinportScraper(BaseScraper):
     """
 
     def __init__(self):
-        super().__init__(platform_name="skinport")
+        super().__init__(platform_name=VENUE)
         self.api_url = "https://api.skinport.com/v1/items"
 
         # Pull secure platform credentials out of environment variables
@@ -194,7 +196,9 @@ class SkinportScraper(BaseScraper):
                                 market_hash_name = item["market_hash_name"]
                                 version = item.get("version")
                                 market_hash_name = build_versioned_name(market_hash_name, version)
-                                yield MarketTick(market_hash_name=market_hash_name, price_usd=float(item["min_price"]))
+                                yield MarketTick(
+                                    venue=VENUE, market_hash_name=market_hash_name, price_usd=float(item["min_price"])
+                                )
 
                     elif response.status == 401:
                         logger.error(

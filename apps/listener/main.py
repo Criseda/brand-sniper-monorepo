@@ -36,7 +36,14 @@ from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
 from scrapers.factory import ScraperFactory
-from shared_utils import backend_api_headers, get_backend_api_key, get_logger
+from shared_utils import (
+    PROFIT_ESTIMATE_BASIS_NET,
+    backend_api_headers,
+    fees_for,
+    get_backend_api_key,
+    get_logger,
+    net_resale_margin_cents,
+)
 from task_supervisor import BoundedTaskPool
 from zscore import calculate_z_score, should_trigger_anomaly
 
@@ -265,12 +272,22 @@ async def evaluate_and_execute(
         if baseline is None:
             baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
             baseline = json.loads(baseline_raw) if baseline_raw else {}
-        est_profit_cents = baseline.get("latest_price_cents", tick.price_cents) - tick.price_cents
+        # Fee-aware estimate: resell at the baseline price, after the venue's seller fee. Without a
+        # baseline price there is nothing to resell against, so no estimate is recorded.
+        resale_price_cents = baseline.get("latest_price_cents")
+        est_profit_cents: int | None = None
+        if resale_price_cents is not None:
+            est_profit_cents = net_resale_margin_cents(
+                buy_price_cents=tick.price_cents,
+                resale_price_cents=resale_price_cents,
+                fees=fees_for(tick.venue),
+            )
 
         await executor.execute(
             market_hash_name=tick.market_hash_name,
             purchase_price_cents=tick.price_cents,
             estimated_profit_cents=est_profit_cents,
+            profit_estimate_basis=PROFIT_ESTIMATE_BASIS_NET,
             z_score=z_score,
             listing_id=tick.listing_id,
             float_value=tick.float_value,
@@ -495,6 +512,8 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     queue: asyncio.Queue[StreamItem | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
     scraper = ScraperFactory.get_scraper(platform_target)
+    # Fail at startup, not on the first approved trade, when the venue has no fee schedule.
+    fees_for(scraper.platform_name)
     executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")

@@ -41,6 +41,18 @@ async def test_paper_executor_sends_the_bought_listing():
     assert called_payload["float_value"] == 0.36
 
 
+@pytest.mark.asyncio
+async def test_paper_executor_sends_estimate_basis_and_missing_estimate():
+    executor = PaperExecutor("http://mock-backend:8080")
+
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
+        await executor.execute("Item", 1000, None, -2.5, profit_estimate_basis="net_of_seller_fee")
+
+    called_payload = mock_send.call_args.args[0]
+    assert called_payload["estimated_profit_cents"] is None
+    assert called_payload["profit_estimate_basis"] == "net_of_seller_fee"
+
+
 class _Response:
     def __init__(self, status=500):
         self.status = status

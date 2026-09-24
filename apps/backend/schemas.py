@@ -11,7 +11,12 @@ class SimulatedTradePayload(BaseModel):
 
     market_hash_name: str
     purchase_price_cents: int
-    estimated_profit_cents: int
+    estimated_profit_cents: int | None = Field(
+        ..., description="Estimated resale profit in cents; null when there was no baseline price to estimate from"
+    )
+    profit_estimate_basis: str | None = Field(
+        default=None, max_length=32, description="How the estimate was computed, e.g. 'net_of_seller_fee'"
+    )
     trigger_z_score: float
     listing_id: str | None = Field(default=None, max_length=64, description="Venue identifier of the bought listing")
     float_value: float | None = Field(default=None, ge=0, le=1, description="Float of the bought listing")

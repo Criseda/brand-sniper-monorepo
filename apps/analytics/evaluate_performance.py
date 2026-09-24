@@ -18,7 +18,13 @@ from mlflow.exceptions import MlflowException
 from openai import OpenAI
 from prefect import flow, task
 from pydantic import BaseModel, Field
-from shared_utils import get_backend_api_key, get_logger, validate_required_env
+from shared_utils import (
+    PROFIT_ESTIMATE_BASIS_GROSS,
+    PROFIT_ESTIMATE_BASIS_NET,
+    get_backend_api_key,
+    get_logger,
+    validate_required_env,
+)
 from shared_utils.db_connection import async_engine
 from shared_utils.models import MarketItem, SimulatedTrade
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,6 +89,17 @@ def get_experiment_id():
     return _experiment_id
 
 
+def describe_profit_estimate(trade: SimulatedTrade) -> str:
+    """The bot's profit estimate with its basis, so gross and fee-aware estimates are never confused."""
+    if trade.estimated_profit_cents is None:
+        return "Not available (no baseline price to estimate a resale from)"
+    if trade.profit_estimate_basis == PROFIT_ESTIMATE_BASIS_NET:
+        return f"{trade.estimated_profit_cents} cents (after the venue seller fee)"
+    if trade.profit_estimate_basis == PROFIT_ESTIMATE_BASIS_GROSS:
+        return f"{trade.estimated_profit_cents} cents (gross, before the venue seller fee)"
+    return f"{trade.estimated_profit_cents} cents (basis unknown)"
+
+
 def _log_cfo_evaluation(
     trade: SimulatedTrade,
     item_name: str,
@@ -105,6 +122,7 @@ def _log_cfo_evaluation(
         mlflow_client.log_param(run_id, "market_hash_name", item_name)
         mlflow_client.log_param(run_id, "purchase_price_cents", trade.purchase_price_cents)
         mlflow_client.log_param(run_id, "bot_estimated_profit", trade.estimated_profit_cents)
+        mlflow_client.log_param(run_id, "profit_estimate_basis", trade.profit_estimate_basis)
         mlflow_client.log_metric(run_id, "cfo_confidence_score", score)
         mlflow_client.set_tag(run_id, "eval_status", eval_status)
 
@@ -327,7 +345,7 @@ async def evaluate_trade(trade: SimulatedTrade, item_name: str, float_value: flo
     prompt = f"""
     The bot bought: {item_name}
     Purchase Price: {trade.purchase_price_cents} cents
-    Bot's Estimated Profit: {trade.estimated_profit_cents} cents
+    Bot's Estimated Profit: {describe_profit_estimate(trade)}
     Trigger Z-Score: {trade.trigger_z_score}
     {float_line}
 

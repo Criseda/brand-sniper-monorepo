@@ -38,6 +38,10 @@ uv run python long_term_macro.py
 
 # Execute the macro calculation on all database items
 uv run python long_term_macro.py --limit 0
+
+# Label recorded listings with their market outcome (last 3 matured days, or an explicit range)
+uv run python label_outcomes.py
+uv run python label_outcomes.py --start 2026-09-24 --end 2026-10-01
 ```
 
 #### Running via Docker Compose:

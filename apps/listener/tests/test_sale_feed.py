@@ -139,7 +139,7 @@ def test_unusable_envelopes_are_rejected(message):
 
 
 def test_rest_snapshot_ticks_keep_the_legacy_batch_record():
-    tick = MarketTick(market_hash_name="Item", price_usd=1.5, timestamp=1_700_000_000)
+    tick = MarketTick(venue="skinport", market_hash_name="Item", price_usd=1.5, timestamp=1_700_000_000)
 
     assert tick.feeds_price_window
     assert tick.to_batch_record() == {"market_hash_name": "Item", "price_cents": 150, "timestamp": 1_700_000_000}
@@ -147,6 +147,7 @@ def test_rest_snapshot_ticks_keep_the_legacy_batch_record():
 
 def test_listing_tick_batch_record_carries_listing_fields():
     tick = MarketTick(
+        venue="skinport",
         market_hash_name="Item",
         price_usd=1.5,
         timestamp=1_700_000_000,
@@ -174,7 +175,7 @@ def test_listing_tick_batch_record_carries_listing_fields():
 
 
 def test_listing_tick_without_stickers_records_an_explicit_empty_list():
-    tick = MarketTick(market_hash_name="Item", price_usd=1.0, timestamp=1_700_000_000, event_type="sold")
+    tick = MarketTick(venue="skinport", market_hash_name="Item", price_usd=1.0, timestamp=1_700_000_000, event_type="sold")
 
     assert tick.to_batch_record()["stickers"] == []
 
