@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_edge_distillation.md`).
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
 
+#### Changed
+- Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
+
 #### In Progress / Planned
 - `[EID-01]` Reservoir sampling in listener for borderline ticks & near-misses (#232).
 - `[EID-02]` CFO Oracle automated ground-truth labeling pipeline (#233).
