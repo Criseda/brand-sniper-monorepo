@@ -92,19 +92,48 @@ compiled runtime is worth it will be decided in a dedicated session that reviews
 - All models live in `packages/shared_utils/src/shared_utils/models.py`.
 
 ### 4.2 Fee-aware P&L (#233)
-One pure function in `shared_utils`, used by the listener estimate, the labeler, backtests, and alerts:
+One pure function in `shared_utils` (`shared_utils/pnl.py`: `net_resale_margin_cents`), used by the listener
+estimate, the labeler, backtests, and alerts:
 
-$$\mathrm{net\_margin} = P_{\text{resale}} \times (1 - f_{\text{seller}}) - P_{\text{buy}}$$
+$$\mathrm{net\_margin} = P_{\text{resale}} - \mathrm{fee}(P_{\text{resale}}) - P_{\text{buy}}$$
 
-with venue seller fee $f_{\text{seller}}$, trade-hold/holding period, and minimum margin as configurable
-parameters. Document the source of current fee and hold values.
+Money is integer cents and fees are integer basis points; the fee is rounded up to the next cent, so the
+margin is never overstated. Parameters live in a `VenueFees` value (`SKINPORT_FEES` for Skinport):
+
+| Parameter | Skinport value | Source |
+|:---|:---|:---|
+| Seller fee | 8%, or 6% when the resale price is at least USD 1000 | [Skinport: reduced fee for high-tier items](https://skinport.com/blog/reduced-fee-high-tier-items) |
+| Buyer fee | none on the listing price | Skinport checkout (payment-method fees are not modeled) |
+| Trade hold | 7 days | Steam trade protection on traded CS2 items (up to 8 days worst case) |
+| Minimum margin | 0 cents | Project default; raise it to demand a cushion |
+
+Private sales (2% fee) are not modeled. Re-check these values when Skinport changes its fee page.
 
 ### 4.3 Outcome labels (#233)
-Triple-barrier style labels for each `listed` event at time $t$ and price $p$:
-- `resale_net_margin_cents`: best net margin from realized sales of comparable items in $[t + \text{hold},\ t + H]$.
-- `is_profitable`: margin $\geq$ minimum margin; `neutral` when there are too few comparable sales.
-- `listing_sold_within_s`: time until this listing sold, if sold events are observed.
-- `label_available_at = t + H`. No training, evaluation, or monitoring job may use a label before this time.
+Triple-barrier style labels for each `listed` sale, written by `apps/analytics/label_outcomes.py`
+(Prefect flow `listing-outcome-labeler`) to `listing_outcomes`, keyed by (`source`, `listing_id`, `label_version`).
+
+**Label version `v1`** (for a listing first seen at time $t$ at price $p$):
+
+| Field | Definition |
+|:---|:---|
+| `listed_at`, `listed_price_cents` | First sighting of the `productId` as `listed` (edge receive time). Repeated sightings are deduplicated; the earliest wins. |
+| `comparable_sales` | Sold sales of the same versioned `market_hash_name` (wear and phase included), other than this listing, received in $[t + \text{hold},\ t + H]$. Each sold `productId` counts once. |
+| `resale_price_cents` | Lower median of the comparable sale prices. The single best sale is not used: it rewards outliers a seller could not count on. |
+| `resale_net_margin_cents` | `net_resale_margin_cents(p, resale_price_cents)`. |
+| `is_profitable` | margin $\geq$ minimum margin. `NULL` (neutral) when there are fewer than 3 comparable sales. |
+| `listing_sold_within_s` | Seconds from $t$ to this `productId`'s first `sold` sighting, if it falls in $[t,\ t + H]$. |
+| `sale_censored` | True when this listing was not seen to sell by $t + H$. The feed never reports cancellations or price changes, and crash loss (#252) can drop events, so this means "not seen to sell", never "did not sell". It is not a negative label. |
+| `label_available_at` | $t + H$. No training, evaluation, or monitoring job may use a label before this time. |
+
+Parameters: hold 7 days, horizon $H$ = 14 days, minimum 3 comparable sales, USD prices only.
+The flow only labels a listing once $t + H$ plus a 1-hour settle time (for edge batches still in flight)
+has passed, and only fetches sales up to $t + H$. It upserts, so re-running any date range is safe; on a
+conflict the earliest sighting wins. Float tiers inside a wear bucket, stickers, and pattern premiums are
+not part of `v1` comparables; add them as a new label version.
+
+Run it daily over the last few matured days (`uv run python label_outcomes.py`), or over an explicit
+range (`--start 2026-09-24 --end 2026-10-01`).
 
 Labels are versioned (`label_version`); changing the definition creates a new version rather than rewriting history.
 

@@ -121,7 +121,8 @@ async def test_approved_trade_records_the_bought_listing(monkeypatch):
     executor.execute.assert_awaited_once_with(
         market_hash_name="Item",
         purchase_price_cents=1000,
-        estimated_profit_cents=500,
+        # Resale at 1500 less the 8% Skinport seller fee (120), less the 1000 buy price.
+        estimated_profit_cents=380,
         z_score=-3.0,
         listing_id="60823173",
         float_value=0.46,

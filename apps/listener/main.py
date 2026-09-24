@@ -36,7 +36,7 @@ from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
 from scrapers.factory import ScraperFactory
-from shared_utils import backend_api_headers, get_backend_api_key, get_logger
+from shared_utils import backend_api_headers, get_backend_api_key, get_logger, net_resale_margin_cents
 from task_supervisor import BoundedTaskPool
 from zscore import calculate_z_score, should_trigger_anomaly
 
@@ -265,7 +265,9 @@ async def evaluate_and_execute(
         if baseline is None:
             baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
             baseline = json.loads(baseline_raw) if baseline_raw else {}
-        est_profit_cents = baseline.get("latest_price_cents", tick.price_cents) - tick.price_cents
+        # Fee-aware estimate: resell at the baseline price, after the venue seller fee.
+        resale_price_cents = baseline.get("latest_price_cents", tick.price_cents)
+        est_profit_cents = net_resale_margin_cents(buy_price_cents=tick.price_cents, resale_price_cents=resale_price_cents)
 
         await executor.execute(
             market_hash_name=tick.market_hash_name,

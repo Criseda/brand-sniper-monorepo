@@ -155,3 +155,37 @@ class SimulatedTrade(SQLModel, table=True):
     float_value: float | None = Field(default=None)  # Float of the bought listing, not of the item in general
 
     simulated_buy_timestamp: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
+
+
+class ListingOutcome(SQLModel, table=True):
+    """
+    Market-outcome label for one listed offer: what comparable items actually sold for after the
+    trade hold, and whether this listing itself was seen to sell. Keyed by label version, so a new
+    label definition adds rows instead of rewriting history.
+
+    No training, evaluation, or monitoring job may read a label before `label_available_at`.
+    """
+
+    __tablename__: str = "listing_outcomes"
+
+    source: str = Field(primary_key=True, max_length=32)  # e.g. skinport
+    listing_id: str = Field(primary_key=True, max_length=64)  # Skinport productId
+    label_version: str = Field(primary_key=True, max_length=32)
+
+    market_hash_name: str = Field(nullable=False)  # Versioned name (phase included), as in market_items
+    listed_at: datetime = Field(nullable=False, index=True)  # First time the listing was seen (edge receive time, UTC)
+    listed_price_cents: int = Field(nullable=False)
+
+    # Comparable sales: same item, sold within [listed_at + hold, label_available_at], excluding this listing.
+    comparable_sales: int = Field(nullable=False)
+    resale_price_cents: int | None = Field(default=None)  # Median comparable sale price; NULL when neutral
+    resale_net_margin_cents: int | None = Field(default=None)  # After seller fee; NULL when neutral
+    is_profitable: bool | None = Field(default=None)  # NULL = neutral (too few comparable sales)
+
+    # Whether this listing itself sold. The feed never reports cancellations or price changes, so
+    # "not seen to sell" is censored (sale_censored = True), never a negative outcome.
+    listing_sold_within_s: int | None = Field(default=None)
+    sale_censored: bool = Field(nullable=False)
+
+    label_available_at: datetime = Field(nullable=False, index=True)  # listed_at + horizon
+    labeled_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")})
