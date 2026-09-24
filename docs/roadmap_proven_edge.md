@@ -109,6 +109,16 @@ margin is never overstated. Parameters live in a `VenueFees` value (`SKINPORT_FE
 
 Private sales (2% fee) are not modeled. Re-check these values when Skinport changes its fee page.
 
+Fees are never implied. Every caller passes a `VenueFees` explicitly, looked up with `fees_for(venue)`,
+which raises `UnknownVenueError` for a venue without a registered schedule. `MarketTick` carries its
+`venue`, and the listener refuses to start for a venue that has no schedule. **Adding a venue** means
+defining its `VenueFees` (with sources) in `pnl.py` and registering it in `VENUE_FEES`.
+
+Paper trades record how their estimate was computed in `simulated_trades.profit_estimate_basis`:
+`gross` for trades written before the shared function existed (baseline price minus buy price, no fees),
+`net_of_seller_fee` after. `estimated_profit_cents` is `NULL` when the listener had no baseline price to
+resell against. Never aggregate estimates across bases.
+
 ### 4.3 Outcome labels (#233)
 Triple-barrier style labels for each `listed` sale, written by `apps/analytics/label_outcomes.py`
 (Prefect flow `listing-outcome-labeler`) to `listing_outcomes`, keyed by (`source`, `listing_id`, `label_version`).

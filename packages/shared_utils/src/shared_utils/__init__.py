@@ -18,7 +18,19 @@ from .models import (
     MarketItem,
     SimulatedTrade,
 )
-from .pnl import SKINPORT_FEES, FeeTier, VenueFees, is_profitable_margin, net_resale_margin_cents, seller_fee_cents
+from .pnl import (
+    PROFIT_ESTIMATE_BASIS_GROSS,
+    PROFIT_ESTIMATE_BASIS_NET,
+    SKINPORT_FEES,
+    VENUE_FEES,
+    FeeTier,
+    UnknownVenueError,
+    VenueFees,
+    fees_for,
+    is_profitable_margin,
+    net_resale_margin_cents,
+    seller_fee_cents,
+)
 from .pricing_utils import detect_downtrend, resolve_recent_median, to_cents
 from .script_utils import setup_script_environment, setup_service_environment, validate_required_env
 from .time_utils import utc_fromtimestamp_naive, utc_now_naive
@@ -39,6 +51,11 @@ __all__ = [
     "SimulatedTrade",
     "ListingOutcome",
     "SKINPORT_FEES",
+    "VENUE_FEES",
+    "PROFIT_ESTIMATE_BASIS_GROSS",
+    "PROFIT_ESTIMATE_BASIS_NET",
+    "UnknownVenueError",
+    "fees_for",
     "FeeTier",
     "VenueFees",
     "seller_fee_cents",

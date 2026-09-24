@@ -31,9 +31,9 @@ setup_script_environment(__file__)
 
 from prefect import flow, get_run_logger, task
 from shared_utils import (
-    SKINPORT_FEES,
     VenueFees,
     build_versioned_name,
+    fees_for,
     is_profitable_margin,
     net_resale_margin_cents,
     utc_now_naive,
@@ -53,7 +53,7 @@ class LabelConfig:
     """Parameters of one label version. Changing any of them requires a new `version`."""
 
     version: str = LABEL_VERSION
-    fees: VenueFees = SKINPORT_FEES
+    fees: VenueFees = field(default_factory=lambda: fees_for(SOURCE))
     # Resale window is [listed_at + fees.hold_seconds, listed_at + horizon_seconds].
     horizon_seconds: int = 14 * 86_400
     # Fewer comparable sales than this in the resale window: neutral (insufficient evidence).

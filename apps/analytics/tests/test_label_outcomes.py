@@ -190,6 +190,12 @@ def test_labels_are_deterministic_and_ordered():
     assert [row["listing_id"] for row in first] == ["L1", "L2"]
 
 
+def test_default_config_uses_the_registered_skinport_fees():
+    from shared_utils import SKINPORT_FEES
+
+    assert LabelConfig().fees is SKINPORT_FEES
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [{"horizon_seconds": 7 * 86_400}, {"min_comparable_sales": 0}, {"settle_seconds": -1}],

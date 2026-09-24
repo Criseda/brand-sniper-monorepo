@@ -564,3 +564,25 @@ def test_openai_client_uses_configured_endpoint(monkeypatch, base_url, model, fa
 
 def test_extract_retry_after_minutes_format():
     assert _extract_retry_after("Please try again in 2m13.5744s") == pytest.approx(2 * 60 + 13.5744 + 1, abs=0.01)
+
+
+@pytest.mark.parametrize(
+    ("estimate", "basis", "expected"),
+    [
+        (380, "net_of_seller_fee", "380 cents (after the venue seller fee)"),
+        (500, "gross", "500 cents (gross, before the venue seller fee)"),
+        (500, None, "500 cents (basis unknown)"),
+        (None, "net_of_seller_fee", "Not available (no baseline price to estimate a resale from)"),
+    ],
+    ids=["net", "gross", "unknown_basis", "no_estimate"],
+)
+def test_describe_profit_estimate_states_the_basis(estimate, basis, expected):
+    trade = SimulatedTrade(
+        item_id=1,
+        purchase_price_cents=1000,
+        estimated_profit_cents=estimate,
+        profit_estimate_basis=basis,
+        trigger_z_score=-3.0,
+    )
+
+    assert evaluate_performance.describe_profit_estimate(trade) == expected

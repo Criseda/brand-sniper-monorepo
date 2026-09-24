@@ -146,7 +146,11 @@ class SimulatedTrade(SQLModel, table=True):
     item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE", index=True)
 
     purchase_price_cents: int = Field(nullable=False)
-    estimated_profit_cents: int = Field(nullable=False)
+    # NULL when the listener had no baseline price to estimate a resale from.
+    estimated_profit_cents: int | None = Field(default=None)
+    # How estimated_profit_cents was computed: "gross" (no fees, rows before the shared P&L function)
+    # or "net_of_seller_fee" (shared_utils.pnl). Never compare estimates across bases.
+    profit_estimate_basis: str | None = Field(default=None, max_length=32)
     trigger_z_score: float = Field(nullable=False)
 
     # The exact listing that was bought, when the trigger came from a listing-level tick.

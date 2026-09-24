@@ -30,10 +30,11 @@ class ExecutionService(abc.ABC):
         self,
         market_hash_name: str,
         purchase_price_cents: int,
-        estimated_profit_cents: int,
+        estimated_profit_cents: int | None,
         z_score: float,
         listing_id: str | None = None,
         float_value: float | None = None,
+        profit_estimate_basis: str | None = None,
     ) -> None:
         pass
 
@@ -50,26 +51,30 @@ class PaperExecutor(ExecutionService):
         self,
         market_hash_name: str,
         purchase_price_cents: int,
-        estimated_profit_cents: int,
+        estimated_profit_cents: int | None,
         z_score: float,
         listing_id: str | None = None,
         float_value: float | None = None,
+        profit_estimate_basis: str | None = None,
     ) -> None:
         payload = {
             "market_hash_name": market_hash_name,
             "purchase_price_cents": purchase_price_cents,
+            # None when there was no baseline price to estimate a resale from.
             "estimated_profit_cents": estimated_profit_cents,
+            "profit_estimate_basis": profit_estimate_basis,
             "trigger_z_score": round(z_score, 4),
             # Identify the exact listing bought so audits and outcome labels use its own attributes.
             "listing_id": listing_id,
             "float_value": float_value,
         }
 
+        profit_text = f"${estimated_profit_cents / 100:.2f}" if estimated_profit_cents is not None else "n/a"
         logger.info(
-            "[PAPER TRADE] Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: $%.2f | Z-Score: %.2f",
+            "[PAPER TRADE] Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: %s | Z-Score: %.2f",
             market_hash_name,
             purchase_price_cents / 100,
-            estimated_profit_cents / 100,
+            profit_text,
             z_score,
         )
 

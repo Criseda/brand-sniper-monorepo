@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
 #### Changed
-- The listener's paper-trade profit estimate deducts the Skinport seller fee through the shared P&L function (#233).
+- The listener's paper-trade profit estimate deducts the venue's seller fee through the shared P&L function; trades record the estimate's basis (`profit_estimate_basis`, existing rows tagged `gross`) and store no estimate when there is no baseline price (#233).
+- Fee schedules are looked up per venue (`fees_for`) and `MarketTick` carries its `venue`; an unregistered venue fails instead of being priced with Skinport fees (#233).
 - Paper trades record the bought listing (`listing_id`, `float_value`), and the CFO audits that listing's float instead of the latest tick for the item (#232).
 - Fixed the net-margin formula in `docs/roadmap_proven_edge.md` failing to render on GitHub (`_` inside `\text{}`).
 - Re-planned Milestone 5 around outcome-labeled learning (Proven Edge); replaced `docs/roadmap_edge_distillation.md` and parked the Rust edge engine (#237-#239) pending a benchmark-driven decision.

@@ -1,5 +1,15 @@
 import pytest
-from shared_utils.pnl import SKINPORT_FEES, FeeTier, VenueFees, is_profitable_margin, net_resale_margin_cents, seller_fee_cents
+from shared_utils.pnl import (
+    SKINPORT_FEES,
+    VENUE_FEES,
+    FeeTier,
+    UnknownVenueError,
+    VenueFees,
+    fees_for,
+    is_profitable_margin,
+    net_resale_margin_cents,
+    seller_fee_cents,
+)
 
 
 @pytest.mark.parametrize(
@@ -16,7 +26,7 @@ from shared_utils.pnl import SKINPORT_FEES, FeeTier, VenueFees, is_profitable_ma
     ids=["standard", "round_up", "below_threshold", "at_threshold", "high_tier", "zero", "one_cent"],
 )
 def test_skinport_seller_fee_tiers(resale_price_cents, expected_fee_cents):
-    assert seller_fee_cents(resale_price_cents) == expected_fee_cents
+    assert seller_fee_cents(resale_price_cents, SKINPORT_FEES) == expected_fee_cents
 
 
 @pytest.mark.parametrize(
@@ -31,7 +41,7 @@ def test_skinport_seller_fee_tiers(resale_price_cents, expected_fee_cents):
     ids=["winner", "break_even", "same_price_loses_fee", "loser", "high_tier"],
 )
 def test_net_resale_margin(buy_price_cents, resale_price_cents, expected_margin_cents):
-    assert net_resale_margin_cents(buy_price_cents, resale_price_cents) == expected_margin_cents
+    assert net_resale_margin_cents(buy_price_cents, resale_price_cents, SKINPORT_FEES) == expected_margin_cents
 
 
 @pytest.mark.parametrize(
@@ -74,6 +84,20 @@ def test_invalid_venue_fees_are_rejected(kwargs):
 
 def test_negative_prices_are_rejected():
     with pytest.raises(ValueError):
-        seller_fee_cents(-1)
+        seller_fee_cents(-1, SKINPORT_FEES)
     with pytest.raises(ValueError):
-        net_resale_margin_cents(-1, 100)
+        net_resale_margin_cents(-1, 100, SKINPORT_FEES)
+
+
+@pytest.mark.parametrize("venue", ["skinport", "Skinport", "SKINPORT"])
+def test_fees_for_finds_registered_venue_case_insensitively(venue):
+    assert fees_for(venue) is SKINPORT_FEES
+
+
+def test_fees_for_unknown_venue_fails_instead_of_falling_back():
+    with pytest.raises(UnknownVenueError, match="csfloat"):
+        fees_for("csfloat")
+
+
+def test_registry_is_keyed_by_each_schedules_own_venue():
+    assert all(name == fees.venue for name, fees in VENUE_FEES.items())

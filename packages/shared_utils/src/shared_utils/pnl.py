@@ -9,6 +9,10 @@ and alerts. Do not compute a profit number anywhere else.
 Money is integer cents throughout and fees are integer basis points, so results are exact and
 reproducible. The seller fee is rounded up to the next cent, which never overstates the margin.
 
+Fees are always passed explicitly: look them up per venue with `fees_for(venue)`, which fails on a
+venue that has no schedule instead of silently pricing it with another venue's fees. To add a venue,
+define its `VenueFees` (with sources) below and register it in `VENUE_FEES`.
+
 Current Skinport parameters (checked 2026-09-25):
 - Seller fee: 8% on public sales, 6% when the sale price is at least 1000 in the listing currency
   (https://skinport.com/blog/reduced-fee-high-tier-items). Private sales (2%) are not modeled.
@@ -21,6 +25,15 @@ from dataclasses import dataclass
 
 BASIS_POINTS = 10_000
 SECONDS_PER_DAY = 86_400
+
+# How a paper trade's `estimated_profit_cents` was computed. Rows written before the shared P&L
+# function existed are tagged "gross" (baseline price minus buy price, no fees).
+PROFIT_ESTIMATE_BASIS_GROSS = "gross"
+PROFIT_ESTIMATE_BASIS_NET = "net_of_seller_fee"
+
+
+class UnknownVenueError(ValueError):
+    """Raised when no fee schedule is registered for a venue."""
 
 
 @dataclass(frozen=True)
@@ -69,8 +82,22 @@ SKINPORT_FEES = VenueFees(
     min_margin_cents=0,
 )
 
+# Every venue the system can price. A venue missing here cannot be traded or labeled.
+VENUE_FEES: dict[str, VenueFees] = {
+    SKINPORT_FEES.venue: SKINPORT_FEES,
+}
 
-def seller_fee_cents(resale_price_cents: int, fees: VenueFees = SKINPORT_FEES) -> int:
+
+def fees_for(venue: str) -> VenueFees:
+    """Fee schedule of a venue (case-insensitive). Raises UnknownVenueError when none is registered."""
+    fees = VENUE_FEES.get(venue.lower())
+    if fees is None:
+        registered = ", ".join(sorted(VENUE_FEES))
+        raise UnknownVenueError(f"No fee schedule registered for venue '{venue}' (registered: {registered})")
+    return fees
+
+
+def seller_fee_cents(resale_price_cents: int, fees: VenueFees) -> int:
     """Seller fee on a resale, rounded up to the next cent."""
     if resale_price_cents < 0:
         raise ValueError("resale_price_cents must not be negative")
@@ -78,13 +105,13 @@ def seller_fee_cents(resale_price_cents: int, fees: VenueFees = SKINPORT_FEES) -
     return -(-resale_price_cents * fee_bps // BASIS_POINTS)
 
 
-def net_resale_margin_cents(buy_price_cents: int, resale_price_cents: int, fees: VenueFees = SKINPORT_FEES) -> int:
+def net_resale_margin_cents(buy_price_cents: int, resale_price_cents: int, fees: VenueFees) -> int:
     """Profit in cents from buying at `buy_price_cents` and reselling at `resale_price_cents`, after fees."""
     if buy_price_cents < 0:
         raise ValueError("buy_price_cents must not be negative")
     return resale_price_cents - seller_fee_cents(resale_price_cents, fees) - buy_price_cents
 
 
-def is_profitable_margin(net_margin_cents: int, fees: VenueFees = SKINPORT_FEES) -> bool:
+def is_profitable_margin(net_margin_cents: int, fees: VenueFees) -> bool:
     """True when a net margin reaches the venue's minimum margin."""
     return net_margin_cents >= fees.min_margin_cents
