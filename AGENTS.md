@@ -24,35 +24,39 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 - **Alembic migrations**: `uv run alembic upgrade head` from `deployments/` dir
 - **Infra (Docker)**: `docker compose up -d` from `deployments/server-stack/` or `deployments/edge-stack/`
 
-## Active Milestone: Edge-Inference & Distillation Engine (Milestone 5)
+## Active Milestone: Proven Edge (Milestone 5)
 
 > [!IMPORTANT]
 > **Milestone Lifecycle Notice**:
 > This section is active during execution of GitHub [Milestone 5](https://github.com/Criseda/brand-sniper-monorepo/milestone/5).
-> Detailed architectural blueprints, feature vectors, and mathematical specifications are documented in [`docs/roadmap_edge_distillation.md`](docs/roadmap_edge_distillation.md).
-> **Post-Milestone Action**: Once all 11 milestone issues are closed, delete `docs/roadmap_edge_distillation.md`, update `docs/architecture.md`, trim this section from `AGENTS.md`, and update `README.md`.
+> Direction, label definitions, the feature contract, promotion rules, and anti-patterns are documented in [`docs/roadmap_proven_edge.md`](docs/roadmap_proven_edge.md).
+> **Post-Milestone Action**: Once all scheduled milestone issues are closed, delete `docs/roadmap_proven_edge.md`, update `docs/architecture.md`, trim this section from `AGENTS.md`, and update `README.md`.
+
+**Direction**: make Brand Sniper prove its edge. Record every listing, label it by what the market actually did (fee-aware P&L), backtest the current rules as the baseline, and only then adopt a learned model through shadow mode. LLM output is never used as training labels.
 
 ### Execution Sequence Matrix
 
-Work MUST proceed in strict sequential order. Agents must not jump ahead to compiled runtimes (Rust) before upstream active learning datasets, ONNX exports, and benchmark baselines are established:
+Respect the prerequisites below. After #232, the tracks #233, #248, #18, and #33 may proceed in parallel:
 
-| Step | Issue | Phase | Focus | Upstream Prerequisite |
-|:---:|:---:|:---:|:---|:---|
-| **1** | [#232](https://github.com/Criseda/brand-sniper-monorepo/issues/232) | Phase 1 | `[EID-01]` Reservoir sampling for borderline ticks & near-misses | None |
-| **2** | [#233](https://github.com/Criseda/brand-sniper-monorepo/issues/233) | Phase 1 | `[EID-02]` CFO Oracle automated ground-truth labeling pipeline | #232 |
-| **3** | [#234](https://github.com/Criseda/brand-sniper-monorepo/issues/234) | Phase 1 | `[EID-03]` Walk-forward student model training & ONNX export | #233 |
-| **4** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | Phase 1 | `[EID-04]` Wasserstein distance & PSI distribution drift monitor | #234 |
-| **5** | [#175](https://github.com/Criseda/brand-sniper-monorepo/issues/175) | Phase 2 | `[PERFORMANCE]` Ingress-to-decision latency benchmark suite | None |
-| **6** | [#236](https://github.com/Criseda/brand-sniper-monorepo/issues/236) | Phase 2 | `[EID-05]` In-memory ring buffers & in-process ONNX in Python | #175, #234 |
-| **7** | [#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237) | Phase 3 | `[EID-06]` Unified Rust daemon: direct WebSocket & SIMD-JSON | #236 |
-| **8** | [#238](https://github.com/Criseda/brand-sniper-monorepo/issues/238) | Phase 3 | `[EID-07]` Lock-free in-memory ring buffer & in-process ORT (<50µs) | #237 |
-| **9** | [#239](https://github.com/Criseda/brand-sniper-monorepo/issues/239) | Phase 3 | `[EID-08]` Atomic model hot-reloading & latency collapse report | #238 |
-| **10** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | Phase 4 | `[INGESTION]` Expand multi-venue scrapers (CSFloat & Steam) | #238 |
-| **11** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | Phase 4 | `[FEATURE]` Discord & Telegram real-time trade alerts | #238 |
+| Step | Issue | Focus | Upstream Prerequisite |
+|:---:|:---:|:---|:---|
+| **1** | [#232](https://github.com/Criseda/brand-sniper-monorepo/issues/232) | `[PE-01]` Raw feed capture & listing-level tick persistence | None |
+| **2** | [#233](https://github.com/Criseda/brand-sniper-monorepo/issues/233) | `[PE-02]` Fee-aware P&L function & market-outcome labeling | #232 |
+| **3** | [#248](https://github.com/Criseda/brand-sniper-monorepo/issues/248) | `[PE-03]` Deterministic replay & backtest harness | #232 |
+| **4** | [#249](https://github.com/Criseda/brand-sniper-monorepo/issues/249) | `[PE-04]` Baseline scorecard for the current Z-score DRE | #233, #248 |
+| **5** | [#175](https://github.com/Criseda/brand-sniper-monorepo/issues/175) | `[PE-05]` Ingress-to-decision latency benchmark (Rust decision gate) | #248 |
+| **6** | [#234](https://github.com/Criseda/brand-sniper-monorepo/issues/234) | `[PE-06]` Shared feature module & walk-forward student model (ONNX) | #249 |
+| **7** | [#236](https://github.com/Criseda/brand-sniper-monorepo/issues/236) | `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate | #234, #175 |
+| **8** | [#250](https://github.com/Criseda/brand-sniper-monorepo/issues/250) | `[PE-08]` CFO calibration experiment against realized outcomes | #233, #249 |
+| **9** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | `[PE-09]` Realized-performance & feature drift monitoring | #236 |
+| **10** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | `[PE-10]` Discord/Telegram alerts with direct listing links | #232 |
+| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` Multi-venue scrapers (CSFloat & Steam) | #232 |
+
+**Parked**: #237, #238, #239 (compiled Rust edge engine) are not scheduled. Do not start them; a dedicated decision session will review the #175 evidence first.
 
 ### Agent Instructions for Working on an Issue
 1. **Check Prerequisites**: Ensure preceding issues in the table are completed before starting downstream work.
-2. **Review Architecture**: Read [`docs/roadmap_edge_distillation.md`](docs/roadmap_edge_distillation.md) for data schemas, mathematical formulations, and anti-patterns to avoid.
+2. **Review Architecture**: Read [`docs/roadmap_proven_edge.md`](docs/roadmap_proven_edge.md) for label definitions, the feature contract, promotion rules, and anti-patterns to avoid.
 3. **Bound Scope**: Do not expand code changes beyond the assigned issue ticket.
 4. **Update Changelog**: When submitting a PR or closing an issue, add a 1-line entry in [`CHANGELOG.md`](CHANGELOG.md) under `[Unreleased]`.
 5. **Maintain CI Gates**: Ensure `uv run pytest`, `uv run ruff check`, and `uv run mypy` pass with 0 errors and coverage >= 70%.

@@ -6,33 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 > **Agent & Contributor Convention**:
-> When submitting a pull request that implements or resolves an issue, add a concise one-line summary under the `[Unreleased]` section below, categorized appropriately (`Added`, `Changed`, `Performance`, `Fixed`, etc.), referencing the issue number (e.g., `- Added reservoir sampling for borderline ticks (#232)`).
+> When submitting a pull request that implements or resolves an issue, add a concise one-line summary under the `[Unreleased]` section below, categorized appropriately (`Added`, `Changed`, `Performance`, `Fixed`, etc.), referencing the issue number (e.g., `- Added listing-level tick persistence (#232)`).
 
 ---
 
 ## [Unreleased]
 
-### Active Milestone: [Edge-Inference & Distillation Engine (Milestone 5)](https://github.com/Criseda/brand-sniper-monorepo/milestone/5)
+### Active Milestone: [Proven Edge: Outcome-Labeled Learning Loop (Milestone 5)](https://github.com/Criseda/brand-sniper-monorepo/milestone/5)
 
 #### Added
-- Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_edge_distillation.md`).
+- Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_proven_edge.md`).
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
 
 #### Changed
+- Re-planned Milestone 5 around outcome-labeled learning (Proven Edge); replaced `docs/roadmap_edge_distillation.md` and parked the Rust edge engine (#237-#239) pending a benchmark-driven decision.
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### In Progress / Planned
-- `[EID-01]` Reservoir sampling in listener for borderline ticks & near-misses (#232).
-- `[EID-02]` CFO Oracle automated ground-truth labeling pipeline (#233).
-- `[EID-03]` Walk-forward student model training & ONNX export flow (#234).
-- `[EID-04]` Wasserstein distance & PSI distribution drift monitor (#235).
-- Ingress-to-decision deterministic latency benchmark suite (#175).
-- `[EID-05]` In-memory ring buffers & in-process ONNX inference in Python (#236).
-- `[EID-06]` Unified compiled Rust edge daemon with SIMD-JSON parsing (#237).
-- `[EID-07]` Lock-free in-memory sliding windows & in-process ORT inference (#238).
-- `[EID-08]` Zero-downtime model hot-reloading & latency collapse report (#239).
-- CSFloat & Steam multi-venue scrapers (#33).
-- Discord and Telegram real-time trade notification integration (#18).
+- `[PE-01]` Raw feed capture & listing-level tick persistence (#232).
+- `[PE-02]` Fee-aware P&L function & market-outcome labeling (#233).
+- `[PE-03]` Deterministic replay & backtest harness (#248).
+- `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).
+- `[PE-05]` Ingress-to-decision latency benchmark and Rust decision gate (#175).
+- `[PE-06]` Shared feature module & walk-forward student model with ONNX export (#234).
+- `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate (#236).
+- `[PE-08]` CFO calibration experiment against realized outcomes (#250).
+- `[PE-09]` Realized-performance & feature drift monitoring (#235).
+- `[PE-10]` Discord/Telegram alerts with direct listing links (#18).
+- `[PE-11]` CSFloat & Steam multi-venue scrapers (#33).
 
 ---
 
