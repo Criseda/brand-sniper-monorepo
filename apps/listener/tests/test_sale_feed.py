@@ -177,3 +177,65 @@ def test_listing_tick_without_stickers_records_an_explicit_empty_list():
     tick = MarketTick(market_hash_name="Item", price_usd=1.0, timestamp=1_700_000_000, event_type="sold")
 
     assert tick.to_batch_record()["stickers"] == []
+
+
+def test_out_of_range_optional_fields_are_dropped_but_the_price_is_kept():
+    sale = {
+        "productId": 1,
+        "url": "item",
+        "marketHashName": "Item",
+        "salePrice": 250,
+        "wear": 1.2,
+        "pattern": -1,
+        "finish": True,
+    }
+
+    _feed_event, (tick,) = parse_sale_feed_message(_envelope({"eventType": "listed", "sales": [sale]}))
+
+    assert tick.price_cents == 250
+    assert (tick.float_value, tick.pattern, tick.paint_index) == (None, None, None)
+
+
+def test_overlong_event_type_is_clamped_and_kept_raw():
+    event_type = "x" * 40
+
+    feed_event, (tick,) = parse_sale_feed_message(
+        _envelope({"eventType": event_type, "sales": [{"marketHashName": "Item", "salePrice": 1}]})
+    )
+
+    assert feed_event.event_type == tick.event_type == "x" * 32
+    assert feed_event.payload["eventType"] == event_type
+
+
+def test_overlong_listing_url_is_dropped_rather_than_truncated():
+    sale = {"marketHashName": "Item", "salePrice": 1, "url": "s" * 600}
+
+    _feed_event, (tick,) = parse_sale_feed_message(_envelope({"eventType": "listed", "sales": [sale]}))
+
+    assert tick.listing_url is None
+
+
+def test_edge_limits_match_the_backend_bulk_ingest_schema():
+    """The backend rejects a whole batch (non-retryable 422) on one bad record, so the edge must never
+    produce a record the backend would reject. Fails when either side's limits change alone."""
+    import models
+    import schemas
+
+    def constraints(model, field_name: str) -> dict:
+        found: dict = {}
+        for item in model.model_fields[field_name].metadata:
+            for attribute in ("ge", "le", "max_length"):
+                if getattr(item, attribute, None) is not None:
+                    found[attribute] = getattr(item, attribute)
+        return found
+
+    shared_tick_fields = ["float_value", "pattern", "paint_index", "event_type", "listing_id", "listing_url"]
+    for field_name in shared_tick_fields:
+        edge = constraints(models.MarketTick, field_name)
+        backend = constraints(schemas.BulkPriceTick, field_name)
+        assert edge == backend, field_name
+
+    assert (
+        constraints(models.FeedEvent, "event_type")["max_length"]
+        == constraints(schemas.BulkFeedEvent, "event_type")["max_length"]
+    )

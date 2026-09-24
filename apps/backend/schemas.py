@@ -13,6 +13,8 @@ class SimulatedTradePayload(BaseModel):
     purchase_price_cents: int
     estimated_profit_cents: int
     trigger_z_score: float
+    listing_id: str | None = Field(default=None, max_length=64, description="Venue identifier of the bought listing")
+    float_value: float | None = Field(default=None, ge=0, le=1, description="Float of the bought listing")
 
 
 class BulkPriceTick(BaseModel):

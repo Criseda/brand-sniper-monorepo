@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import aiohttp
-from models import FeedEvent, MarketTick
+from models import MAX_EVENT_TYPE_LENGTH, MAX_LISTING_URL_LENGTH, FeedEvent, MarketTick
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from scrapers.base import BaseScraper
@@ -24,8 +24,23 @@ async def _sleep(seconds: float) -> None:
     await asyncio.sleep(seconds)
 
 
-def _optional_int(value: object) -> int | None:
-    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+def _as_number(value: object) -> float | None:
+    """The value as a float when it is a real JSON number (bools excluded), else None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _optional_non_negative_int(value: object) -> int | None:
+    """Pattern/finish as an int, or None when missing or out of range (the price is still kept)."""
+    number = _as_number(value)
+    return int(number) if number is not None and number >= 0 else None
+
+
+def _optional_wear(value: object) -> float | None:
+    """Float value in [0, 1], or None when missing or out of range (the price is still kept)."""
+    number = _as_number(value)
+    return number if number is not None and 0 <= number <= 1 else None
 
 
 def _listing_url(sale: dict) -> str | None:
@@ -38,7 +53,9 @@ def _listing_url(sale: dict) -> str | None:
     if not slug:
         return None
     sale_id = sale.get("saleId")
-    return f"{SKINPORT_ITEM_URL}/{slug}/{sale_id}" if sale_id else f"{SKINPORT_ITEM_URL}/{slug}"
+    url = f"{SKINPORT_ITEM_URL}/{slug}/{sale_id}" if sale_id else f"{SKINPORT_ITEM_URL}/{slug}"
+    # A truncated URL would be a broken link; drop it instead.
+    return url if len(url) <= MAX_LISTING_URL_LENGTH else None
 
 
 def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTick | None:
@@ -55,15 +72,15 @@ def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTic
             # salePrice is in USD cents when currency is USD
             price_usd=float(sale_price) / 100.0,
             timestamp=received_at_ms // 1000,
-            float_value=sale.get("wear"),
+            float_value=_optional_wear(sale.get("wear")),
             stickers=sale.get("stickers") or [],
             event_type=event_type,
             # productId is the only identifier populated on both listed and sold events, so it is the key
             # that joins a listing to its outcome. saleId is documented as set on sold events
             # (https://docs.skinport.com/websocket/sale-feed) but is null on both in practice.
             listing_id=str(product_id) if product_id is not None else None,
-            pattern=_optional_int(sale.get("pattern")),
-            paint_index=_optional_int(sale.get("finish")),
+            pattern=_optional_non_negative_int(sale.get("pattern")),
+            paint_index=_optional_non_negative_int(sale.get("finish")),
             listing_url=_listing_url(sale),
         )
     except (ValidationError, ValueError, TypeError) as err:
@@ -87,7 +104,8 @@ def parse_sale_feed_message(message: str | bytes) -> tuple[FeedEvent, list[Marke
     if not isinstance(received_at_ms, int) or received_at_ms <= 0:
         raise ValueError("Sale feed envelope must carry a positive integer 'receivedAt'")
 
-    event_type = str(payload.get("eventType") or "unknown")
+    # Clamped so an unexpected, overlong type is still recorded; the payload keeps the original value.
+    event_type = str(payload.get("eventType") or "unknown")[:MAX_EVENT_TYPE_LENGTH]
     feed_event = FeedEvent(event_type=event_type, received_at_ms=received_at_ms, payload=payload)
 
     sales = payload.get("sales")

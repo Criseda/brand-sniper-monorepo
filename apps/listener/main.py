@@ -272,6 +272,8 @@ async def evaluate_and_execute(
             purchase_price_cents=tick.price_cents,
             estimated_profit_cents=est_profit_cents,
             z_score=z_score,
+            listing_id=tick.listing_id,
+            float_value=tick.float_value,
         )
     else:
         anomalies_rejected_total.inc()

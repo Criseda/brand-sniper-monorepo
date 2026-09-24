@@ -32,6 +32,8 @@ class ExecutionService(abc.ABC):
         purchase_price_cents: int,
         estimated_profit_cents: int,
         z_score: float,
+        listing_id: str | None = None,
+        float_value: float | None = None,
     ) -> None:
         pass
 
@@ -50,12 +52,17 @@ class PaperExecutor(ExecutionService):
         purchase_price_cents: int,
         estimated_profit_cents: int,
         z_score: float,
+        listing_id: str | None = None,
+        float_value: float | None = None,
     ) -> None:
         payload = {
             "market_hash_name": market_hash_name,
             "purchase_price_cents": purchase_price_cents,
             "estimated_profit_cents": estimated_profit_cents,
             "trigger_z_score": round(z_score, 4),
+            # Identify the exact listing bought so audits and outcome labels use its own attributes.
+            "listing_id": listing_id,
+            "float_value": float_value,
         }
 
         logger.info(

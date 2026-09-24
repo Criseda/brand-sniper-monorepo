@@ -101,3 +101,28 @@ async def test_feed_event_buffer_flushes_at_chunk_limit(monkeypatch):
 
     assert [len(batch["feed_events"]) for batch in flushed] == [2, 1]
     assert all(batch["ticks"] == [] for batch in flushed)
+
+
+@pytest.mark.asyncio
+async def test_approved_trade_records_the_bought_listing(monkeypatch):
+    monkeypatch.setattr(listener_main, "evaluate_opportunity", AsyncMock(return_value=True))
+    executor = AsyncMock()
+    tick = MarketTick(
+        market_hash_name="Item",
+        price_usd=10.0,
+        timestamp=1_790_000_000,
+        event_type="listed",
+        listing_id="60823173",
+        float_value=0.46,
+    )
+
+    await listener_main.evaluate_and_execute(tick, -3.0, MagicMock(), executor, {"latest_price_cents": 1500})
+
+    executor.execute.assert_awaited_once_with(
+        market_hash_name="Item",
+        purchase_price_cents=1000,
+        estimated_profit_cents=500,
+        z_score=-3.0,
+        listing_id="60823173",
+        float_value=0.46,
+    )

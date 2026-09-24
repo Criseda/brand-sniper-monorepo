@@ -259,6 +259,8 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
             purchase_price_cents=payload.purchase_price_cents,
             estimated_profit_cents=payload.estimated_profit_cents,
             trigger_z_score=payload.trigger_z_score,
+            listing_id=payload.listing_id,
+            float_value=payload.float_value,
             simulated_buy_timestamp=utc_now_naive(),
         )
         session.add(trade)

@@ -7,6 +7,12 @@ from pydantic import BaseModel, Field
 # Anything else (e.g. `sold`) is recorded for labeling but never drives a trading decision.
 LISTED_EVENT_TYPE = "listed"
 
+# Limits shared with the backend bulk-ingest schema (apps/backend/schemas.py). The backend rejects a
+# whole batch with a non-retryable 422 when one record breaks them, so the edge enforces them first.
+MAX_EVENT_TYPE_LENGTH = 32
+MAX_LISTING_ID_LENGTH = 64
+MAX_LISTING_URL_LENGTH = 512
+
 
 class MarketTick(BaseModel):
     """Strict edge validation schema for real-time asset pricing ticks."""
@@ -16,15 +22,25 @@ class MarketTick(BaseModel):
     timestamp: int = Field(
         default_factory=lambda: int(datetime.now(UTC).timestamp()), description="Unix timestamp of when the tick was parsed"
     )
-    float_value: float | None = Field(default=None, description="Asset wear float value if available")
+    float_value: float | None = Field(default=None, ge=0, le=1, description="Asset wear float value if available")
     stickers: list[dict] = Field(default_factory=list, description="List of applied stickers on the asset")
 
-    # Listing-level context (#232). All None for aggregate REST snapshots.
-    event_type: str | None = Field(default=None, description="Feed event type (listed, sold); None for REST snapshots")
-    listing_id: str | None = Field(default=None, description="Venue identifier of the individual listing")
-    pattern: int | None = Field(default=None, description="Paint seed of the listed asset")
-    paint_index: int | None = Field(default=None, description="Finish (skin) identifier of the listed asset")
-    listing_url: str | None = Field(default=None, description="Deep link that opens the listing on the venue")
+    # Listing-level context. All None for aggregate REST snapshots.
+    event_type: str | None = Field(
+        default=None,
+        max_length=MAX_EVENT_TYPE_LENGTH,
+        description="Feed event type (listed, sold); None for REST snapshots",
+    )
+    listing_id: str | None = Field(
+        default=None, max_length=MAX_LISTING_ID_LENGTH, description="Venue identifier of the individual listing"
+    )
+    pattern: int | None = Field(default=None, ge=0, description="Paint seed of the listed asset")
+    paint_index: int | None = Field(default=None, ge=0, description="Finish (skin) identifier of the listed asset")
+    listing_url: str | None = Field(
+        default=None,
+        max_length=MAX_LISTING_URL_LENGTH,
+        description="Link that opens the listing (for Skinport, the item page)",
+    )
 
     @property
     def price_cents(self) -> int:
@@ -63,7 +79,9 @@ class MarketTick(BaseModel):
 class FeedEvent(BaseModel):
     """One raw venue feed event, kept verbatim for the append-only `feed_events` table."""
 
-    event_type: str = Field(..., min_length=1, description="Feed event type as reported by the venue")
+    event_type: str = Field(
+        ..., min_length=1, max_length=MAX_EVENT_TYPE_LENGTH, description="Feed event type as reported by the venue"
+    )
     received_at_ms: int = Field(..., gt=0, description="Edge receive time as Unix epoch milliseconds")
     payload: dict[str, Any] = Field(..., description="Untouched venue payload")
 

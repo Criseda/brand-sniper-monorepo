@@ -140,10 +140,17 @@ Trimmed, sanitized `sold` sale:
      and now fills the existing `float_value` and `paint_index`. On REST snapshot rows all listing columns
      stay NULL. On listing rows, `stickers` is `[]` when the item has none.
 
-The durability guarantee is the same as for ticks before #232. A batch is durable once it is written to the
-edge Redis stream. It is flushed when either buffer reaches `CHUNK_LIMIT`, which each REST poll triggers
-roughly every 5 minutes, and on graceful shutdown. Events still buffered in memory are lost if the process
-crashes before a flush.
+Raw events get the same durability as ticks already had:
+
+- **In listener memory** until a flush. A flush happens when either buffer reaches `CHUNK_LIMIT` (each REST
+  poll triggers one, roughly every 5 minutes) and on graceful shutdown. A listener crash loses whatever is
+  still buffered.
+- **In the edge Redis stream** after a flush, until the backend acknowledges the batch. This survives a
+  listener crash or restart, but **not a Redis restart**: the edge Redis runs with `--save '' --appendonly no`
+  (RAM only), so pending and dead-letter batches are lost with it.
+- **In PostgreSQL** once the backend commits the batch.
+
+Tightening the in-memory window is tracked in #252.
 
 ## Volume
 

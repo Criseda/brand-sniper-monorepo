@@ -104,10 +104,41 @@ def test_ingest_simulated_trade_success(client):
     assert response.json()["status"] == "SUCCESS"
 
 
+def test_ingest_simulated_trade_records_the_bought_listing(client):
+    from shared_utils.models import SimulatedTrade
+    from sqlmodel import select
+
+    payload = {
+        "market_hash_name": "Listing Trade Item (Field-Tested)",
+        "purchase_price_cents": 1000,
+        "estimated_profit_cents": 500,
+        "trigger_z_score": -3.5,
+        "listing_id": "58903454",
+        "float_value": 0.36,
+    }
+
+    response = client.post("/api/v1/ingest/trade", json=payload)
+
+    assert response.status_code == 201
+    trades = asyncio.run(_fetch_all(select(SimulatedTrade).where(SimulatedTrade.listing_id == "58903454")))
+    assert len(trades) == 1
+    assert trades[0].float_value == pytest.approx(0.36)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         pytest.param({"market_hash_name": "Test Item"}, id="missing_field"),
+        pytest.param(
+            {
+                "market_hash_name": "Test Item",
+                "purchase_price_cents": 1000,
+                "estimated_profit_cents": 500,
+                "trigger_z_score": -3.5,
+                "float_value": 1.5,
+            },
+            id="float_out_of_range",
+        ),
         pytest.param(
             {
                 "market_hash_name": "Test Item",
