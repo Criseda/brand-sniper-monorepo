@@ -20,8 +20,7 @@ from prefect import flow, task
 from pydantic import BaseModel, Field
 from shared_utils import get_backend_api_key, get_logger, validate_required_env
 from shared_utils.db_connection import async_engine
-from shared_utils.models import LiveMarketTick, MarketItem, SimulatedTrade
-from sqlalchemy import desc
+from shared_utils.models import MarketItem, SimulatedTrade
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from tools import AVAILABLE_FUNCTIONS, TOOL_SCHEMAS, close_http_session
@@ -310,19 +309,10 @@ async def _json_phase(messages):
 
 @task
 async def fetch_daily_trades():
-    # Uses session.execute() (SQLAlchemy-style) rather than session.exec()
-    # because the statement combines a correlated scalar subquery; the two
-    # styles are mixed across the codebase deliberately (see #81).
+    # The float comes from the trade itself (the listing that was bought). The latest tick for the
+    # item would describe some other listing of the same skin and mislead the audit.
     async with AsyncSession(async_engine) as session:
-        latest_tick_subq = (
-            select(LiveMarketTick.float_value)
-            .where(LiveMarketTick.item_id == MarketItem.id)
-            .order_by(desc(LiveMarketTick.inserted_at))
-            .limit(1)
-            .correlate(MarketItem)
-            .scalar_subquery()
-        )
-        stmt = select(SimulatedTrade, MarketItem.market_hash_name, latest_tick_subq).join(
+        stmt = select(SimulatedTrade, MarketItem.market_hash_name, SimulatedTrade.float_value).join(
             MarketItem, SimulatedTrade.item_id == MarketItem.id
         )
         result = await session.execute(stmt)

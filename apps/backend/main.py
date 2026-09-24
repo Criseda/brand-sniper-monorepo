@@ -32,7 +32,7 @@ from shared_utils import (
     utc_fromtimestamp_naive,
     utc_now_naive,
 )
-from shared_utils.models import IngestionBatch, LiveMarketTick, MarketItem, SimulatedTrade
+from shared_utils.models import FeedEvent, IngestionBatch, LiveMarketTick, MarketItem, SimulatedTrade
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
 
 logger = get_logger("backend.main")
@@ -184,10 +184,14 @@ async def get_or_create_item_id(session: AsyncSession, name: str, pending_items:
 
 
 def _bulk_payload_digest(payload: BulkIngestionPayload) -> str:
-    canonical_payload = {
+    # Defaults are excluded so a batch recorded before the listing-level fields (#232) existed
+    # still hashes identically on replay.
+    canonical_payload: dict = {
         "source": payload.source,
-        "ticks": [tick.model_dump(mode="json") for tick in payload.ticks],
+        "ticks": [tick.model_dump(mode="json", exclude_defaults=True) for tick in payload.ticks],
     }
+    if payload.feed_events:
+        canonical_payload["feed_events"] = [event.model_dump(mode="json") for event in payload.feed_events]
     encoded = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -202,7 +206,7 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
     values = {
         "batch_id": batch_id,
         "source": payload.source,
-        "record_count": len(payload.ticks),
+        "record_count": len(payload.ticks) + len(payload.feed_events),
         "payload_sha256": digest,
         "received_at": utc_now_naive(),
     }
@@ -255,6 +259,8 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
             purchase_price_cents=payload.purchase_price_cents,
             estimated_profit_cents=payload.estimated_profit_cents,
             trigger_z_score=payload.trigger_z_score,
+            listing_id=payload.listing_id,
+            float_value=payload.float_value,
             simulated_buy_timestamp=utc_now_naive(),
         )
         session.add(trade)
@@ -277,9 +283,15 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
 )
 async def process_bulk_ingestion(payload: BulkIngestionPayload):
     total_ticks = len(payload.ticks)
-    logger.info("Bulk Ingestion Intercepted: %d elements from '%s'", total_ticks, payload.source)
+    total_feed_events = len(payload.feed_events)
+    logger.info(
+        "Bulk Ingestion Intercepted: %d elements and %d feed events from '%s'",
+        total_ticks,
+        total_feed_events,
+        payload.source,
+    )
 
-    if total_ticks == 0:
+    if total_ticks == 0 and total_feed_events == 0:
         if payload.batch_id is None:
             return {"status": "SKIPPED", "records_processed": 0}
         async with session_scope() as session:
@@ -294,25 +306,47 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
             logger.info("Bulk ingestion replay acknowledged for batch '%s'.", payload.batch_id)
             return {"status": "DUPLICATE", "records_processed": 0}
 
-        insert_data = []
+        tick_rows = []
         for tick in payload.ticks:
             item_id = await get_or_create_item_id(session, tick.market_hash_name, pending_items)
-            insert_data.append(
+            tick_rows.append(
                 {
                     "item_id": item_id,
                     "price_cents": tick.price_cents,
                     "marketplace_source": payload.source,
                     "inserted_at": utc_fromtimestamp_naive(tick.timestamp),
+                    "event_type": tick.event_type,
+                    "listing_id": tick.listing_id,
+                    "float_value": tick.float_value,
+                    "pattern": tick.pattern,
+                    "paint_index": tick.paint_index,
+                    "stickers": tick.stickers,
+                    "listing_url": tick.listing_url,
                 }
             )
+        if tick_rows:
+            await session.exec(insert(LiveMarketTick), params=tick_rows)
 
-        stmt = insert(LiveMarketTick)
-        await session.exec(stmt, params=insert_data)
+        feed_event_rows = [
+            {
+                "source": payload.source,
+                "event_type": event.event_type,
+                "received_at": utc_fromtimestamp_naive(event.received_at_ms / 1000),
+                "payload": event.payload,
+            }
+            for event in payload.feed_events
+        ]
+        if feed_event_rows:
+            await session.exec(insert(FeedEvent), params=feed_event_rows)
 
     item_cache.update(pending_items)
 
-    logger.info("Bulk write complete. Committed %d ticks to 'live_market_ticks'.", total_ticks)
-    return {"status": "SUCCESS", "records_processed": total_ticks}
+    logger.info(
+        "Bulk write complete. Committed %d ticks to 'live_market_ticks' and %d events to 'feed_events'.",
+        total_ticks,
+        total_feed_events,
+    )
+    return {"status": "SUCCESS", "records_processed": total_ticks, "feed_events_processed": total_feed_events}
 
 
 if __name__ == "__main__":

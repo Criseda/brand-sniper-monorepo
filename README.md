@@ -101,6 +101,7 @@ Python 3.12 + uv toolchain. Docker service stacks still run via Docker Desktop o
 | [docs/architecture.md](docs/architecture.md) | Hot path / cold path architecture, topology diagram |
 | [docs/deployment.md](docs/deployment.md) | Docker stacks, env vars, migrations, monitoring |
 | [docs/roadmap_proven_edge.md](docs/roadmap_proven_edge.md) | Active execution blueprint for Milestone 5 (Proven Edge) |
+| [docs/skinport_feed.md](docs/skinport_feed.md) | Skinport live sale-feed schema, raw capture pipeline, volume and retention |
 | [CHANGELOG.md](CHANGELOG.md) | Release history and unreleased issue deliveries |
 
 ---

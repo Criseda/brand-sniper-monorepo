@@ -104,10 +104,41 @@ def test_ingest_simulated_trade_success(client):
     assert response.json()["status"] == "SUCCESS"
 
 
+def test_ingest_simulated_trade_records_the_bought_listing(client):
+    from shared_utils.models import SimulatedTrade
+    from sqlmodel import select
+
+    payload = {
+        "market_hash_name": "Listing Trade Item (Field-Tested)",
+        "purchase_price_cents": 1000,
+        "estimated_profit_cents": 500,
+        "trigger_z_score": -3.5,
+        "listing_id": "58903454",
+        "float_value": 0.36,
+    }
+
+    response = client.post("/api/v1/ingest/trade", json=payload)
+
+    assert response.status_code == 201
+    trades = asyncio.run(_fetch_all(select(SimulatedTrade).where(SimulatedTrade.listing_id == "58903454")))
+    assert len(trades) == 1
+    assert trades[0].float_value == pytest.approx(0.36)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         pytest.param({"market_hash_name": "Test Item"}, id="missing_field"),
+        pytest.param(
+            {
+                "market_hash_name": "Test Item",
+                "purchase_price_cents": 1000,
+                "estimated_profit_cents": 500,
+                "trigger_z_score": -3.5,
+                "float_value": 1.5,
+            },
+            id="float_out_of_range",
+        ),
         pytest.param(
             {
                 "market_hash_name": "Test Item",
@@ -151,7 +182,7 @@ def test_ingest_bulk_replay_is_idempotent(client):
     replay = client.post("/api/v1/ingest/bulk", json=payload)
 
     assert first.status_code == 201
-    assert first.json() == {"status": "SUCCESS", "records_processed": 1}
+    assert first.json() == {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0}
     assert replay.status_code == 201
     assert replay.json() == {"status": "DUPLICATE", "records_processed": 0}
 
@@ -173,6 +204,113 @@ def test_ingest_bulk_rejects_reused_batch_id_with_different_payload(client):
 
     assert response.status_code == 409
     assert "different payload" in response.json()["detail"]
+
+
+def _listing_payload(batch_id: str) -> dict:
+    return {
+        "batch_id": batch_id,
+        "source": "skinport",
+        "ticks": [
+            {
+                "market_hash_name": "Listing Level Item (Field-Tested)",
+                "price_cents": 397,
+                "timestamp": 1790000000,
+                "event_type": "sold",
+                "listing_id": "58903454",
+                "float_value": 0.36,
+                "pattern": 415,
+                "paint_index": 1035,
+                "stickers": [{"name": "9z Team (Glitter) | Antwerp 2022", "slot": 2}],
+                "listing_url": "https://skinport.com/item/listing-level-item-field-tested",
+            },
+            {"market_hash_name": "Listing Level Item (Field-Tested)", "price_cents": 450, "timestamp": 1790000001},
+        ],
+        "feed_events": [
+            {"event_type": "sold", "received_at_ms": 1790000000123, "payload": {"eventType": "sold", "sales": [{"id": 0}]}},
+        ],
+    }
+
+
+async def _fetch_all(statement):
+    async with _test_session_maker() as session:
+        return list((await session.exec(statement)).all())
+
+
+def test_ingest_bulk_persists_listing_fields_and_raw_feed_events(client):
+    from shared_utils.models import FeedEvent, LiveMarketTick
+    from sqlmodel import select
+
+    batch_id = str(uuid4())
+    response = client.post("/api/v1/ingest/bulk", json=_listing_payload(batch_id))
+
+    assert response.status_code == 201
+    assert response.json() == {"status": "SUCCESS", "records_processed": 2, "feed_events_processed": 1}
+
+    ticks = asyncio.run(_fetch_all(select(LiveMarketTick).where(LiveMarketTick.price_cents.in_([397, 450]))))
+    sold = next(tick for tick in ticks if tick.price_cents == 397)
+    snapshot = next(tick for tick in ticks if tick.price_cents == 450)
+    assert (sold.event_type, sold.listing_id, sold.pattern, sold.paint_index) == ("sold", "58903454", 415, 1035)
+    assert sold.float_value == pytest.approx(0.36)
+    assert sold.stickers == [{"name": "9z Team (Glitter) | Antwerp 2022", "slot": 2}]
+    assert sold.listing_url == "https://skinport.com/item/listing-level-item-field-tested"
+    assert (snapshot.event_type, snapshot.listing_id, snapshot.stickers) == (None, None, None)
+
+    events = asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.source == "skinport")))
+    assert len(events) == 1
+    assert events[0].event_type == "sold"
+    assert events[0].payload == {"eventType": "sold", "sales": [{"id": 0}]}
+    assert events[0].received_at.isoformat() == "2026-09-21T14:13:20.123000"
+
+    replay = client.post("/api/v1/ingest/bulk", json=_listing_payload(batch_id))
+    assert replay.json() == {"status": "DUPLICATE", "records_processed": 0}
+    assert len(asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.source == "skinport")))) == 1
+
+
+def test_ingest_bulk_accepts_feed_event_only_batch(client):
+    payload = {
+        "batch_id": str(uuid4()),
+        "source": "feed-only",
+        "ticks": [],
+        "feed_events": [{"event_type": "unknown", "received_at_ms": 1790000000000, "payload": {}}],
+    }
+
+    response = client.post("/api/v1/ingest/bulk", json=payload)
+
+    assert response.status_code == 201
+    assert response.json() == {"status": "SUCCESS", "records_processed": 0, "feed_events_processed": 1}
+
+
+@pytest.mark.parametrize(
+    "tick_override",
+    [
+        pytest.param({"float_value": 1.5}, id="float_above_one"),
+        pytest.param({"pattern": -1}, id="negative_pattern"),
+        pytest.param({"listing_id": "x" * 65}, id="listing_id_too_long"),
+    ],
+)
+def test_ingest_bulk_rejects_invalid_listing_fields(client, tick_override):
+    tick = {"market_hash_name": "Item", "price_cents": 100, "timestamp": 1700000000, **tick_override}
+
+    response = client.post("/api/v1/ingest/bulk", json={"source": "skinport", "ticks": [tick]})
+
+    assert response.status_code == 422
+
+
+def test_bulk_digest_is_unchanged_for_pre_listing_batches():
+    """A batch recorded before #232 must still hash identically, so its replay is a DUPLICATE, not a 409."""
+    import hashlib
+    import json
+
+    from schemas import BulkIngestionPayload
+
+    ticks = [{"market_hash_name": "Legacy Item", "price_cents": 1500, "timestamp": 1700000000}]
+    legacy_digest = hashlib.sha256(
+        json.dumps({"source": "skinport", "ticks": ticks}, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    payload = BulkIngestionPayload.model_validate({"source": "skinport", "ticks": ticks})
+
+    assert backend_main._bulk_payload_digest(payload) == legacy_digest
 
 
 @pytest.mark.asyncio
@@ -225,8 +363,8 @@ async def test_concurrent_bulk_requests_keep_new_item_ids_local_until_commit(mon
         allow_commits.set()
         responses = await asyncio.gather(*requests)
         assert responses == [
-            {"status": "SUCCESS", "records_processed": 1},
-            {"status": "SUCCESS", "records_processed": 1},
+            {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0},
+            {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0},
         ]
         assert backend_main.item_cache[market_hash_name] == 424242
     finally:

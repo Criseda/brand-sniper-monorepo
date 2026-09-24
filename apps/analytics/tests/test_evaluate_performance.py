@@ -297,6 +297,7 @@ async def test_tool_loop_exhausts_rounds_then_asks_no_tools(monkeypatch):
 class _FakeSession:
     def __init__(self, rows):
         self.rows = rows
+        self.statements = []
 
     async def __aenter__(self):
         return self
@@ -305,6 +306,7 @@ class _FakeSession:
         return False
 
     async def execute(self, stmt):
+        self.statements.append(stmt)
         result = MagicMock()
         result.all.return_value = self.rows
         return result
@@ -313,11 +315,17 @@ class _FakeSession:
 @pytest.mark.asyncio
 async def test_fetch_daily_trades(monkeypatch):
     rows = [("trade_row", "AK-47 | Redline (Field-Tested)", 0.5)]
-    monkeypatch.setattr(evaluate_performance, "AsyncSession", lambda engine: _FakeSession(rows))
+    session = _FakeSession(rows)
+    monkeypatch.setattr(evaluate_performance, "AsyncSession", lambda engine: session)
 
     result = await evaluate_performance.fetch_daily_trades()
 
     assert result == rows
+    # The audited float must be the bought listing's own, never the latest tick of the item.
+    (statement,) = session.statements
+    compiled = str(statement)
+    assert "simulated_trades.float_value" in compiled
+    assert "live_market_ticks" not in compiled
 
 
 # ---------------------------------------------------------------------------

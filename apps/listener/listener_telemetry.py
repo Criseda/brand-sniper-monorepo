@@ -5,6 +5,12 @@ ticks_processed_total = Counter(
     "Total number of market ticks processed (after dedup)",
 )
 
+feed_events_received_total = Counter(
+    "listener_feed_events_received_total",
+    "Total number of raw venue feed events captured for the feed_events table",
+    labelnames=["event_type"],
+)
+
 ticks_deduplicated_total = Counter(
     "listener_ticks_deduplicated_total",
     "Total number of ticks filtered as duplicates",

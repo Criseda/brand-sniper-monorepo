@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 
-from models import MarketTick
+from models import FeedEvent, MarketTick
 
 
 class BaseScraper(ABC):
@@ -23,10 +23,11 @@ class BaseScraper(ABC):
         """Releases any platform-specific resources (e.g. HTTP sessions). Override in subclass."""
         return
 
-    async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick, None]:
+    async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick | FeedEvent, None]:
         """
         Optional non-blocking generator that subscribes to the platform's
-        WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects.
+        WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects,
+        plus raw FeedEvent records where the venue feed is captured verbatim.
         """
         return
         yield  # pragma: no cover

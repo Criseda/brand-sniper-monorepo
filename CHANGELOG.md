@@ -17,13 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Added
 - Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_proven_edge.md`).
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
+- Raw Skinport feed capture (all event types, append-only `feed_events` JSONB) and listing-level tick fields (listing ID, event type, float, pattern, stickers, link) end to end, with feed-schema and retention notes in `docs/skinport_feed.md` (#232).
 
 #### Changed
+- Paper trades record the bought listing (`listing_id`, `float_value`), and the CFO audits that listing's float instead of the latest tick for the item (#232).
+- Fixed the net-margin formula in `docs/roadmap_proven_edge.md` failing to render on GitHub (`_` inside `\text{}`).
 - Re-planned Milestone 5 around outcome-labeled learning (Proven Edge); replaced `docs/roadmap_edge_distillation.md` and parked the Rust edge engine (#237-#239) pending a benchmark-driven decision.
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### In Progress / Planned
-- `[PE-01]` Raw feed capture & listing-level tick persistence (#232).
 - `[PE-02]` Fee-aware P&L function & market-outcome labeling (#233).
 - `[PE-03]` Deterministic replay & backtest harness (#248).
 - `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).

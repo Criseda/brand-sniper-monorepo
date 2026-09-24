@@ -24,13 +24,14 @@ from listener_telemetry import (
     anomalies_rejected_total,
     batch_buffer_size,
     dedup_cache_size,
+    feed_events_received_total,
     redis_operation_latency_seconds,
     rules_engine_latency_seconds,
     tick_queue_size,
     ticks_deduplicated_total,
     ticks_processed_total,
 )
-from models import MarketTick
+from models import FeedEvent, MarketTick
 from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
@@ -84,6 +85,8 @@ LISTENER_HEALTH_PORT = _positive_int_env("LISTENER_HEALTH_PORT", 9101)
 # Shared aiohttp session (initialized at startup, closed at shutdown)
 _http_session: aiohttp.ClientSession | None = None
 DedupCache = OrderedDict[str, tuple[int, int]]
+# Everything a producer can hand to the consumer; None is the shutdown sentinel.
+type StreamItem = MarketTick | FeedEvent
 
 
 async def get_http_session() -> aiohttp.ClientSession:
@@ -157,11 +160,15 @@ async def flush_batch_buffer(
     batch_id: str,
     store: RedisBatchStore,
     batch_pool: BoundedTaskPool,
+    feed_event_buffer: list[dict] | None = None,
 ) -> None:
     """Persist a stable batch, transfer buffer ownership, then schedule delivery."""
     snapshot = buffer.copy()
-    batch = await store.add(source, snapshot, batch_id=batch_id)
+    feed_event_snapshot = feed_event_buffer.copy() if feed_event_buffer else []
+    batch = await store.add(source, snapshot, batch_id=batch_id, feed_events=feed_event_snapshot)
     buffer.clear()
+    if feed_event_buffer is not None:
+        feed_event_buffer.clear()
     batch_buffer_size.set(0)
     try:
         await schedule_stored_batch(batch, store, batch_pool)
@@ -184,7 +191,7 @@ async def recover_pending_batches(store: RedisBatchStore, batch_pool: BoundedTas
     return recovered
 
 
-async def rest_poll_producer(scraper, queue: asyncio.Queue[MarketTick | None]) -> None:
+async def rest_poll_producer(scraper, queue: asyncio.Queue[StreamItem | None]) -> None:
     """Periodically polls REST stream and puts ticks into the queue."""
     while True:
         try:
@@ -197,15 +204,15 @@ async def rest_poll_producer(scraper, queue: asyncio.Queue[MarketTick | None]) -
             await asyncio.sleep(10)
 
 
-async def websocket_subscriber_producer(scraper, queue: asyncio.Queue[MarketTick | None]) -> None:
+async def websocket_subscriber_producer(scraper, queue: asyncio.Queue[StreamItem | None]) -> None:
     """Listens to real-time events from the platform's WebSocket stream relay and puts them into the queue."""
     if not hasattr(scraper, "listen_websocket_stream"):
         return
 
     while True:
         try:
-            async for tick in scraper.listen_websocket_stream():
-                await queue.put(tick)
+            async for item in scraper.listen_websocket_stream():
+                await queue.put(item)
                 tick_queue_size.set(queue.qsize())
         # Broad on purpose: supervisor loop must survive any transient failure and retry.
         except Exception as e:
@@ -265,6 +272,8 @@ async def evaluate_and_execute(
             purchase_price_cents=tick.price_cents,
             estimated_profit_cents=est_profit_cents,
             z_score=z_score,
+            listing_id=tick.listing_id,
+            float_value=tick.float_value,
         )
     else:
         anomalies_rejected_total.inc()
@@ -273,20 +282,91 @@ async def evaluate_and_execute(
         )
 
 
+async def update_window_and_detect(
+    tick: MarketTick,
+    cache: Redis,
+    anomaly_pool: BoundedTaskPool,
+    executor: ExecutionService,
+) -> None:
+    """Pushes a tick into the sliding price window and hands Z-score outliers to the Edge DRE."""
+    # 1. Update Volatile Sliding Cache Layer
+    redis_key = f"market:ticks:{tick.market_hash_name}"
+    value_string = f"{tick.timestamp}:{tick.price_cents}"
+    _t0 = time.monotonic()
+    await cache.zadd(redis_key, {value_string: tick.timestamp})
+    redis_operation_latency_seconds.observe(time.monotonic() - _t0)
+
+    # Keep only the last N ticks
+    _t1 = time.monotonic()
+    card = await cache.zcard(redis_key)
+    redis_operation_latency_seconds.observe(time.monotonic() - _t1)
+    if card > SLIDING_WINDOW_SIZE:
+        _t2 = time.monotonic()
+        await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
+        redis_operation_latency_seconds.observe(time.monotonic() - _t2)
+
+    # 2. Z-Score anomaly detection with macro baseline fallback
+    _t3 = time.monotonic()
+    raw_elements = await cache.zrange(redis_key, 0, -1)
+    redis_operation_latency_seconds.observe(time.monotonic() - _t3)
+    prices = [int(_decode_zset_element(element).split(":")[1]) for element in raw_elements if isinstance(element, (str, bytes))]
+
+    # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
+    _t4 = time.monotonic()
+    baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+    redis_operation_latency_seconds.observe(time.monotonic() - _t4)
+    baseline_data: dict | None = json.loads(baseline_raw) if baseline_raw else None
+
+    macro_avg = baseline_data.get("rolling_30d_avg_cents") if baseline_data else None
+    macro_vol = baseline_data.get("volatility_cents") if baseline_data else None
+    macro_cv = baseline_data.get("coefficient_of_variation") if baseline_data else None
+
+    result = calculate_z_score(prices, macro_avg, macro_vol, macro_cv)
+    if result is None:
+        return
+    z_score, mean_cents, source = result
+    if not should_trigger_anomaly(z_score, mean_cents, tick, source):
+        return
+
+    sticker_count = len(tick.stickers)
+    sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
+    logger.info(
+        "[ANOMALY] Outlier potential detected (%s): %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
+        source,
+        tick.market_hash_name,
+        sticker_tag,
+        tick.price_usd,
+        z_score,
+    )
+    anomalies_detected_total.labels(source=source).inc()
+    await anomaly_pool.submit(
+        partial(
+            evaluate_and_execute,
+            tick,
+            z_score,
+            cache,
+            executor,
+            baseline_data,
+            source,
+        )
+    )
+
+
 async def tick_consumer(
-    queue: asyncio.Queue[MarketTick | None],
+    queue: asyncio.Queue[StreamItem | None],
     platform_target: str,
     anomaly_pool: BoundedTaskPool,
     batch_pool: BoundedTaskPool,
     batch_store: RedisBatchStore,
     executor: ExecutionService,
 ) -> None:
-    """Processes ticks from the queue: deduplicates, caches, detects anomalies, and batches for ingest."""
+    """Processes stream items: records every tick and raw feed event, and scores live offers for anomalies."""
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
     cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
     batch_buffer: list[dict] = []
+    feed_event_buffer: list[dict] = []
     batch_buffer_id: str | None = None
     dedup_cache: DedupCache = OrderedDict()
 
@@ -294,100 +374,43 @@ async def tick_consumer(
 
     try:
         while True:
-            tick = await queue.get()
+            item = await queue.get()
             tick_queue_size.set(queue.qsize())
-            if tick is None:
+            if item is None:
                 queue.task_done()
                 break
             try:
                 try:
-                    # 1. Deduplication Filter
-                    if is_duplicate(tick, dedup_cache):
+                    if isinstance(item, FeedEvent):
+                        # Raw payloads are recorded verbatim for replay and labeling.
+                        feed_event_buffer.append(item.to_batch_record())
+                        feed_events_received_total.labels(event_type=item.event_type).inc()
+                    elif not item.feeds_price_window:
+                        # Sold events are market outcomes: recorded, but they never touch the
+                        # dedup cache, the price window, or the DRE.
+                        batch_buffer.append(item.to_batch_record())
+                    elif is_duplicate(item, dedup_cache):
                         ticks_deduplicated_total.inc()
-                        continue
-                    update_dedup_cache(tick, dedup_cache)
-                    dedup_cache_size.set(len(dedup_cache))
-                    ticks_processed_total.inc()
+                        if item.listing_id is not None:
+                            # A distinct listing at a repeated price is still recorded; it just does
+                            # not re-enter the price window, so decisions are unchanged.
+                            batch_buffer.append(item.to_batch_record())
+                    else:
+                        update_dedup_cache(item, dedup_cache)
+                        dedup_cache_size.set(len(dedup_cache))
+                        ticks_processed_total.inc()
 
-                    # Accumulate records for long-term database tracking
-                    batch_buffer.append(
-                        {
-                            "market_hash_name": tick.market_hash_name,
-                            "price_cents": tick.price_cents,
-                            "timestamp": tick.timestamp,
-                        }
-                    )
+                        # Accumulate records for long-term database tracking
+                        batch_buffer.append(item.to_batch_record())
+                        await update_window_and_detect(item, cache, anomaly_pool, executor)
                     batch_buffer_size.set(len(batch_buffer))
-
-                    # 2. Update Volatile Sliding Cache Layer
-                    redis_key = f"market:ticks:{tick.market_hash_name}"
-                    value_string = f"{tick.timestamp}:{tick.price_cents}"
-                    _t0 = time.monotonic()
-                    await cache.zadd(redis_key, {value_string: tick.timestamp})
-                    redis_operation_latency_seconds.observe(time.monotonic() - _t0)
-
-                    # Keep only the last N ticks
-                    _t1 = time.monotonic()
-                    card = await cache.zcard(redis_key)
-                    redis_operation_latency_seconds.observe(time.monotonic() - _t1)
-                    if card > SLIDING_WINDOW_SIZE:
-                        _t2 = time.monotonic()
-                        await cache.zremrangebyrank(redis_key, 0, card - SLIDING_WINDOW_SIZE - 1)
-                        redis_operation_latency_seconds.observe(time.monotonic() - _t2)
-
-                    # 3. Z-Score anomaly detection with macro baseline fallback
-                    _t3 = time.monotonic()
-                    raw_elements = await cache.zrange(redis_key, 0, -1)
-                    redis_operation_latency_seconds.observe(time.monotonic() - _t3)
-                    prices = [
-                        int(_decode_zset_element(element).split(":")[1])
-                        for element in raw_elements
-                        if isinstance(element, (str, bytes))
-                    ]
-
-                    # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
-                    _t4 = time.monotonic()
-                    baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
-                    redis_operation_latency_seconds.observe(time.monotonic() - _t4)
-                    baseline_data: dict | None = json.loads(baseline_raw) if baseline_raw else None
-
-                    macro_avg = baseline_data.get("rolling_30d_avg_cents") if baseline_data else None
-                    macro_vol = baseline_data.get("volatility_cents") if baseline_data else None
-                    macro_cv = baseline_data.get("coefficient_of_variation") if baseline_data else None
-
-                    result = calculate_z_score(prices, macro_avg, macro_vol, macro_cv)
-                    if result is not None:
-                        z_score, mean_cents, source = result
-
-                        if should_trigger_anomaly(z_score, mean_cents, tick, source):
-                            sticker_count = len(tick.stickers)
-                            sticker_tag = f" ({sticker_count} stickers)" if sticker_count > 0 else ""
-                            logger.info(
-                                "[ANOMALY] Outlier potential detected (%s): %s%s at $%.2f (Z=%.2f). Running Edge DRE...",
-                                source,
-                                tick.market_hash_name,
-                                sticker_tag,
-                                tick.price_usd,
-                                z_score,
-                            )
-                            anomalies_detected_total.labels(source=source).inc()
-                            await anomaly_pool.submit(
-                                partial(
-                                    evaluate_and_execute,
-                                    tick,
-                                    z_score,
-                                    cache,
-                                    executor,
-                                    baseline_data,
-                                    source,
-                                )
-                            )
                 # Broad on purpose: one bad tick must not kill the consumer loop.
                 except Exception as item_err:
-                    logger.error("Error processing tick for '%s': %s", tick.market_hash_name, item_err)
+                    item_label = f"feed event {item.event_type}" if isinstance(item, FeedEvent) else item.market_hash_name
+                    logger.error("Error processing tick for '%s': %s", item_label, item_err)
 
-                # 4. Persist full buffers outside the per-item exception boundary.
-                if len(batch_buffer) >= CHUNK_LIMIT:
+                # Persist full buffers outside the per-item exception boundary.
+                if len(batch_buffer) >= CHUNK_LIMIT or len(feed_event_buffer) >= CHUNK_LIMIT:
                     batch_buffer_id = batch_buffer_id or str(uuid4())
                     await flush_batch_buffer(
                         platform_target,
@@ -395,13 +418,14 @@ async def tick_consumer(
                         batch_id=batch_buffer_id,
                         store=batch_store,
                         batch_pool=batch_pool,
+                        feed_event_buffer=feed_event_buffer,
                     )
                     batch_buffer_id = None
             finally:
                 queue.task_done()
     finally:
         try:
-            if batch_buffer:
+            if batch_buffer or feed_event_buffer:
                 batch_buffer_id = batch_buffer_id or str(uuid4())
                 await flush_batch_buffer(
                     platform_target,
@@ -409,6 +433,7 @@ async def tick_consumer(
                     batch_id=batch_buffer_id,
                     store=batch_store,
                     batch_pool=batch_pool,
+                    feed_event_buffer=feed_event_buffer,
                 )
         finally:
             await cache.aclose()
@@ -468,7 +493,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
     logger.info("Target Routing Node Core             : %s:%s", COMPUTE_NODE_IP, COMPUTE_PORT)
     logger.info("======================================================================")
 
-    queue: asyncio.Queue[MarketTick | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
+    queue: asyncio.Queue[StreamItem | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
     scraper = ScraperFactory.get_scraper(platform_target)
     executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")

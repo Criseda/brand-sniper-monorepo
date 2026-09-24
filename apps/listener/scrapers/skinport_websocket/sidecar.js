@@ -8,6 +8,7 @@ require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 const cookie = process.env.CLOUDFLARE_COOKIE || '';
 let redisUrl = process.env.EDGE_REDIS_URL || 'redis://localhost:6380';
+const SALE_FEED_CHANNEL = 'skinport:sale_feed';
 
 console.log('[SKINPORT WS] Sidecar initializing...');
 console.log(`[SKINPORT WS] Target Redis Endpoint: ${redisUrl}`);
@@ -67,16 +68,15 @@ async function main() {
 
     socket.on('saleFeed', async (data) => {
         try {
-            const eventType = data ? data.eventType : null;
-            if (eventType !== 'listed') {
-                return;
-            }
-            
-            const sales = data.sales || [];
-            console.log(`[SKINPORT WS] Received listings event containing ${sales.length} items.`);
-            
-            // Forward listings to Redis Pub/Sub channel
-            await redisClient.publish('skinport:live_listings', JSON.stringify(data));
+            // Every event type is forwarded (listed, sold, ...): sold events are the market's own
+            // ground truth for outcome labeling. The raw payload is wrapped untouched with a
+            // receive timestamp so the listener can persist it verbatim.
+            const eventType = data && data.eventType ? data.eventType : 'unknown';
+            const sales = (data && data.sales) || [];
+            console.log(`[SKINPORT WS] Received ${eventType} event containing ${sales.length} items.`);
+
+            const envelope = { receivedAt: Date.now(), payload: data };
+            await redisClient.publish(SALE_FEED_CHANNEL, JSON.stringify(envelope));
         } catch (err) {
             console.error('[SKINPORT WS] Error handling saleFeed event:', err);
         }

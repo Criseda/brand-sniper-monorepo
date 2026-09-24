@@ -1,7 +1,15 @@
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import JSON, BigInteger, Column, Integer, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Index, SQLModel
+
+# JSONB on PostgreSQL, plain JSON elsewhere (the backend tests run on in-memory SQLite).
+# none_as_null stores Python None as SQL NULL rather than the JSON literal 'null'.
+JsonDocument = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+# BIGINT identity on PostgreSQL; SQLite only autoincrements an INTEGER primary key.
+BigIdentity = BigInteger().with_variant(Integer(), "sqlite")
 
 
 class MarketItem(SQLModel, table=True):
@@ -33,10 +41,28 @@ class LiveMarketTick(SQLModel, table=True):
     marketplace_source: str = Field(default="steam")  # e.g., steam, csfloat, skinport
 
     float_value: float | None = Field(default=None, index=True)  # Exact item wear (0.0 - 1.0)
-    paint_index: int | None = Field(default=None)  # Pattern identifier
+    paint_index: int | None = Field(default=None)  # Finish (skin) identifier, Skinport `finish`
+    pattern: int | None = Field(default=None)  # Paint seed, Skinport `pattern`
+
+    # Listing-level context. All NULL on aggregate REST snapshot rows, which carry no listing.
+    listing_id: str | None = Field(default=None, max_length=64)
+    event_type: str | None = Field(default=None, max_length=32)  # e.g. listed, sold
+    stickers: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JsonDocument, nullable=True))
+    # Link that opens the listing. For Skinport this is the item page (the feed sends no sale ID).
+    listing_url: str | None = Field(default=None, max_length=512)
 
     # Let the PostgreSQL server safely generate the UTC timestamp natively
     inserted_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
+
+    # Partial index: most rows are REST snapshots with a NULL listing_id, which would only bloat
+    # the index and slow the hot ingest path.
+    __table_args__ = (
+        Index(
+            "ix_live_market_ticks_listing_id",
+            "listing_id",
+            postgresql_where=text("listing_id IS NOT NULL"),
+        ),
+    )
 
 
 class IngestionBatch(SQLModel, table=True):
@@ -52,6 +78,21 @@ class IngestionBatch(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
         index=True,
     )
+
+
+class FeedEvent(SQLModel, table=True):
+    """
+    Append-only capture of every raw venue feed event (listed, sold, ...), stored verbatim.
+    Written through the durable listener batch path, so batch-level idempotency applies.
+    """
+
+    __tablename__: str = "feed_events"
+
+    id: int | None = Field(default=None, sa_column=Column(BigIdentity, primary_key=True, autoincrement=True))
+    source: str = Field(nullable=False, max_length=32)  # e.g. skinport
+    event_type: str = Field(nullable=False, max_length=32)
+    received_at: datetime = Field(nullable=False, index=True)  # Edge receive time (UTC)
+    payload: dict[str, Any] = Field(sa_column=Column(JsonDocument, nullable=False))
 
 
 class HistoricalPrice(SQLModel, table=True):
@@ -107,5 +148,10 @@ class SimulatedTrade(SQLModel, table=True):
     purchase_price_cents: int = Field(nullable=False)
     estimated_profit_cents: int = Field(nullable=False)
     trigger_z_score: float = Field(nullable=False)
+
+    # The exact listing that was bought, when the trigger came from a listing-level tick.
+    # NULL for trades triggered by REST snapshots and for trades recorded before this column existed.
+    listing_id: str | None = Field(default=None, max_length=64)
+    float_value: float | None = Field(default=None)  # Float of the bought listing, not of the item in general
 
     simulated_buy_timestamp: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
