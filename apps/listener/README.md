@@ -16,7 +16,9 @@ Both paths run through bounded worker pools owned by `asyncio.TaskGroup`. The
 tick queue, anomaly queue, and batch-flush queue apply asynchronous backpressure
 at configurable limits, preventing burst traffic from creating an unbounded
 number of tasks. Shutdown stops producers, drains queued work within
-`LISTENER_SHUTDOWN_GRACE_SECONDS`, and then closes network resources.
+`LISTENER_SHUTDOWN_GRACE_SECONDS`, and then closes network resources. Each stage has its own
+grace window, so keep the container's `stop_grace_period` (120 s in both compose
+stacks) above three times `LISTENER_SHUTDOWN_GRACE_SECONDS`.
 
 Paper-trade submission is awaited inside the anomaly worker. Backend rejection,
 timeouts, and connection failures therefore reach the worker supervisor and are

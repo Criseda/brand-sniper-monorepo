@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Re-planned Milestone 5 around outcome-labeled learning (Proven Edge); replaced `docs/roadmap_edge_distillation.md` and parked the Rust edge engine (#237-#239) pending a benchmark-driven decision.
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
+#### Fixed
+- The listener container gets a 120 s `stop_grace_period` in both compose stacks, so Docker no longer kills its shutdown drain after 10 s and drops buffered feed events (#252).
+
 #### In Progress / Planned
 - `[PE-03]` Deterministic replay & backtest harness (#248).
 - `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).

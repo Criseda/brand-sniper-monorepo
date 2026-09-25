@@ -144,7 +144,9 @@ Raw events get the same durability as ticks already had:
 
 - **In listener memory** until a flush. A flush happens when either buffer reaches `CHUNK_LIMIT` (each REST
   poll triggers one, roughly every 5 minutes) and on graceful shutdown. A listener crash loses whatever is
-  still buffered.
+  still buffered. Both compose stacks give the listener `stop_grace_period: 120s`, so `docker stop` and
+  redeploys wait for the drain (up to about 3x `LISTENER_SHUTDOWN_GRACE_SECONDS`) instead of killing it
+  after Docker's 10 s default.
 - **In the edge Redis stream** after a flush, until the backend acknowledges the batch. This survives a
   listener crash or restart, but **not a Redis restart**: the edge Redis runs with `--save '' --appendonly no`
   (RAM only), so pending and dead-letter batches are lost with it.

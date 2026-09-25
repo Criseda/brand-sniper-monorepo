@@ -53,6 +53,10 @@ services:
     networks:
       - sniper_edge_network
     restart: unless-stopped
+    # Shutdown drains the tick queue, then the batch-flush and anomaly pools, each bounded by
+    # LISTENER_SHUTDOWN_GRACE_SECONDS (default 30 s), so the worst case is about 3x that value.
+    # Docker's 10 s default would SIGKILL a drain in progress and drop the buffered feed events.
+    stop_grace_period: 120s
     logging: *default-logging
     deploy:
       resources:
