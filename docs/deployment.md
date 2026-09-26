@@ -210,8 +210,8 @@ additional environment variables from the compose file for Docker-internal netwo
 | `LLM_API_KEY` | Bearer token for the endpoint; omit only with `LLM_ALLOW_NO_AUTH=true` for a local endpoint that permits unauthenticated access |
 | `LLM_FALLBACK_MODELS` | Optional comma-separated fallback models used after quota exhaustion (e.g. `openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.6-27b`) |
 | `LLM_REQUEST_TIMEOUT_SECONDS` | Optional request timeout, default `60` |
-| `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard |
-| `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard |
+| `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard. Not used yet: the listener calls only public endpoints, without credentials (#275). Kept for the account API |
+| `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard. Not used yet, as above |
 | `REDIS_PASSWORD` | Strong password used for securing the Edge Redis cache service |
 | `BACKEND_API_KEY` | Random shared secret of at least 32 characters; the same value is installed on the server and every edge node |
 | `MLFLOW_BACKEND_STORE_URI` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |

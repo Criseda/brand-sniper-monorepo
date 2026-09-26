@@ -10,7 +10,7 @@ from the production database on 2026-09-26.
 |:---|:---|:---|:---|:---|
 | Kaggle Steam price dataset | `historical_prices` | Steam Community Market | 2013-04-26 to 2024-06-15 | Static and older than the crash. Long term context only. |
 | Skinport sales history (`/v1/sales/history`) | `baseline_builds`, `venue_baselines` | Skinport | One build per day from 2026-09-26 | The live baselines (#259). |
-| Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Gaps whenever my PC was off. |
+| Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Trade locked listings only until #275 (see below). Gaps whenever my PC was off. |
 | Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` with an `event_type` | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event with listing details (#232). Labels are built from this. |
 | Outcome labels | `listing_outcomes` | Skinport | Empty until about 2026-10-08 | A listing gets its label 14 days and 1 hour after it was seen (#233). |
 
@@ -104,6 +104,14 @@ The REST poller calls `https://api.skinport.com/v1/items` and stores each item's
 ask at that moment. These are not sale prices. There are about 10.4 million rows over 22 days: 3 in June,
 7 in July, 8 in August and 4 so far in September 2026. One stray row is dated 2024-06-15. Only the server
 insert time is stored, not the edge time (#256).
+
+**Until #275 every REST snapshot is a trade locked price.** From the first Skinport commit on 2026-06-24
+the poller sent `tradable=0`, which returns only listings that are not tradable yet (#267, details in
+[`docs/skinport_feed.md`](skinport_feed.md#rest-lowest-asks-v1items)). Those asks sit a median 11% below the
+lowest tradable ask, because the buyer waits out the lock. Since #275 was deployed the poller asks for
+tradable listings only. The cutover shows in the data as the jump from about 10,000 priced items per poll to
+about 25,000. Snapshots before it cannot stand in for prices I could buy at and resell, so replays, the
+scorecard (#249) and any training set must leave them out or report them apart.
 
 The sale feed runs through the Node.js sidecar in `apps/listener/scrapers/skinport_websocket/`. Since
 2026-09-24 21:58 UTC it records every `listed` and `sold` event, raw in `feed_events` and normalized in
