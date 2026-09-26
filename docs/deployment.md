@@ -145,6 +145,9 @@ cd deployments/server-stack
 
 #### 1. Macro Baseline Calculation & Edge Redis Sync
 
+> [!WARNING]
+> These baselines come from the static, pre-crash Kaggle Steam dataset in `historical_prices`, so re-running the job recomputes the same numbers and they do not match today's Skinport prices. Read [`data_sources.md`](data_sources.md) before relying on them.
+
 * **Initial Seeding**: On first setup (or after wiping Redis), run a full calculation to build the baseline database table and populate the Redis cache for all 22k+ skins:
   ```bash
   # Trigger full calculation in the background

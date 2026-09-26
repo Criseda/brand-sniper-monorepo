@@ -55,7 +55,8 @@ flowchart TD
 
 ## Hot Path: Real-Time Anomaly Detection
 
-The **Listener** (`apps/listener`) runs 24/7 inside Docker on the Edge Node.
+The **Listener** (`apps/listener`) runs inside Docker on the Edge Node. The edge is the owner's PC and is
+not on 24/7; see [`data_sources.md`](data_sources.md) for what that means for recorded data and edge state.
 It ingests real-time market data ticks via:
 
 - **REST polling** — Skinport asset directory stream

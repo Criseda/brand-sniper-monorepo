@@ -84,6 +84,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #18, and #33
 - **Script bootstrap**: analytics scripts call `setup_script_environment(__file__)` at the top and `validate_required_env([...])` inside `__main__` (never at import) — do not re-add `load_dotenv`/`sys.path`/`reconfigure` boilerplate
 - **Service bootstrap**: `apps/backend/main.py`, `apps/listener/main.py`, and `apps/listener/replay_batches.py` call `setup_service_environment(__file__)` at the top (`apps/listener/backtest/__main__.py` passes its package directory so the listener `.env` loads) (same dotenv/stream setup, no `sys.path` mutation)
 - **Listener spawns Node.js sidecar** for WebSocket — lives in `scrapers/skinport_websocket/`
+- **Data sources**: read [`docs/data_sources.md`](docs/data_sources.md) before touching baselines, backtests, training data, or a new venue. It records what data exists, the Kaggle Steam dataset (pre-crash, wrong venue, static: not a live reference price), the Skinport data we hold, and that the stacks run on a PC that is not always on
 - **Skinport API**: read [`docs/skinport_feed.md`](docs/skinport_feed.md) before touching Skinport code. It links the official docs ([sale feed](https://docs.skinport.com/websocket/sale-feed), [items](https://docs.skinport.com/items), [sales history](https://docs.skinport.com/sales/history), [account transactions](https://docs.skinport.com/account/transactions)) and records where the live feed differs from them (e.g. `saleId` is always null; `productId` is the listing key)
 
 ## Testing quirks

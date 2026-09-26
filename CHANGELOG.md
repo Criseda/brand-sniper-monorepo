@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
 - Raw Skinport feed capture (all event types, append-only `feed_events` JSONB) and listing-level tick fields (listing ID, event type, float, pattern, stickers, link) end to end, with feed-schema and retention notes in `docs/skinport_feed.md` (#232).
 - Deterministic replay & backtest harness (`apps/listener/backtest`, `python -m backtest run|export`): replays recorded feed events and REST snapshots through the live decision code, writes byte-identical decision logs, ships a sanitized CI fixture and a live-parity test; see `docs/backtesting.md` (#248).
+- Data-source reference (`docs/data_sources.md`): the Kaggle Steam dataset and why its pre-crash baselines are not a live reference price, the Skinport data on hand, the not-always-on edge, and the July 2026 missing-baselines incident.
 - Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
 #### Changed
