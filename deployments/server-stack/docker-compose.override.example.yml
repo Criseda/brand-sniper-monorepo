@@ -75,5 +75,12 @@ services:
     #   - ../../apps/analytics:/app/apps/analytics
     #   - ../../packages/shared_utils:/app/packages/shared_utils
 
+  baseline-builder:
+    environment:
+      DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/brand_sniper}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:

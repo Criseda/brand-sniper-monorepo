@@ -27,6 +27,7 @@ from typing import IO, Any
 
 from backtest.harness import TimingHook, open_log, run_replay
 from backtest.sources import (
+    BaselineSchedule,
     BaselineSnapshot,
     RecordedEvent,
     RecordedFeedEvent,
@@ -63,7 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--fixture", type=Path, help="Fixture file (JSON Lines) to replay")
     source.add_argument("--start", type=parse_utc, help="Database replay: range start (ISO, UTC)")
     run.add_argument("--end", type=parse_utc, help="Database replay: range end, exclusive (ISO, UTC)")
-    run.add_argument("--baselines", type=Path, help="Baseline file; required with --fixture, defaults to the database")
+    run.add_argument(
+        "--baselines",
+        type=Path,
+        help="Baseline file; required with --fixture. A database replay defaults to the dated builds in effect",
+    )
     run.add_argument(
         "--warmup-hours",
         type=float,
@@ -107,6 +112,7 @@ def _write_timing(timings: IO[str]) -> TimingHook:
 async def run_command(args: argparse.Namespace) -> int:
     strategy = STRATEGIES[args.strategy]()
     events: Any
+    baselines: BaselineSnapshot | BaselineSchedule
     if args.fixture is not None:
         if args.baselines is None:
             raise SystemExit("--baselines is required with --fixture")
@@ -117,17 +123,26 @@ async def run_command(args: argparse.Namespace) -> int:
     else:
         if args.end is None:
             raise SystemExit("--end is required with --start")
-        from backtest.database import load_current_baselines, stream_recorded_events
+        from backtest.database import load_baseline_schedule, stream_recorded_events
 
         replay_start = args.start - timedelta(hours=args.warmup_hours)
         events = stream_recorded_events(replay_start, args.end, source=args.source)
-        baselines = BaselineSnapshot.load(args.baselines) if args.baselines else await load_current_baselines()
         source_label = f"database:{args.source}:{args.start.isoformat()}/{args.end.isoformat()}"
         log_from_ms = _epoch_ms(args.start)
-        if baselines.as_of is not None and parse_utc(baselines.as_of) > args.start:
+        if args.baselines:
+            baselines = BaselineSnapshot.load(args.baselines)
+            first_baseline_time = baselines.as_of
+        else:
+            baselines = await load_baseline_schedule(replay_start, args.end, venue=args.source)
+            if not baselines.builds:
+                raise SystemExit(
+                    f"No {args.source} baseline builds before {args.end.isoformat()}; run apps/analytics/build_baselines.py"
+                )
+            first_baseline_time = baselines.builds[0].built_at
+        if first_baseline_time is not None and parse_utc(first_baseline_time) > replay_start:
             logger.warning(
                 "[BACKTEST] Baselines are from %s, after the replay start: decisions use later information.",
-                baselines.as_of,
+                first_baseline_time,
             )
 
     timings_file = args.timings.open("w", encoding="utf-8", newline="\n") if args.timings else None
@@ -211,11 +226,18 @@ def build_fixture(
 
 
 async def export_command(args: argparse.Namespace) -> int:
-    from backtest.database import load_current_baselines, stream_recorded_events
+    from backtest.database import load_baseline_schedule, stream_recorded_events
 
+    schedule = await load_baseline_schedule(args.start, args.end, venue=args.source)
+    if not schedule.builds:
+        raise SystemExit(
+            f"No {args.source} baseline builds before {args.end.isoformat()}; run apps/analytics/build_baselines.py"
+        )
+    # A fixture holds one snapshot: the build in effect at the start of the range.
+    first_build = schedule.builds[schedule.active_index(_epoch_ms(args.start))]
     events = [event async for event in stream_recorded_events(args.start, args.end, source=args.source)]
     items = select_items(events, args.max_items)
-    kept, fixture_baselines = build_fixture(events, await load_current_baselines(), items)
+    kept, fixture_baselines = build_fixture(events, await schedule.load(first_build.build_id), items)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     count = write_fixture(args.out_dir / "events.jsonl", kept)

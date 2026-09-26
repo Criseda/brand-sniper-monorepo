@@ -25,7 +25,7 @@ from listener_telemetry import (
 from models import MarketTick
 from redis.asyncio import Redis
 from rules_engine import evaluate_opportunity
-from shared_utils import PROFIT_ESTIMATE_BASIS_NET, fees_for, get_logger, net_resale_margin_cents
+from shared_utils import PROFIT_ESTIMATE_BASIS_NET, edge_baselines_key, fees_for, get_logger, net_resale_margin_cents
 from task_supervisor import BoundedTaskPool
 from zscore import calculate_z_score, should_trigger_anomaly
 
@@ -101,9 +101,9 @@ async def score_window(tick: MarketTick, cache: Redis) -> WindowScore | None:
     redis_operation_latency_seconds.observe(time.monotonic() - _t3)
     prices = [int(_decode_zset_element(element).split(":")[1]) for element in raw_elements if isinstance(element, (str, bytes))]
 
-    # Fetch macro baseline for volatility-aware Z-score (Layers 1-2)
+    # Fetch the venue's baseline for the volatility-aware Z-score (Layers 1-2)
     _t4 = time.monotonic()
-    baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+    baseline_raw = await cache.hget(edge_baselines_key(tick.venue), tick.market_hash_name)
     redis_operation_latency_seconds.observe(time.monotonic() - _t4)
     baseline_data: dict[str, Any] | None = json.loads(baseline_raw) if baseline_raw else None
 
@@ -156,7 +156,7 @@ async def evaluate_and_execute(
         )
 
         if baseline is None:
-            baseline_raw = await cache.get(f"baseline:{tick.market_hash_name}")
+            baseline_raw = await cache.hget(edge_baselines_key(tick.venue), tick.market_hash_name)
             baseline = json.loads(baseline_raw) if baseline_raw else {}
 
         await executor.execute(

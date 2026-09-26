@@ -135,6 +135,51 @@ class ItemMacroBaseline(SQLModel, table=True):
     updated_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
 
 
+class BaselineBuild(SQLModel, table=True):
+    """
+    One run of the baseline builder for one venue. Builds are never overwritten, so a replay can use
+    the baselines that were current at any past moment (the newest build with built_at at or before it).
+    """
+
+    __tablename__: str = "baseline_builds"
+
+    id: int | None = Field(default=None, primary_key=True)
+    venue: str = Field(nullable=False, max_length=32, index=True)  # e.g. skinport
+    method: str = Field(nullable=False, max_length=32)  # shared_utils.baselines.BASELINE_METHOD
+    built_at: datetime = Field(nullable=False, index=True)  # When the source data was fetched (naive UTC)
+    item_count: int = Field(nullable=False)
+
+
+class VenueBaseline(SQLModel, table=True):
+    """
+    One item's baseline in one build, plus the sale statistics it was built from. See
+    shared_utils.baselines for how each field is derived.
+    """
+
+    __tablename__: str = "venue_baselines"
+
+    build_id: int = Field(foreign_key="baseline_builds.id", ondelete="CASCADE", primary_key=True)
+    market_hash_name: str = Field(primary_key=True)  # Versioned name (phase included), as ticks carry it
+
+    latest_price_cents: int = Field(nullable=False)
+    rolling_30d_avg_cents: int = Field(nullable=False)
+    rolling_90d_avg_cents: int = Field(nullable=False)
+    volatility_cents: int = Field(nullable=False)
+    support_floor_cents: int = Field(nullable=False)
+    avg_volume_30d: float = Field(nullable=False)
+    drift_percent: float = Field(nullable=False)
+    volatility_method: str = Field(nullable=False, max_length=32)  # sales_spread or daily_medians
+
+    # Source statistics. The 24 hour median of each daily build feeds later volatility estimates.
+    median_24h_cents: int | None = Field(default=None)
+    volume_24h: int = Field(nullable=False)
+    median_7d_cents: int | None = Field(default=None)
+    volume_7d: int = Field(nullable=False)
+    min_30d_cents: int = Field(nullable=False)
+    volume_30d: int = Field(nullable=False)
+    volume_90d: int = Field(nullable=False)
+
+
 class SimulatedTrade(SQLModel, table=True):
     """
     Paper trading log for the Deterministic Rules Engine to evaluate strategy profitability.

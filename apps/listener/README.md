@@ -7,7 +7,7 @@ The Listener application is designed to run 24/7 on edge hardware (e.g., a Raspb
 Because the ingestion node must never block, it routes incoming data ticks concurrently into two fast pipelines:
 
 1. **The Edge Redis Hot Cache & DRE (The Hot Path):**
-   Maintains a rolling 5-minute mathematical window of current market floors and synchronized long-term ML baselines. The **Deterministic Rules Engine (DRE)** queries this Edge Redis in `O(1)` time instantly to execute `SimulatedTrades` using the local `PaperExecutor`. Execution logs are then asynchronously POSTed over the network to the server backend to prevent blocking.
+   Maintains a rolling 5-minute mathematical window of current market floors and the venue's baselines, which the listener loads from the backend when it starts and refreshes every 15 minutes (see [`docs/data_sources.md`](../../docs/data_sources.md)). The **Deterministic Rules Engine (DRE)** queries this Edge Redis in `O(1)` time instantly to execute `SimulatedTrades` using the local `PaperExecutor`. Execution logs are then asynchronously POSTed over the network to the server backend to prevent blocking.
 
 2. **The Batched Ingestion (The Cold Path):**
    Streams bulk batches of market ticks over the network to the server backend REST API (`/api/v1/ingest/bulk`) to be saved into the permanent SQL database. This historical data is later mined by the Analytics pipeline to train the AI baselines.

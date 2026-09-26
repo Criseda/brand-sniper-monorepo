@@ -18,6 +18,7 @@ class MockMarketTick:
     market_hash_name: str
     price_cents: int
     stickers: list[dict[str, str]]
+    venue: str = "skinport"
 
 
 @pytest.mark.asyncio
@@ -93,7 +94,7 @@ def mock_redis_with_volatility(mock_redis):
         "rolling_30d_avg_cents": 1600,
         "volatility_cents": 50,
     }
-    mock_redis.data["baseline:AK-47 | Redline (Field-Tested)"] = json.dumps(baseline)
+    mock_redis.data["baselines:skinport"]["AK-47 | Redline (Field-Tested)"] = json.dumps(baseline)
     return mock_redis
 
 
@@ -143,7 +144,7 @@ async def test_baseline_passed_directly_works(mock_redis):
     )
     baseline = {"support_floor_cents": 1500, "latest_price_cents": 1600}
     # Even without the baseline in Redis, passing it directly should work
-    mock_redis.data.pop("baseline:AK-47 | Redline (Field-Tested)", None)
+    mock_redis.data["baselines:skinport"].pop("AK-47 | Redline (Field-Tested)", None)
     assert await evaluate_opportunity(tick, mock_redis, baseline=baseline) is True
 
 
@@ -164,7 +165,7 @@ async def test_sticker_not_in_price_map_is_skipped(mock_redis):
 @pytest.mark.asyncio
 async def test_non_numeric_sticker_price_is_ignored(mock_redis):
     """A corrupt (non-numeric) sticker price must not crash the evaluation."""
-    mock_redis.data["sticker_prices"]["Broken Sticker"] = "not-a-number"
+    mock_redis.data["sticker_prices:skinport"]["Broken Sticker"] = "not-a-number"
 
     tick = MockMarketTick(
         market_hash_name="AK-47 | Redline (Field-Tested)",
@@ -188,6 +189,7 @@ async def test_free_stickers_below_base_price_approved(mock_redis):
 @pytest.mark.asyncio
 async def test_tick_without_stickers_attribute_is_safe(mock_redis):
     class BareTick:
+        venue = "skinport"
         market_hash_name = "AK-47 | Redline (Field-Tested)"
         price_cents = 1700
 

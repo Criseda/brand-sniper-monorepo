@@ -9,6 +9,7 @@ from the production database on 2026-09-26.
 | Source | Table | Venue | Covers | Status |
 |:---|:---|:---|:---|:---|
 | Kaggle Steam price dataset | `historical_prices` | Steam Community Market | 2013-04-26 to 2024-06-15 | Static and older than the crash. Long term context only. |
+| Skinport sales history (`/v1/sales/history`) | `baseline_builds`, `venue_baselines` | Skinport | One build per day from 2026-09-26 | The live baselines (#259). |
 | Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Gaps whenever my PC was off. |
 | Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` with an `event_type` | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event with listing details (#232). Labels are built from this. |
 | Outcome labels | `listing_outcomes` | Skinport | Empty until about 2026-10-08 | A listing gets its label 14 days and 1 hour after it was seen (#233). |
@@ -24,10 +25,11 @@ The files go in `data/items/`, which is not in git. `apps/analytics/validate_his
 and `apps/analytics/seed_historical.py` loads them once into `historical_prices`. Nothing writes to that
 table afterwards.
 
-Every baseline comes from it. `apps/analytics/long_term_macro.py` computes the `item_macro_baselines` rows
-(latest price, 30 and 90 day averages, volatility, support floor) and `update_baselines.py` copies them
-into the edge Redis as `baseline:<market_hash_name>`. The Z score and the DRE read them from there. The
-backend also reads `historical_prices` for its long term Steam price (`apps/backend/queries.py`).
+Until #259 every live baseline came from it: `apps/analytics/long_term_macro.py` computed the
+`item_macro_baselines` rows and a sync script copied them into the edge Redis. That sync is gone. The
+`item_macro_baselines` rows are still computed and the backend still reads them, along with
+`historical_prices`, for the long term Steam context it gives the CFO (`apps/backend/queries.py`), but the
+listener no longer sees them.
 
 ### Why these baselines are wrong today
 
@@ -56,10 +58,43 @@ Skinport price over the two days before. That median mixes asks and sales, so it
 | Sticker | 865 | 0.86 | 19% |
 | Agent | 160 | 0.63 | 1% |
 
-With these numbers the DRE treats ordinary knife and glove listings as bargains and overstates the profit,
-and it misses real bargains on items that went up. Do not use the Kaggle baselines as the live reference
-price. The dataset is still useful for how an item behaved over the years. Live baselines should come from
-recent prices on the venue being traded (#259).
+With these numbers the DRE treated ordinary knife and glove listings as bargains and overstated the
+profit, and it missed real bargains on items that went up. Do not use the Kaggle baselines as the live
+reference price. The dataset is still useful for how an item behaved over the years.
+
+## Current baselines
+
+Since #259 the baselines come from recent sales on the venue being traded. For Skinport,
+`apps/analytics/build_baselines.py` makes one request to the sales history endpoint, which returns the min,
+max, average, median and volume of every item's sales over the last 24 hours, 7, 30 and 90 days, in USD.
+Skinport computes these itself, so they have no holes when my PC was off. Each run is stored as a new
+build in `baseline_builds` with one `venue_baselines` row per item, and builds are never overwritten.
+
+How each field is filled (the code is `shared_utils/baselines.py`):
+
+| Field | Source |
+|:---|:---|
+| Latest price | 24 hour median when the item sold at least 5 times that day, else the 7 day median (at least 3 sales), else the 30 day median |
+| 30 and 90 day average | 30 and 90 day medians. The mean is not used because rare patterns and stickers pull it up. |
+| Volume | 30 day sales divided by 30 |
+| Volatility | Once an item has 14 daily medians from earlier builds in the last 30 days, their standard deviation. Before that, an estimate: (30 day median minus 30 day minimum) divided by the square root of 2 ln n, where n is the number of sales. It never goes below 1% of the median. |
+| Support floor | With enough daily medians, their 10th percentile. Before that, the 30 day median minus 1.28 times the volatility, which is the 10th percentile of a normal distribution. |
+| Sticker prices | The latest price of each `Sticker | ...` item, keyed by the name without that prefix, because that is how a listing names an applied sticker |
+
+An item with fewer than 5 sales in 30 days gets no baseline, and the DRE skips it. On 2026-09-26 that
+left about 7,900 of 37,000 Skinport items with a baseline.
+
+The volatility estimate only looks at the low side of the sales. The highest sale is useless here: an
+AK-47 Redline in Field Tested had a 30 day median of $29.29 and a maximum of $456.06, because of rare
+patterns and stickers. The lowest of n sales from a roughly normal spread sits about the square root of
+2 ln n standard deviations under the median. A few underpriced sales make the estimate a bit larger, so
+it errs towards approving less. This estimate is approximate. It gets replaced item by item as daily
+builds pile up, and `volatility_method` on each row says which one was used.
+
+The listener gets the newest build from the backend (`GET /api/v1/baselines/{venue}/latest`) as soon as it
+starts and then every 15 minutes, and loads it into one Redis hash per venue (`baselines:<venue>`,
+`sticker_prices:<venue>`, `baseline_meta:<venue>`). Replays use the build that was current at each moment,
+so old decisions are replayed with the baselines they actually had (see [`backtesting.md`](backtesting.md)).
 
 ## Skinport data
 
@@ -74,8 +109,7 @@ The sale feed runs through the Node.js sidecar in `apps/listener/scrapers/skinpo
 2026-09-24 21:58 UTC it records every `listed` and `sold` event, raw in `feed_events` and normalized in
 `live_market_ticks` with the listing ID, float, pattern, stickers and link. The receive times are exact.
 
-Skinport also has a sales history endpoint (`/v1/sales/history`) with 7, 30 and 90 day aggregates per
-item. I do not use it yet, but it is the obvious source for current Skinport baselines.
+The sales history endpoint (`/v1/sales/history`) feeds the current baselines, described above.
 
 ## My PC is not always on
 
@@ -91,15 +125,24 @@ MLflow, Prometheus and Grafana. Only PostgreSQL on Azure stays up all the time. 
 3. The edge Redis only lives in RAM, so it is empty after every restart. Whatever the listener needs,
    baselines included, has to be loaded when the stack starts and not only by a daily job.
 
-### No baselines on the edge since July 2026
+The baseline builder follows these rules. It runs as the `baseline-builder` service, checks when it starts
+and then every hour, and only builds when the newest build is more than 20 hours old. The listener loads
+the newest build when it starts and reloads it by itself after a Redis restart.
 
-The edge Redis has had no `baseline:*` keys since around 2026-07-11, the last time I ran
-`update_baselines.py` by hand. Without a baseline the DRE rejects every anomaly, so the listener has not
-approved anything since then. `simulated_trades` only has 22 paper trades, all from 10 and 11 July 2026, and
-12 of them are knives. Nothing warned about it. Recording (#232) was not affected because it does not depend
-on decisions. Reloading the Kaggle baselines would not fix this, for the reasons above. The fix is current
-baselines per venue that load when the listener starts, plus a health check that fails when they are
-missing (#259).
+### No baselines on the edge from July to September 2026 (fixed in #259)
+
+From around 2026-07-11, the last time I ran the old sync script by hand, until #259, the edge Redis had no
+baselines. Without a baseline the DRE rejects every anomaly, so the listener approved nothing in that time.
+`simulated_trades` only has 22 paper trades, all from 10 and 11 July 2026, and 12 of them are knives.
+Nothing warned about it. Recording (#232) was not affected because it does not depend on decisions.
+
+Since #259 the listener loads baselines itself, exports `listener_baselines_loaded` and
+`listener_baseline_build_age_seconds`, logs an error while they are missing or more than 48 hours old,
+and its `/health` answers 503 in that state, so Docker shows the container as unhealthy.
+
+While fixing this I also found that the sticker premium rule never worked: sticker prices were keyed as
+`Sticker | Crown (Foil)` but listings name the sticker `Crown (Foil)`, so the lookup always missed. The new
+sticker prices use the listing's naming.
 
 ## Venues
 

@@ -4,6 +4,9 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from scrapers.skinport import VENUE
+from shared_utils import edge_baselines_key, edge_sticker_prices_key
+
 
 class InMemoryEdgeStore:
     """
@@ -20,12 +23,14 @@ class InMemoryEdgeStore:
 
     # --- Loading ---
 
-    def load_baselines(self, baselines: Mapping[str, Mapping[str, Any]], sticker_prices: Mapping[str, int]) -> None:
-        """Seed the store the way `update_baselines.py` seeds the edge Redis."""
-        for market_hash_name, baseline in baselines.items():
-            self._strings[f"baseline:{market_hash_name}"] = json.dumps(dict(baseline))
-        if sticker_prices:
-            self._hashes["sticker_prices"] = {name: str(price) for name, price in sticker_prices.items()}
+    def load_baselines(
+        self, baselines: Mapping[str, Mapping[str, Any]], sticker_prices: Mapping[str, int], venue: str = VENUE
+    ) -> None:
+        """Replace the venue's baselines and sticker prices, as the listener's baseline loader does live."""
+        self._hashes[edge_baselines_key(venue)] = {
+            name: json.dumps(dict(baseline), sort_keys=True) for name, baseline in baselines.items()
+        }
+        self._hashes[edge_sticker_prices_key(venue)] = {name: str(price) for name, price in sticker_prices.items()}
 
     # --- Strings and hashes ---
 

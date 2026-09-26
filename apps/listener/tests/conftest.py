@@ -73,6 +73,10 @@ class MockPipeline:
 def mock_redis():
     r = MockRedis()
     baseline = {"support_floor_cents": 1500, "latest_price_cents": 1600}
-    r.data["baseline:AK-47 | Redline (Field-Tested)"] = json.dumps(baseline)
-    r.data["sticker_prices"] = {"Titan | Katowice 2014": "500000", "iBUYPOWER | Cologne 2014": "15000", "Cheap Sticker": "50"}
+    r.data["baselines:skinport"] = {"AK-47 | Redline (Field-Tested)": json.dumps(baseline)}
+    r.data["sticker_prices:skinport"] = {
+        "Titan | Katowice 2014": "500000",
+        "iBUYPOWER | Cologne 2014": "15000",
+        "Cheap Sticker": "50",
+    }
     return r

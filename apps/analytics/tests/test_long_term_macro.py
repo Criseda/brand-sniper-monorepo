@@ -201,7 +201,7 @@ class TestFetchTasks:
 
 
 @pytest.mark.asyncio
-async def test_flow_processes_limit_and_syncs_edge(monkeypatch):
+async def test_flow_processes_limit_without_touching_the_edge(monkeypatch):
     items = [
         {"id": 1, "market_hash_name": "AK-47 | Redline (Field-Tested)", "item_type": "Rifle"},
         {"id": 2, "market_hash_name": "★ Butterfly Knife | Doppler (Factory New)", "item_type": "Knife"},
@@ -212,11 +212,9 @@ async def test_flow_processes_limit_and_syncs_edge(monkeypatch):
     mock_fetch_items = AsyncMock(return_value=items)
     mock_fetch_chunk = AsyncMock(side_effect=lambda ids: {i: price_data[i] for i in ids})
     mock_save = AsyncMock()
-    mock_sync = AsyncMock()
     monkeypatch.setattr(long_term_macro, "fetch_tracked_items", mock_fetch_items)
     monkeypatch.setattr(long_term_macro, "fetch_historical_prices_chunk", mock_fetch_chunk)
     monkeypatch.setattr(long_term_macro, "save_macro_baselines_to_db", mock_save)
-    monkeypatch.setattr(long_term_macro, "run_sync_baselines_to_edge", mock_sync)
 
     await analyze_long_term_macro(limit_items=2)
 
@@ -225,7 +223,8 @@ async def test_flow_processes_limit_and_syncs_edge(monkeypatch):
     mock_save.assert_awaited_once()
     saved = mock_save.await_args.args[0]
     assert len(saved) == 2
-    assert mock_sync.await_count == 1
+    # Kaggle baselines are long term context only; they are never pushed to the edge (#259).
+    assert not hasattr(long_term_macro, "run_sync_baselines_to_edge")
 
 
 @pytest.mark.asyncio
@@ -236,11 +235,9 @@ async def test_flow_without_limit_processes_all(monkeypatch):
     mock_fetch_items = AsyncMock(return_value=items)
     mock_fetch_chunk = AsyncMock(side_effect=lambda ids: {i: price_data[i] for i in ids})
     mock_save = AsyncMock()
-    mock_sync = AsyncMock()
     monkeypatch.setattr(long_term_macro, "fetch_tracked_items", mock_fetch_items)
     monkeypatch.setattr(long_term_macro, "fetch_historical_prices_chunk", mock_fetch_chunk)
     monkeypatch.setattr(long_term_macro, "save_macro_baselines_to_db", mock_save)
-    monkeypatch.setattr(long_term_macro, "run_sync_baselines_to_edge", mock_sync)
 
     await analyze_long_term_macro(limit_items=None)
 

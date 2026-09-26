@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 from backtest import __main__ as cli
 from backtest import database
-from backtest.sources import BaselineSnapshot, RecordedFeedEvent, RecordedSnapshot, load_fixture
+from backtest.sources import (
+    BaselineSchedule,
+    BaselineSnapshot,
+    RecordedFeedEvent,
+    RecordedSnapshot,
+    ScheduledBuild,
+    load_fixture,
+)
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "replay"
 ITEM = "AK-47 | Slate (Field-Tested)"
@@ -70,12 +77,8 @@ def test_database_run_warms_up_before_the_start_and_warns_on_newer_baselines(mon
         for event in load_fixture(FIXTURE_DIR / "events.jsonl"):
             yield event
 
-    async def fake_baselines():
-        snapshot = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
-        return BaselineSnapshot(snapshot.baselines, snapshot.sticker_prices, as_of="2026-10-01T00:00:00")
-
     monkeypatch.setattr(database, "stream_recorded_events", fake_stream)
-    monkeypatch.setattr(database, "load_current_baselines", fake_baselines)
+    monkeypatch.setattr(database, "load_baseline_schedule", _fixture_schedule("2026-10-01T00:00:00", requested))
     out = tmp_path / "db.jsonl"
 
     exit_code = cli.main(
@@ -83,11 +86,73 @@ def test_database_run_warms_up_before_the_start_and_warns_on_newer_baselines(mon
     )
 
     assert exit_code == 0
-    assert requested == {"start": datetime(2026, 9, 24, 22, 0), "end": datetime(2026, 9, 24, 23, 40), "source": "skinport"}
+    assert requested == {
+        "start": datetime(2026, 9, 24, 22, 0),
+        "end": datetime(2026, 9, 24, 23, 40),
+        "source": "skinport",
+        "schedule": (datetime(2026, 9, 24, 22, 0), datetime(2026, 9, 24, 23, 40), "skinport"),
+    }
     header = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
     assert header["source"] == "database:skinport:2026-09-24T23:00:00/2026-09-24T23:40:00"
     assert header["log_from_ms"] == 1_790_290_800_000
+    assert (header["baseline_mode"], header["baseline_builds"]) == ("schedule", [1])
     assert "decisions use later information" in caplog.text
+
+
+def test_database_run_without_any_build_stops_with_a_hint(monkeypatch, tmp_path):
+    async def no_builds(start, end, *, venue):
+        return BaselineSchedule(builds=[], load=_never_called)
+
+    monkeypatch.setattr(database, "load_baseline_schedule", no_builds)
+
+    with pytest.raises(SystemExit, match="build_baselines.py"):
+        cli.main(["run", "--start", "2026-09-24T23:00", "--end", "2026-09-24T23:40", "--out", str(tmp_path / "db.jsonl")])
+
+
+def test_database_run_can_use_a_fixed_baseline_file(monkeypatch, tmp_path):
+    async def fake_stream(start, end, *, source):
+        for event in load_fixture(FIXTURE_DIR / "events.jsonl"):
+            yield event
+
+    monkeypatch.setattr(database, "stream_recorded_events", fake_stream)
+    out = tmp_path / "db.jsonl"
+
+    cli.main(
+        [
+            "run",
+            "--start",
+            "2026-09-24T23:00",
+            "--end",
+            "2026-09-24T23:40",
+            "--baselines",
+            str(FIXTURE_DIR / "baselines.json"),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert json.loads(out.read_text(encoding="utf-8").splitlines()[0])["baseline_mode"] == "fixed"
+
+
+async def _never_called(build_id: int) -> BaselineSnapshot:
+    raise AssertionError("no build should be loaded")
+
+
+def _fixture_schedule(built_at: str, requested: dict | None = None):
+    """A fake load_baseline_schedule with one build (ID 1) holding the committed fixture baselines."""
+
+    async def fake_schedule(start, end, *, venue):
+        if requested is not None:
+            requested["schedule"] = (start, end, venue)
+
+        async def load(build_id: int) -> BaselineSnapshot:
+            snapshot = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
+            return BaselineSnapshot(snapshot.baselines, snapshot.sticker_prices, as_of=built_at)
+
+        effective_from_ms = cli._epoch_ms(cli.parse_utc(built_at))
+        return BaselineSchedule(builds=[ScheduledBuild(1, built_at, effective_from_ms)], load=load)
+
+    return fake_schedule
 
 
 def _feed(event_type: str, *sales: dict) -> RecordedFeedEvent:
@@ -139,11 +204,8 @@ def test_export_writes_a_fixture_that_replays(monkeypatch, tmp_path):
         for event in source_events:
             yield event
 
-    async def fake_baselines():
-        return BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
-
     monkeypatch.setattr(database, "stream_recorded_events", fake_stream)
-    monkeypatch.setattr(database, "load_current_baselines", fake_baselines)
+    monkeypatch.setattr(database, "load_baseline_schedule", _fixture_schedule("2026-09-24T00:00:00"))
     out_dir = tmp_path / "export"
 
     exit_code = cli.main(
@@ -153,7 +215,9 @@ def test_export_writes_a_fixture_that_replays(monkeypatch, tmp_path):
     assert exit_code == 0
     exported = load_fixture(out_dir / "events.jsonl")
     assert 0 < len(exported) < len(source_events)
-    assert len(BaselineSnapshot.load(out_dir / "baselines.json").baselines) <= 5
+    exported_baselines = BaselineSnapshot.load(out_dir / "baselines.json")
+    assert len(exported_baselines.baselines) <= 5
+    assert exported_baselines.as_of == "2026-09-24T00:00:00"
     assert (
         cli.main(
             [
@@ -168,3 +232,13 @@ def test_export_writes_a_fixture_that_replays(monkeypatch, tmp_path):
         )
         == 0
     )
+
+
+def test_export_without_any_build_stops_with_a_hint(monkeypatch, tmp_path):
+    async def no_builds(start, end, *, venue):
+        return BaselineSchedule(builds=[], load=_never_called)
+
+    monkeypatch.setattr(database, "load_baseline_schedule", no_builds)
+
+    with pytest.raises(SystemExit, match="build_baselines.py"):
+        cli.main(["export", "--start", "2026-09-24T21:58", "--end", "2026-09-24T23:40", "--out-dir", str(tmp_path)])

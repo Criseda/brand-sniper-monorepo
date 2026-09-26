@@ -65,10 +65,15 @@ async def test_loaded_baselines_and_sticker_prices_read_like_the_edge_redis():
     store = InMemoryEdgeStore()
     store.load_baselines({"Item": {"latest_price_cents": 1500}}, {"Sticker": 12000})
 
-    assert json.loads(await store.get("baseline:Item")) == {"latest_price_cents": 1500}
-    assert await store.get("baseline:Other") is None
-    assert await store.hget("sticker_prices", "Sticker") == "12000"
-    assert await store.hget("sticker_prices", "Other") is None
+    assert json.loads(await store.hget("baselines:skinport", "Item")) == {"latest_price_cents": 1500}
+    assert await store.hget("baselines:skinport", "Other") is None
+    assert await store.hget("sticker_prices:skinport", "Sticker") == "12000"
+    assert await store.hget("sticker_prices:skinport", "Other") is None
+
+    # A new build replaces the old one: items it no longer has are gone.
+    store.load_baselines({"Newer": {"latest_price_cents": 1}}, {})
+    assert await store.hget("baselines:skinport", "Item") is None
+    assert await store.hget("sticker_prices:skinport", "Sticker") is None
     assert await store.set("key", "value") is True
     assert await store.get("key") == "value"
     await store.aclose()

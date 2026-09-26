@@ -33,7 +33,12 @@ You can run the flows directly using `uv`, or inside the Docker container using 
 # Execute the Daily CFO Evaluation flow
 uv run python evaluate_performance.py
 
-# Execute the Long-Term Macro Trend Calculation & Edge Redis Sync (default: 100 items)
+# Build current Skinport baselines if the newest build is over 20 hours old (--force builds now,
+# --loop keeps checking every hour, as the baseline-builder service does)
+uv run python build_baselines.py
+
+# Execute the Long-Term Macro Trend Calculation from the Kaggle history (default: 100 items).
+# This is long term context for the CFO only; it no longer touches the edge Redis.
 uv run python long_term_macro.py
 
 # Execute the macro calculation on all database items

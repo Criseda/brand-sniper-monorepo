@@ -22,7 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/data_sources.md` describes the data we have, why the Kaggle Steam baselines cannot be used as live prices, the Skinport data, the edge PC not running all the time, and the edge running without baselines since July 2026.
 - Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
+- Current baselines per venue (#259): `build_baselines.py` builds Skinport baselines from its sales history into dated `baseline_builds` / `venue_baselines` (always on `baseline-builder` service that catches up after downtime), the backend serves the newest build (`GET /api/v1/baselines/{venue}/latest`), the listener loads it at startup into per venue Redis hashes with metrics and a 503 health state while baselines are missing or stale, and replays switch builds as replay time passes them (decision log format 2).
+
 #### Changed
+- The live DRE and profit estimate no longer read the Kaggle based baselines; `update_baselines.py` and the edge sync in `long_term_macro.py` are removed (#259).
 - The listener's decision path (dedup, price window, Z-score scoring, DRE hand-off) moved from `main.py` to `detection.py` unchanged, with direct tests; the DRE reports which rule approved (`dre_approval_reason`), and edge baseline documents are built by one shared function (`edge_baseline_payload`) (#248).
 - The listener's paper-trade profit estimate deducts the venue's seller fee through the shared P&L function; trades record the estimate's basis (`profit_estimate_basis`, existing rows tagged `gross`) and store no estimate when there is no baseline price (#233).
 - Fee schedules are looked up per venue (`fees_for`) and `MarketTick` carries its `venue`; an unregistered venue fails instead of being priced with Skinport fees (#233).
@@ -32,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- The DRE sticker premium rule never matched a sticker price: prices were keyed `Sticker | <name>` while listings name the applied sticker `<name>`. Sticker prices now use the listing's naming (#259).
 - The listener container gets a 120 s `stop_grace_period` in both compose stacks, so Docker no longer kills its shutdown drain after 10 s and drops buffered feed events (#252).
 
 #### In Progress / Planned
@@ -43,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[PE-09]` Realized-performance & feature drift monitoring (#235).
 - `[PE-10]` Discord/Telegram alerts with direct listing links (#18).
 - `[PE-11]` CSFloat venue (#33); Steam dropped as a venue (reference price only).
-- `[PE-12]` Current baselines per venue from Skinport sales history, loaded when the listener starts (#259).
 - `[PE-13]` P&L for buying and selling on different venues (#260).
 - `[PE-14]` Waxpeer venue (#261).
 

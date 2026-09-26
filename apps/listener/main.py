@@ -13,6 +13,7 @@ from shared_utils import setup_service_environment
 # Load root .env (shared) first, then listener-specific overrides.
 setup_service_environment(__file__)
 
+from baseline_loader import BaselineState, baselines_url, keep_baselines_loaded
 from batch_delivery import RedisBatchStore, StoredBatch, deliver_stored_batch
 from detection import (
     DedupCache,
@@ -34,7 +35,7 @@ from models import FeedEvent, MarketTick
 from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from scrapers.factory import ScraperFactory
-from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger
+from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger, utc_now_naive
 from task_supervisor import BoundedTaskPool
 
 logger = get_logger("listener.main")
@@ -43,7 +44,8 @@ logger = get_logger("listener.main")
 COMPUTE_NODE_IP = os.getenv("COMPUTE_NODE_IP", "localhost")
 COMPUTE_PORT = os.getenv("COMPUTE_NODE_PORT", "8080")
 
-BULK_INGEST_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}/api/v1/ingest/bulk"
+BACKEND_BASE_URL = f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}"
+BULK_INGEST_URL = f"{BACKEND_BASE_URL}/api/v1/ingest/bulk"
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -97,21 +99,28 @@ async def close_http_session() -> None:
         _http_session = None
 
 
-async def listener_health(_request: web.Request) -> web.Response:
-    """Respond from the listener event loop so a successful probe proves loop liveness."""
-    return web.json_response({"status": "healthy"})
+def create_listener_health_app(baseline_state: BaselineState | None = None) -> web.Application:
+    """Create the listener's container-internal health application.
 
+    The probe answers from the listener event loop, so any response proves loop liveness. It reports
+    503 when the edge has no usable baselines: the listener still records everything, but its DRE
+    cannot approve anything correctly.
+    """
 
-def create_listener_health_app() -> web.Application:
-    """Create the listener's container-internal health application."""
+    async def listener_health(_request: web.Request) -> web.Response:
+        problem = baseline_state.problem(utc_now_naive()) if baseline_state is not None else None
+        if problem is not None:
+            return web.json_response({"status": "degraded", "reason": problem}, status=503)
+        return web.json_response({"status": "healthy"})
+
     app = web.Application()
     app.router.add_get("/health", listener_health)
     return app
 
 
-async def start_listener_health_server(port: int) -> web.AppRunner:
+async def start_listener_health_server(port: int, baseline_state: BaselineState | None = None) -> web.AppRunner:
     """Start the container-internal listener health endpoint."""
-    runner = web.AppRunner(create_listener_health_app())
+    runner = web.AppRunner(create_listener_health_app(baseline_state))
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", port)
     await site.start()
@@ -351,9 +360,11 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
     scraper = ScraperFactory.get_scraper(platform_target)
     # Fail at startup, not on the first approved trade, when the venue has no fee schedule.
     fees_for(scraper.platform_name)
-    executor = PaperExecutor(f"http://{COMPUTE_NODE_IP}:{COMPUTE_PORT}")
+    executor = PaperExecutor(BACKEND_BASE_URL)
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
+    baseline_state = BaselineState(scraper.platform_name)
+    baseline_cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
     # Register graceful shutdown on SIGINT/SIGTERM
     shutdown_event = asyncio.Event()
@@ -394,16 +405,25 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                     task_group.create_task(rest_poll_producer(scraper, queue), name="rest-poll-producer"),
                     task_group.create_task(websocket_subscriber_producer(scraper, queue), name="websocket-producer"),
                 ]
+                baseline_task = task_group.create_task(
+                    keep_baselines_loaded(
+                        baseline_state,
+                        get_http_session,
+                        baselines_url(BACKEND_BASE_URL, baseline_state.venue),
+                        baseline_cache,
+                    ),
+                    name="baseline-loader",
+                )
                 sidecar_task = None
                 if scraper.sidecar_script_path:
                     sidecar_task = task_group.create_task(start_sidecar_process(scraper), name="websocket-sidecar")
 
-                health_runner = await start_listener_health_server(LISTENER_HEALTH_PORT)
+                health_runner = await start_listener_health_server(LISTENER_HEALTH_PORT, baseline_state)
                 await shutdown_event.wait()
 
-                for task in producer_tasks:
+                for task in [*producer_tasks, baseline_task]:
                     task.cancel()
-                await asyncio.gather(*producer_tasks, return_exceptions=True)
+                await asyncio.gather(*producer_tasks, baseline_task, return_exceptions=True)
 
                 try:
                     async with asyncio.timeout(SHUTDOWN_GRACE_SECONDS):
@@ -431,6 +451,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
         await close_http_session()
         await close_executor_http_session()
         await scraper.close()
+        await baseline_cache.aclose()
         logger.info("Cleanup complete.")
 
 

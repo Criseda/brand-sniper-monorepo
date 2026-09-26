@@ -27,6 +27,7 @@ docker compose up -d
 | Redis exporter | `oliver006/redis_exporter:v1.88.0-alpine` | `sniper_redis_exporter` | always |
 | Backend | custom build | `sniper_backend` | always |
 | Listener | custom build | `sniper_listener` | always |
+| Baseline builder | custom build (analytics image) | `sniper_baseline_builder` | always |
 | Analytics | custom build | `sniper_analytics` | manual (`docker compose run --rm analytics`) |
 
 ### Edge Stack Services
@@ -133,7 +134,7 @@ The Analytics container (`analytics`) is the cold-path evaluation and macro anal
 
 ### Why Periodic Runs are Required
 
-1. **Macro Baseline Updates**: The hot-path Deterministic Rules Engine (DRE) checks real-time prices against long-term baselines stored in the Edge Redis cache. If the macro pipeline does not run, these baselines become stale, leading to incorrect Z-score anomaly detection.
+1. **Long term macro context**: `long_term_macro.py` computes `item_macro_baselines` from the Kaggle history for the CFO's context. The live baselines do not come from here any more; the always-on `baseline-builder` service makes them (see below).
 2. **Adversarial CFO Audits**: The LLM-powered CFO audits recent trades to ensure decision quality, logging the confidence scores and structured reasoning traces to MLflow.
 
 ### How to Run the Jobs
@@ -143,22 +144,29 @@ Ensure you are in the server-stack directory:
 cd deployments/server-stack
 ```
 
-#### 1. Macro Baseline Calculation & Edge Redis Sync
+#### 1. Live Baselines (always on)
 
-> [!WARNING]
-> These baselines come from the Kaggle Steam dataset in `historical_prices`. That data ends before the knife crash and never changes, so running the job again gives the same numbers, and they do not match current Skinport prices. Read [`data_sources.md`](data_sources.md) before relying on them.
+The `baseline-builder` service starts with the stack. It checks when it starts and then every hour, and
+builds from Skinport's sales history when the newest build is more than 20 hours old, so no cron job is
+needed and a stack that was off for days catches up straight away. Apply the migrations first
+(`make migrate`), since it writes to `baseline_builds` and `venue_baselines`.
 
-* **Initial Seeding**: On first setup (or after wiping Redis), run a full calculation to build the baseline database table and populate the Redis cache for all 22k+ skins:
-  ```bash
-  # Trigger full calculation in the background
-  docker compose run -d --rm analytics uv run python long_term_macro.py --limit 0
-  ```
-* **Daily Updates**: Because rolling averages (30d/90d averages, drift, and volatility) naturally shift as new daily transactions accrue, the pipeline must run periodically to update these metrics. A daily cron job (detailed below) recalculates baselines to keep Z-score anomaly detections accurate.
-* **Testing/Dev**: You can run the pipeline without flags to quickly process a small, safe default subset:
-  ```bash
-  # Calculates baselines for the first 100 items to check Stack functionality
-  docker compose run --rm analytics uv run python long_term_macro.py
-  ```
+To build right now, for example after changing the method:
+```bash
+docker compose run --rm analytics uv run python build_baselines.py --force
+```
+
+The listener loads the newest build when it starts and checks for a newer one every 15 minutes
+(`BASELINE_REFRESH_SECONDS`). While it has no baselines, or the loaded build is older than
+`BASELINE_MAX_AGE_HOURS` (48), it logs an error every minute, `listener_baselines_loaded` or
+`listener_baseline_build_age_seconds` show it in Prometheus, and its `/health` returns 503.
+
+The Kaggle pipeline is now long term context only and never touches the edge Redis. Read
+[`data_sources.md`](data_sources.md) for why:
+```bash
+# Full Kaggle macro calculation for the CFO's long term context
+docker compose run -d --rm analytics uv run python long_term_macro.py --limit 0
+```
 
 #### 2. Daily CFO Performance Audit
 This triggers the LLM agent to audit the bot's logged simulated trades against live floors and macro news to check trade quality.
@@ -172,9 +180,6 @@ docker compose run --rm analytics
 In a production environment, schedule these jobs to run once a day. For example, using system cron:
 
 ```text
-# Run macro baseline calculation at 00:00 every day
-0 0 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics uv run python long_term_macro.py >> /var/log/sniper_macro.log 2>&1
-
 # Run CFO performance evaluation at 01:00 every day
 0 1 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics >> /var/log/sniper_cfo.log 2>&1
 

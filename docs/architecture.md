@@ -45,12 +45,13 @@ flowchart TD
         Analytics -->|Fetches trades to Audit| Postgres
         Analytics <-->|"Agentic Reasoning Loop"| LLM
         Analytics -->|Logs Audits| MLflow
-        Analytics -->|Syncs baselines to Edge| EdgeRedis
+        Analytics -->|Stores dated baseline builds| Postgres
     end
     Compute:::computeNode
 
     DRE -->|Async POST Trade Logs| Backend
     Listener -->|Async POST Batched Ticks| Backend
+    Backend -->|Newest baseline build, loaded at startup| Listener
 ```
 
 ## Hot Path: Real-Time Anomaly Detection
@@ -92,8 +93,14 @@ These tools are registered as OpenAI-compatible function tools and embedded dire
 Chat Completions API call. The model uses them to independently verify whether a trade was
 a genuine snipe or a bad bet.
 
-The CFO's verdict (confidence score 0-100 + reasoning trace) is logged immutably into **MLflow**,
-then newly-evaluated baselines are synced back to the Edge Redis cache for the next hot-path cycle.
+The CFO's verdict (confidence score 0-100 + reasoning trace) is logged immutably into **MLflow**.
+
+## Baselines
+
+The `baseline-builder` service builds each item's normal price from the venue's own recent sales and
+stores every build with its date. The listener loads the newest build from the backend when it starts
+and checks for a newer one every 15 minutes, because the edge Redis is empty after every restart.
+[`data_sources.md`](data_sources.md) has the details and the history behind it.
 
 ## Key Design Decisions
 
@@ -103,6 +110,6 @@ then newly-evaluated baselines are synced back to the Edge Redis cache for the n
 - **O(1) cache** — Edge Redis stores sliding-window price history and ML baselines.
   No full-history queries needed on the hot path.
 - **Deterministic Rules Engine** — Z-score based, no ML inference on the hot path.
-  Baselines are computed offline and synced to the edge.
+  Baselines are built on the server from recent venue sales and loaded by the listener.
 - **Hybrid Docker stacks** — The server stack bundles everything for a single machine;
   the edge stack is minimal (Redis + listener) for constrained devices.

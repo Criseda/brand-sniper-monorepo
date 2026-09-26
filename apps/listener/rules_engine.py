@@ -2,6 +2,7 @@ import json
 
 from models import MarketTick
 from redis.asyncio import Redis
+from shared_utils import edge_baselines_key, edge_sticker_prices_key
 
 # Why the DRE approved an opportunity (see dre_approval_reason).
 REASON_SUPPORT_FLOOR = "support_floor"
@@ -20,9 +21,9 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
       2.  Volatility-aware macro floor  (price is 2+ sigma below 30d avg)  [Layer 3, #31]
       3.  Sticker Premium Percentage (SP%) logic
     """
-    # 1. Fetch baseline from Redis (or use pre-fetched copy)
+    # 1. Fetch the venue's baseline from Redis (or use pre-fetched copy)
     if baseline is None:
-        baseline_raw = await redis_client.get(f"baseline:{tick.market_hash_name}")
+        baseline_raw = await redis_client.hget(edge_baselines_key(tick.venue), tick.market_hash_name)
         if not baseline_raw:
             return None
         baseline = json.loads(baseline_raw)
@@ -51,8 +52,8 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
         for sticker in tick.stickers:
             name = sticker.get("name")
             if name:
-                # Fetch sticker price from Redis hashmap
-                price_str = await redis_client.hget("sticker_prices", name)
+                # Fetch the sticker's price on this venue from the Redis hash
+                price_str = await redis_client.hget(edge_sticker_prices_key(tick.venue), name)
                 if price_str:
                     try:
                         total_sticker_value_cents += int(price_str)

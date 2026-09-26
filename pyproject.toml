@@ -61,6 +61,8 @@ quote-style = "double"
 
 [tool.coverage.run]
 branch = true
+# SQLAlchemy's async engine runs queries in greenlets; without this, lines after an awaited query look uncovered.
+concurrency = ["greenlet", "thread"]
 source = [
     "apps/backend",
     "apps/listener",
@@ -81,7 +83,7 @@ show_missing = true
 # Targets mirror issue #139: https://github.com/Criseda/brand-sniper-monorepo/issues/139
 [tool.brand-sniper.coverage-targets]
 "apps/analytics/seed_historical.py" = 80
-"apps/analytics/update_baselines.py" = 80
+"apps/analytics/build_baselines.py" = 80
 "apps/analytics/long_term_macro.py" = 80
 "apps/analytics/validate_historical.py" = 80
 "apps/analytics/verify_seed_historical.py" = 80
