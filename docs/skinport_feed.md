@@ -77,6 +77,21 @@ retrying every 95 seconds kept it that way. From 14:32 the listener's authentica
 for over an hour, at intervals of 20 minutes, while unauthenticated requests from the same machine got 200.
 `/v1/items` does not need auth. After a 429, back off for a long time and never retry in a loop.
 
+**A lockout lasts about an hour, and the 429 says when it ends.** On 2026-09-26 the regular poll went
+66 times in a row without a 429, from 15:46 to 21:50 UTC, 5 to 6 minutes apart. Every lockout that day
+followed a listener restart, because the listener polled as soon as it started: the startup request at
+21:54:04 came about 4 minutes after the 21:50 poll and got 429, and so did every request until 22:52. A
+startup request 1.5 minutes after a poll at 21:17 went through, so I do not know the exact threshold.
+The 429 comes from Cloudflare with the body `rate_limit_exceeded` ("Your connection is being rate
+limited.") and a `Retry-After` header: 1650 seconds at 22:24:37, and 1642 seconds on a second request
+8 seconds later. So the lockout ends at a fixed time, and a request during it does not extend it. The
+docs mention neither the lockout nor the header.
+
+Since #282 the listener waits exactly as long as `Retry-After` says, plus 5 seconds, and keeps the
+time its next request may go out in the edge Redis (`skinport:items:next_request_at`). A restarted
+listener waits out the rest of the 305 second interval, or of a lockout, before its first request, and
+logs `[SKINPORT] Next /v1/items request in N seconds`.
+
 ## Transport
 
 - Socket.IO over WebSocket to `https://skinport.com`, using the msgpack parser (`socket.io-msgpack-parser`).
