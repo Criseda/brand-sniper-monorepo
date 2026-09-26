@@ -36,9 +36,10 @@ logger = get_logger("listener.main")
 # --- Tunable Detection Parameters (configurable via .env) ---
 # Sliding window size for Redis price history
 SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
-# Dedup cache max entries per venue (LRU eviction above this cap). Skinport's REST poll alone returns about
-# 21,300 items, so each venue gets its own cap and one venue's items never push out another's.
-DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "25000"))
+# Dedup cache max entries per venue (LRU eviction above this cap). One tradable Skinport poll returns about
+# 25,300 items, and a cap below that evicts items every poll, so their unchanged lowest asks are scored again.
+# The cap leaves room for the item list to grow; each venue has its own, so venues never evict each other.
+DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "100000"))
 # A tick at the same price as the item's previous tick within this many seconds is a duplicate.
 DEDUP_WINDOW_SECONDS = 300
 
