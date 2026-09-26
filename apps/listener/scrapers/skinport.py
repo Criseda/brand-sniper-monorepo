@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import os
 from collections.abc import AsyncGenerator
@@ -18,6 +17,10 @@ logger = get_logger("listener.skinport")
 SALE_FEED_CHANNEL = "skinport:sale_feed"
 SKINPORT_ITEM_URL = "https://skinport.com/item"
 VENUE = "skinport"
+
+# `tradable=1` is the lowest ask among listings that can be traded now. `tradable=0` is not "all listings":
+# it returns only trade locked ones, priced below the rest by the lock (docs/skinport_feed.md, #275).
+ITEMS_QUERY: dict[str, str | int] = {"app_id": 730, "currency": "USD", "tradable": 1}
 
 
 async def _sleep(seconds: float) -> None:
@@ -133,33 +136,18 @@ class SkinportScraper(BaseScraper):
         super().__init__(platform_name=VENUE)
         self.api_url = "https://api.skinport.com/v1/items"
 
-        # Pull secure platform credentials out of environment variables
-        self.client_id = os.getenv("SKINPORT_CLIENT_ID")
-        self.client_secret = os.getenv("SKINPORT_CLIENT_SECRET")
-
         # Sidecar script path for the Node.js WebSocket relay
         self.sidecar_script_path = Path(__file__).parent / "skinport_websocket" / "sidecar.js"
 
         # Shared session for API requests (lazy init)
         self._session: aiohttp.ClientSession | None = None
 
-    def _build_auth_header(self) -> str:
-        """Constructs a compliant HTTP Basic Authentication header string using Base64 encoding."""
-        if not self.client_id or not self.client_secret:
-            # Fallback gracefully to unauthenticated public access if credentials aren't set yet
-            return ""
-
-        raw_credentials = f"{self.client_id}:{self.client_secret}"
-        encoded_bytes = base64.b64encode(raw_credentials.encode("utf-8"))
-        return f"Basic {encoded_bytes.decode('utf-8')}"
-
     async def _get_session(self) -> aiohttp.ClientSession:
         """Returns a shared aiohttp session, creating it lazily if needed."""
         if self._session is None or self._session.closed:
+            # No Authorization header: /v1/items is public, and authenticated requests share the account's
+            # rate limit (they were refused for over an hour on 2026-09-26 while anonymous ones went through).
             headers = {"Accept": "application/json", "Accept-Encoding": "br", "User-Agent": "BrandSniperEdgeTelemetry/1.0"}
-            auth_string = self._build_auth_header()
-            if auth_string:
-                headers["Authorization"] = auth_string
             self._session = aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=15, connect=5))
         return self._session
 
@@ -170,20 +158,14 @@ class SkinportScraper(BaseScraper):
             self._session = None
 
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
-        """Polls Skinport REST feeds, passing authenticated, Brotli-decompressed tokens down the pipe."""
+        """Polls Skinport's lowest tradable ask per item, passing Brotli-decompressed ticks down the pipe."""
         session = await self._get_session()
-        auth_string = self._build_auth_header()
-        if auth_string:
-            logger.info("Basic Authentication token successfully compiled and injected.")
 
         backoff_seconds = 305
         while True:
             try:
-                # Target CS2 inventory items denominated in USD
-                params: dict[str, str | int] = {"app_id": 730, "currency": "USD", "tradable": 0}
-
                 logger.info("Querying asset directory stream (Rate Limit: 8 requests per 5 mins)...")
-                async with session.get(self.api_url, params=params) as response:
+                async with session.get(self.api_url, params=ITEMS_QUERY) as response:
                     if response.status == 200:
                         # aiohttp automatically uses the loaded 'brotli' library to transparently unpack the data
                         raw_items = await response.json()
@@ -200,11 +182,6 @@ class SkinportScraper(BaseScraper):
                                     venue=VENUE, market_hash_name=market_hash_name, price_usd=float(item["min_price"])
                                 )
 
-                    elif response.status == 401:
-                        logger.error(
-                            "API Rejected Credentials! Check your client ID and secret variables inside your .env file."
-                        )
-                        backoff_seconds = 305
                     elif response.status == 429:
                         backoff_seconds = min(1200, backoff_seconds * 2)
                         logger.warning(

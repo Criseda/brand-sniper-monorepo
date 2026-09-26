@@ -56,29 +56,20 @@ class _Session:
 
 
 # ---------------------------------------------------------------------------
-# Auth header and session management
+# Session management
 # ---------------------------------------------------------------------------
 
 
-def test_build_auth_header_without_credentials(monkeypatch):
-    monkeypatch.delenv("SKINPORT_CLIENT_ID", raising=False)
-    monkeypatch.delenv("SKINPORT_CLIENT_SECRET", raising=False)
-
-    scraper = SkinportScraper()
-
-    assert scraper._build_auth_header() == ""
-
-
-def test_build_auth_header_with_credentials(monkeypatch):
+@pytest.mark.asyncio
+async def test_items_requests_send_no_credentials_even_when_configured(monkeypatch):
     monkeypatch.setenv("SKINPORT_CLIENT_ID", "test_client")
     monkeypatch.setenv("SKINPORT_CLIENT_SECRET", "test_secret")
-
     scraper = SkinportScraper()
 
-    header = scraper._build_auth_header()
+    session = await scraper._get_session()
 
-    assert header.startswith("Basic ")
-    assert header == "Basic dGVzdF9jbGllbnQ6dGVzdF9zZWNyZXQ="
+    assert "Authorization" not in session.headers
+    await scraper.close()
 
 
 @pytest.mark.asyncio
@@ -135,22 +126,8 @@ async def test_poll_yields_market_ticks_from_200_response(mocker):
     assert first.market_hash_name == "AK-47 | Redline"
     assert first.price_usd == 15.5
     assert second.market_hash_name == "★ Butterfly Knife | Doppler (Phase 3)"
-    assert session.get_calls[0][1] == {"app_id": 730, "currency": "USD", "tradable": 0}
-
-
-@pytest.mark.asyncio
-async def test_poll_continues_after_401(mocker):
-    scraper = SkinportScraper()
-    item = {"market_hash_name": "AK-47 | Redline", "min_price": 10.0}
-    session = _Session([_StatusResponse(401), _OkResponse([item])])
-    scraper._session = session
-    mocker.patch("scrapers.skinport._sleep", new_callable=AsyncMock)
-
-    stream = scraper.poll_market_stream()
-    await stream.__anext__()
-    await stream.aclose()
-
-    assert len(session.get_calls) == 2
+    # Tradable listings only: tradable=0 would return only the trade locked ones.
+    assert session.get_calls[0][1] == {"app_id": 730, "currency": "USD", "tradable": 1}
 
 
 @pytest.mark.asyncio

@@ -71,6 +71,10 @@ including the ones the dedup rule drops. Before that it did not store a REST tic
 previous price within 300 seconds, but live dropped those as duplicates anyway, so the decisions are
 unaffected.
 
+REST snapshots stored before #275 are the lowest ask among trade locked listings, not tradable ones (see
+[`docs/data_sources.md`](data_sources.md#skinport-data)). A replay across the cutover mixes two kinds of
+price in the same windows, so compare runs on one side of it.
+
 **Baselines** come from the dated builds in `baseline_builds` (see [data_sources.md](data_sources.md)),
 shaped exactly as the backend serves them to the listener. A database replay loads every build that was in
 effect during the range, and switches to each one when replay time reaches its build time, so decisions use
