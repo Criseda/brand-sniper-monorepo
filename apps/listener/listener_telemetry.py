@@ -16,6 +16,11 @@ ticks_deduplicated_total = Counter(
     "Total number of ticks filtered as duplicates",
 )
 
+snapshots_unchanged_total = Counter(
+    "listener_snapshots_unchanged_total",
+    "REST snapshots whose price had not changed since the item's previous snapshot: windowed, not scored",
+)
+
 anomalies_detected_total = Counter(
     "listener_anomalies_detected_total",
     "Total number of anomalies flagged by Z-score analysis",

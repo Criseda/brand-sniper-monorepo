@@ -36,7 +36,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 ### Execution Sequence Matrix
 
-Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18 may run in parallel. New venues (#33, #261) wait for #259 and #260:
+Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18 may run in parallel. New venues (#33, #261) wait for #259, #260 and #270:
 
 | Step | Issue | Focus | Upstream Prerequisite |
 |:---:|:---:|:---|:---|
@@ -50,10 +50,16 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **8** | [#250](https://github.com/Criseda/brand-sniper-monorepo/issues/250) | `[PE-08]` CFO calibration experiment against realized outcomes | #233, #249 |
 | **9** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | `[PE-09]` Realized-performance & feature drift monitoring | #236 |
 | **10** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | `[PE-10]` Discord/Telegram alerts with direct listing links | #232 |
-| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260 |
+| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260, #270 |
 | **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 |
 | **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 |
-| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 |
+| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260, #270 |
+| **15** | [#265](https://github.com/Criseda/brand-sniper-monorepo/issues/265) | `[PE-15]` Stop scoring and paper trading unchanged REST snapshots | #248 |
+| **16** | [#266](https://github.com/Criseda/brand-sniper-monorepo/issues/266) | `[PE-16]` DRE approvals by rule and source on the dashboard | #265 |
+| **17** | [#267](https://github.com/Criseda/brand-sniper-monorepo/issues/267) | `[PE-17]` REST lowest asks below the 30 day sale minimum | None |
+| **18** | [#269](https://github.com/Criseda/brand-sniper-monorepo/issues/269) | `[PE-18]` Decide what the price window holds | #249 |
+| **19** | [#270](https://github.com/Criseda/brand-sniper-monorepo/issues/270) | `[PE-19]` Dedup state and price windows keyed by venue | #265 |
+| **20** | [#271](https://github.com/Criseda/brand-sniper-monorepo/issues/271) | `[PE-20]` Buy each listing once across restarts, for any executor | #265 |
 
 **Parked**: #237, #238, #239 (compiled Rust edge engine) are not scheduled. Do not start them; a dedicated decision session will review the #175 evidence first.
 

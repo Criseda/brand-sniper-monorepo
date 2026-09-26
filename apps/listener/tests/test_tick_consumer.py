@@ -20,12 +20,18 @@ def load_listener_main():
 listener_main = load_listener_main()
 
 
-def _tick(price_usd: float, *, event_type: str | None = None, listing_id: str | None = None) -> MarketTick:
+def _tick(
+    price_usd: float,
+    *,
+    event_type: str | None = None,
+    listing_id: str | None = None,
+    timestamp: int = 1_790_000_000,
+) -> MarketTick:
     return MarketTick(
         venue="skinport",
         market_hash_name="AK-47 | Slate (Field-Tested)",
         price_usd=price_usd,
-        timestamp=1_790_000_000,
+        timestamp=timestamp,
         event_type=event_type,
         listing_id=listing_id,
     )
@@ -80,7 +86,7 @@ async def test_listed_and_snapshot_ticks_still_drive_detection(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_repeat_price_listing_is_recorded_without_reentering_the_window(monkeypatch):
+async def test_repeated_prices_are_recorded_without_reentering_the_window(monkeypatch):
     first = _tick(3.97, event_type="listed", listing_id="1")
     second_listing = _tick(3.97, event_type="listed", listing_id="2")
     repeated_snapshot = _tick(3.97)
@@ -88,7 +94,25 @@ async def test_repeat_price_listing_is_recorded_without_reentering_the_window(mo
     detect, flushed = await _run_consumer(monkeypatch, [first, second_listing, repeated_snapshot])
 
     assert [call.args[0] for call in detect.await_args_list] == [first]
-    assert flushed[0]["ticks"] == [first.to_batch_record(), second_listing.to_batch_record()]
+    assert flushed[0]["ticks"] == [
+        first.to_batch_record(),
+        second_listing.to_batch_record(),
+        repeated_snapshot.to_batch_record(),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_rest_snapshot_is_windowed_and_recorded_but_scored_once(monkeypatch):
+    window_only = AsyncMock()
+    monkeypatch.setattr(listener_main, "push_to_window", window_only)
+    polls = [_tick(3.97, timestamp=1_790_000_000 + poll * 305) for poll in range(4)]
+    changed = _tick(3.80, timestamp=1_790_000_000 + 4 * 305)
+
+    detect, flushed = await _run_consumer(monkeypatch, [*polls, changed])
+
+    assert [call.args[0] for call in detect.await_args_list] == [polls[0], changed]
+    assert [call.args[0] for call in window_only.await_args_list] == polls[1:]
+    assert flushed[0]["ticks"] == [tick.to_batch_record() for tick in [*polls, changed]]
 
 
 @pytest.mark.asyncio

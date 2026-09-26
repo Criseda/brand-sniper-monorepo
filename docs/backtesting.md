@@ -48,8 +48,10 @@ log header.
 
 **Always warm up.** The live edge Redis keeps each item's window across listener restarts, but a replay
 starts with empty windows. Until an item has `MIN_HISTORY_POINTS` prices, the Z-score falls back to the
-macro baseline alone. On the committed fixture that changes the result from 25 approvals (cold) to none
+macro baseline alone. On the committed fixture that changes the result from 14 approvals (cold) to none
 after 30 minutes of warm-up, which is what the live listener did over that period (no paper trades).
+Before #265 the cold run showed 25, because 11 of them were the same REST snapshot approved again on a
+later poll.
 
 ## Input
 
@@ -64,9 +66,10 @@ than 60 seconds apart are treated as one poll and stamped with the poll's first 
 the 300-second dedup rule from dropping ticks that live kept. Snapshot timing is therefore approximate to
 a few seconds until the edge time is persisted (#256). Feed-event timing is exact.
 
-Only ticks the live listener stored exist in the database. The listener does not store a REST tick that
-repeats the previous price within 300 seconds, but live dropped those as duplicates anyway, so the
-decisions are unaffected.
+Only ticks the live listener stored exist in the database. Since #265 it stores every REST snapshot,
+including the ones the dedup rule drops. Before that it did not store a REST tick that repeated the
+previous price within 300 seconds, but live dropped those as duplicates anyway, so the decisions are
+unaffected.
 
 **Baselines** come from the dated builds in `baseline_builds` (see [data_sources.md](data_sources.md)),
 shaped exactly as the backend serves them to the listener. A database replay loads every build that was in
@@ -112,7 +115,7 @@ JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits. Fo
 {"type": "run", "format": 2, "strategy": "zscore_dre", "config": {...}, "source": "...", "baseline_mode": "schedule", "baseline_builds": [3, 4], "log_from_ms": 1790290800000}
 {"type": "baseline", "build_id": 3, "built_at": "2026-10-01T06:12:40", "from_ms": 1790283600000, "look_ahead": false, "sha256": "..."}
 {"type": "decision", "seq": 1, "timestamp": 1790287133, "venue": "skinport", "listing_id": "60823173", "event_type": "listed", "market_hash_name": "...", "price_cents": 412, "approve": false, "reason": "below_threshold", "score": -0.84, "features": {"mean_cents": 430.5, "window_size": 20, "z_source": "local"}}
-{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "decisions": 329, "logged": 160, "approved": 25}
+{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "unchanged_snapshots": 268, "decisions": 61, "logged": 149, "approved": 14}
 ```
 
 A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `baseline_sha256` and
@@ -139,6 +142,13 @@ the same price, the rest repeating a REST snapshot. Such rows carry reason `dupl
 rules never looked at them, so count them as "not evaluated", not as rejections, when you measure
 precision or coverage against `listing_outcomes`. The summary's `duplicates` count (which also includes
 REST snapshots) shows the scale per run.
+
+**An unchanged REST snapshot is not scored again.** A snapshot at the same price as the item's previous
+REST snapshot is not scored, however old that one is (#265). Polls are 305 seconds apart plus the time a
+poll takes, so the 300 second rule never dropped one, and until #265 every poll scored the same lowest ask
+again and could paper trade it again. The price still enters the window as before, so every other decision
+is the same as it was. The summary counts these as `unchanged_snapshots` and they are not logged. The
+header's `dedup_rule` names the rule a run used.
 
 ## Strategies
 
