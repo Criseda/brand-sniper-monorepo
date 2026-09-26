@@ -38,6 +38,16 @@ check: lint format-check typecheck testcov
 migrate:
 	cd deployments && uv run alembic upgrade head
 
+SCORECARD_LOG ?= data/scorecard/decisions.jsonl
+WARMUP_HOURS ?= 2
+.PHONY: scorecard  ## Baseline scorecard (#249): make scorecard START=2026-09-26T17:30 END=2026-10-10T00:00
+scorecard:
+	@test -n "$(START)" -a -n "$(END)" || (echo "Usage: make scorecard START=<ISO, UTC> END=<ISO, UTC>" && exit 1)
+	mkdir -p $(dir $(SCORECARD_LOG))
+	cd apps/listener && uv run python -m backtest run --start $(START) --end $(END) \
+		--warmup-hours $(WARMUP_HOURS) --strategy zscore_dre_sweep --out $(CURDIR)/$(SCORECARD_LOG)
+	cd apps/analytics && uv run python baseline_scorecard.py --decisions $(CURDIR)/$(SCORECARD_LOG)
+
 STACK ?= server-stack
 .PHONY: docker-up  ## docker compose up -d for $(STACK) (use STACK=edge-stack for edge)
 docker-up:

@@ -29,11 +29,13 @@ from backtest.strategy import (
     REASON_DRE_REJECTED,
     REASON_DUPLICATE,
     REASON_INSUFFICIENT_HISTORY,
+    STRATEGIES,
     ZScoreDreStrategy,
+    ZScoreDreSweepStrategy,
 )
 from executor import ExecutionService
 from models import FeedEvent, MarketTick
-from rules_engine import REASON_STICKER_PREMIUM, REASON_STICKERS_BELOW_BASE, REASON_SUPPORT_FLOOR
+from rules_engine import REASON_MACRO_SIGMA, REASON_STICKER_PREMIUM, REASON_STICKERS_BELOW_BASE, REASON_SUPPORT_FLOOR
 from shared_utils import build_versioned_name
 from task_supervisor import BoundedTaskPool
 
@@ -93,12 +95,12 @@ def synthetic_stream() -> tuple[list, BaselineSnapshot]:
     return events, baselines
 
 
-async def _replay(events, baselines, **kwargs) -> tuple[str, list[tuple[MarketTick, object]]]:
+async def _replay(events, baselines, strategy=None, **kwargs) -> tuple[str, list[tuple[MarketTick, object]]]:
     decided: list[tuple[MarketTick, object]] = []
     log = io.StringIO()
     await run_replay(
         events,
-        ZScoreDreStrategy(),
+        strategy or ZScoreDreStrategy(),
         baselines,
         log,
         source_label="test",
@@ -319,6 +321,58 @@ async def test_replay_is_byte_identical_across_runs():
     assert header["strategy"] == "zscore_dre"
     assert header["baseline_sha256"] == baselines.sha256()
     assert header["config"]["z_score_threshold"] == -2.0
+
+
+def _verdicts(log_text: str) -> list[tuple]:
+    return [(row["seq"], row["listing_id"], row["approve"], row["reason"], row["score"]) for row in _rows(log_text)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["synthetic", "fixture"])
+async def test_sweep_strategy_makes_the_live_decisions(stream):
+    if stream == "synthetic":
+        events, baselines = synthetic_stream()
+    else:
+        events = load_fixture(FIXTURE_DIR / "events.jsonl")
+        baselines = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
+
+    live, _ = await _replay(events, baselines)
+    sweep, _ = await _replay(events, baselines, strategy=STRATEGIES["zscore_dre_sweep"]())
+
+    assert _verdicts(sweep) == _verdicts(live)
+    assert json.loads(sweep.splitlines()[0])["strategy"] == "zscore_dre_sweep"
+
+
+@pytest.mark.asyncio
+async def test_sweep_strategy_records_sticker_count_and_the_dre_verdict_below_the_threshold():
+    events = [_snapshot(index * 305, price) for index, price in enumerate([1000, 1010, 990, 1005, 995])]
+    events += [
+        # z is about -1.25: below threshold, but 2.5 volatilities under the 30 day average.
+        _feed(1600, "listed", _sale(1, 950)),
+        _feed(1601, "listed", _sale(2, 1020)),  # below threshold and no DRE rule applies
+        _feed(1602, "listed", _sale(3, 400)),  # approved: no DRE verdict to add
+    ]
+    baseline = {"support_floor_cents": 500, "latest_price_cents": 1000, "rolling_30d_avg_cents": 1200, "volatility_cents": 100}
+    baselines = BaselineSnapshot(baselines={ITEM: baseline})
+
+    log_text, _ = await _replay(events, baselines, strategy=ZScoreDreSweepStrategy())
+
+    rows = {row["listing_id"]: row for row in _rows(log_text)}
+    assert rows["1"]["reason"] == REASON_BELOW_THRESHOLD
+    assert rows["1"]["features"]["dre_reason"] == REASON_MACRO_SIGMA
+    assert rows["2"]["features"]["dre_reason"] is None
+    assert rows["3"]["approve"] is True
+    assert "dre_reason" not in rows["3"]["features"]
+    assert {row["features"]["sticker_count"] for row in rows.values()} == {0}
+
+
+@pytest.mark.asyncio
+async def test_live_strategy_log_carries_no_sweep_inputs():
+    events, baselines = synthetic_stream()
+
+    log_text, _ = await _replay(events, baselines)
+
+    assert not any("sticker_count" in row["features"] or "dre_reason" in row["features"] for row in _rows(log_text))
 
 
 # --- Parity with the live consumer ---

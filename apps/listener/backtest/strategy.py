@@ -62,6 +62,8 @@ class ZScoreDreStrategy:
     """The live rules: Z-score outlier detection on the price window, confirmed by the Edge DRE."""
 
     name = "zscore_dre"
+    # Also record what a threshold sweep needs (see ZScoreDreSweepStrategy); never changes a decision.
+    records_sweep_inputs = False
 
     def config(self) -> dict[str, Any]:
         return {
@@ -88,7 +90,13 @@ class ZScoreDreStrategy:
             "window_size": window_score.window_size,
             "z_source": window_score.source,
         }
+        if self.records_sweep_inputs:
+            features["sticker_count"] = len(tick.stickers)
         if not zscore.should_trigger_anomaly(window_score.z_score, window_score.mean_cents, tick, window_score.source):
+            if self.records_sweep_inputs:
+                # The DRE does not read the Z-score thresholds, so its verdict here is the one a looser
+                # threshold would have got.
+                features["dre_reason"] = await dre_approval_reason(tick, context.cache, window_score.baseline)
             return Decision(approve=False, reason=REASON_BELOW_THRESHOLD, score=window_score.z_score, features=features)
 
         approval_reason = await dre_approval_reason(tick, context.cache, window_score.baseline)
@@ -100,4 +108,21 @@ class ZScoreDreStrategy:
         return Decision(approve=True, reason=approval_reason, score=window_score.z_score, features=features)
 
 
-STRATEGIES: dict[str, Callable[[], Strategy]] = {ZScoreDreStrategy.name: ZScoreDreStrategy}
+class ZScoreDreSweepStrategy(ZScoreDreStrategy):
+    """
+    The live rules with the same decisions, plus what the scorecard's threshold sweep needs (#249).
+
+    Every scored tick also records its sticker count, and a tick below the Z threshold records the DRE
+    verdict it would have got (`dre_reason`, None when the DRE rejects it). The Z threshold and the
+    savings floor only decide which ticks reach the DRE, so any stricter or looser combination can then be
+    evaluated from one log instead of one replay per combination.
+    """
+
+    name = "zscore_dre_sweep"
+    records_sweep_inputs = True
+
+
+STRATEGIES: dict[str, Callable[[], Strategy]] = {
+    ZScoreDreStrategy.name: ZScoreDreStrategy,
+    ZScoreDreSweepStrategy.name: ZScoreDreSweepStrategy,
+}

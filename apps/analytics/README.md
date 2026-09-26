@@ -47,6 +47,10 @@ uv run python long_term_macro.py --limit 0
 # Label recorded listings with their market outcome (last 3 matured days, or an explicit range)
 uv run python label_outcomes.py
 uv run python label_outcomes.py --start 2026-09-24 --end 2026-10-01
+
+# Score a replayed decision log against the outcome labels (baseline scorecard, #249). From the repo
+# root, `make scorecard START=... END=...` runs the replay and this step together.
+uv run python baseline_scorecard.py --decisions ../../data/scorecard/decisions.jsonl
 ```
 
 #### Running via Docker Compose:
