@@ -1,7 +1,7 @@
 """add baseline_builds and venue_baselines (dated per venue baselines)
 
 Revision ID: f4c1b9a7e3d2
-Revises: d5a2e8c41f37
+Revises: e2b7c9d41a58
 Create Date: 2026-09-26 00:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlmodel
 from alembic import op
 
 revision: str = "f4c1b9a7e3d2"
-down_revision: str | Sequence[str] | None = "d5a2e8c41f37"
+down_revision: str | Sequence[str] | None = "e2b7c9d41a58"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
