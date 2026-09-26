@@ -18,7 +18,7 @@ the docs, this note records what the feed actually sends.
 | Page | What it covers | Used by |
 |---|---|---|
 | [WebSocket: Sale Feed](https://docs.skinport.com/websocket/sale-feed) | Socket.IO + msgpack `saleFeed`: `saleFeedJoin` parameters, event types, sale fields | Listener sidecar, `parse_sale_feed_message` (#232) |
-| [Items](https://docs.skinport.com/items) | `GET /v1/items`: per-item `min_price`, `max_price`, `mean_price`, `median_price`, `suggested_price`, `quantity`, `item_page`, `market_page`. No auth, 8 requests / 5 min, cached 5 min, `Accept-Encoding: br` required | Listener REST snapshots (`poll_market_stream`) |
+| [Items](https://docs.skinport.com/items) | `GET /v1/items`: per-item `min_price`, `max_price`, `mean_price`, `median_price`, `suggested_price`, `quantity`, `item_page`, `market_page`, plus an undocumented `version` (phase). No auth, 8 requests / 5 min, cached 5 min, `Accept-Encoding: br` required. `tradable=0` returns **only** trade locked listings; see [REST lowest asks](#rest-lowest-asks-v1items) | Listener REST snapshots (`poll_market_stream`) |
 | [Sales](https://docs.skinport.com/category/sales) | Index of the sales endpoints (history, out of stock) | - |
 | [Sales History](https://docs.skinport.com/sales/history) | `GET /v1/sales/history`: min/max/avg/median price and sale **volume** over 24 h, 7 d, 30 d, 90 d per item. No auth, 8 requests / 5 min, cached 5 min | Candidate liquidity source for outcome labels (#233) |
 | [Account Transactions](https://docs.skinport.com/account/transactions) | `GET /v1/account/transactions`: our own credits, purchases, withdrawals, with `amount` and `fee` per transaction. Basic auth, paginated | Realized fees and P&L once trading is live (#233, #235) |
@@ -31,6 +31,51 @@ Where the live feed disagrees with the Sale Feed docs (verified against 477 capt
 - **Unsupported event types**: the docs list `price_changed` and `canceled` as not emitted. A price edit or
   a cancelled listing is therefore invisible to us. A listing with no later `sold` event means "not seen to
   sell", **not** "did not sell at that price". Outcome labels (#233) must treat such listings as censored.
+
+## REST lowest asks (`/v1/items`)
+
+I checked this on 2026-09-26 (#267), after two REST approvals were priced below every sale of the item in
+the last 30 days: a Flip Knife Doppler Phase 4 (Factory New) at $201.12 and a Survival Knife Forest DDPAT
+(Field-Tested) at $28.85. All times below are UTC.
+
+**The phase is right.** `/v1/items` returns one entry per phase, each with its own `version` and item page
+(`flip-knife-doppler-factory-new+phase-4`). The Phase 4 entry really had a $201.12 lowest ask. A cheaper
+phase is not being filed under the wrong name.
+
+**`tradable=0` returns only listings that are not tradable yet.** The docs say `tradable` is a boolean that
+defaults to `true` and shows only tradable items. I read `tradable=0` as "include the trade locked ones
+too". It is the opposite set. Two requests a minute apart:
+
+| | `tradable=1` | `tradable=0` |
+|:---|---:|---:|
+| Entries | 25,349 | 21,361 |
+| Entries with a price | 25,349 | 10,175 |
+| Listings (`quantity` summed) | 3,688,384 | 81,050 |
+| Flip Knife Doppler Phase 4 (Factory New) | $339.98 lowest, 21 listings | $201.12 lowest, 7 listings |
+| Survival Knife Forest DDPAT (Field-Tested) | $42.68 lowest, 9 listings | $40.91 lowest, 3 listings |
+
+The poller has sent `tradable: 0` since the first Skinport commit (2026-06-24), so every REST snapshot in
+`live_market_ticks` (the rows with a null `event_type`) is the lowest ask among trade locked listings. For
+items priced in both sets, that ask is a median 11.1% below the tradable lowest ask (p25 5.1%, p75 21.1%,
+p90 36.0%). The discount is what a buyer gets for waiting out the lock, so a REST approval was mostly
+measuring the lock. The fix is #275.
+
+**The live feed seems to announce a trade locked listing only when its lock ends.** From 2026-09-25 the
+REST lowest ask dropped 356 times. In none of them did the feed announce a listing at that price in the 15
+minutes before; 6 were announced later (a median 76 minutes after the drop) and 350 never. The Survival
+Knife shows the pattern: REST showed $28.85 from 12:16, the feed announced listing 60897807 at $28.85 at
+13:02:43, and it sold 36 seconds later. The feed's `lock` field was null on every captured sale, so I cannot
+confirm this from the feed itself.
+
+**A `sold` event is not always a completed trade.** The same listing 60897807 was announced as `listed`
+again at 13:52:59, at $44.42, with the same `assetId` and Steam `assetid`. A completed trade would move the
+item to a new Steam asset, so that sale most likely fell through. Outcome labels (#233) treat `sold` as a
+sale; I have not measured how often this happens.
+
+**Rate limits are tighter than documented once they trip.** Two requests one second apart got HTTP 429, and
+retrying every 95 seconds kept it that way. From 14:32 the listener's authenticated requests then got 429
+for over an hour, at intervals of 20 minutes, while unauthenticated requests from the same machine got 200.
+`/v1/items` does not need auth. After a 429, back off for a long time and never retry in a loop.
 
 ## Transport
 
