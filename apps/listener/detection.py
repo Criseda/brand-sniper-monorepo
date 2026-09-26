@@ -24,10 +24,10 @@ from listener_telemetry import (
 )
 from models import MarketTick
 from redis.asyncio import Redis
-from rules_engine import evaluate_opportunity
+from rules_engine import APPROVAL_REASONS, dre_approval_reason
 from shared_utils import PROFIT_ESTIMATE_BASIS_NET, edge_baselines_key, fees_for, get_logger, net_resale_margin_cents
 from task_supervisor import BoundedTaskPool
-from zscore import calculate_z_score, should_trigger_anomaly
+from zscore import ZSCORE_SOURCES, calculate_z_score, should_trigger_anomaly
 
 logger = get_logger("listener.main")
 
@@ -38,6 +38,11 @@ SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
 DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "25000"))
 # A tick at the same price as the item's previous tick within this many seconds is a duplicate.
 DEDUP_WINDOW_SECONDS = 300
+
+# `tick_kind` label on the anomaly counters: a REST lowest ask or a live feed listing.
+TICK_KIND_REST_SNAPSHOT = "rest_snapshot"
+TICK_KIND_LISTING = "listing"
+TICK_KINDS = (TICK_KIND_REST_SNAPSHOT, TICK_KIND_LISTING)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +71,25 @@ class WindowScore:
 def _decode_zset_element(element: str | bytes) -> str:
     """Decodes a Redis sorted-set member to str regardless of client decode mode."""
     return element.decode("utf-8") if isinstance(element, bytes) else element
+
+
+def tick_kind_label(tick: MarketTick) -> str:
+    return TICK_KIND_REST_SNAPSHOT if tick.is_rest_snapshot else TICK_KIND_LISTING
+
+
+def initialise_anomaly_counters() -> None:
+    """
+    Creates every label combination of the anomaly counters at zero.
+
+    Prometheus `increase()` cannot see the first increment of a series that appears already at 1, and
+    approvals are rare enough that losing the first one per rule, source and tick kind would show.
+    """
+    for source in ZSCORE_SOURCES:
+        for tick_kind in TICK_KINDS:
+            anomalies_detected_total.labels(source=source, tick_kind=tick_kind)
+            anomalies_rejected_total.labels(source=source, tick_kind=tick_kind)
+            for reason in APPROVAL_REASONS:
+                anomalies_confirmed_total.labels(source=source, tick_kind=tick_kind, reason=reason)
 
 
 def is_duplicate(tick: MarketTick, dedup_cache: DedupCache) -> bool:
@@ -177,13 +201,16 @@ async def evaluate_and_execute(
 ) -> None:
     """Evaluates an anomaly locally on the edge and executes the trade if valid."""
     _dre_t0 = time.monotonic()
-    is_approved = await evaluate_opportunity(tick, cache, baseline)
+    approval_reason = await dre_approval_reason(tick, cache, baseline)
     rules_engine_latency_seconds.observe(time.monotonic() - _dre_t0)
-    if is_approved:
-        anomalies_confirmed_total.inc()
+    tick_kind = tick_kind_label(tick)
+    if approval_reason is not None:
+        anomalies_confirmed_total.labels(source=source, tick_kind=tick_kind, reason=approval_reason).inc()
         logger.info(
-            "[ANOMALY] Confirmed true outlier by Edge DRE (%s)! %s dropped to $%.2f. Executing trade (Z=%.2f)...",
+            "[ANOMALY] Confirmed true outlier by Edge DRE (%s, %s, rule %s)! %s dropped to $%.2f. Executing trade (Z=%.2f)...",
             source,
+            tick_kind,
+            approval_reason,
             tick.market_hash_name,
             tick.price_usd,
             z_score,
@@ -203,9 +230,13 @@ async def evaluate_and_execute(
             float_value=tick.float_value,
         )
     else:
-        anomalies_rejected_total.inc()
+        anomalies_rejected_total.labels(source=source, tick_kind=tick_kind).inc()
         logger.info(
-            "[ANOMALY] False outlier filtered by Edge DRE (%s): %s at $%.2f.", source, tick.market_hash_name, tick.price_usd
+            "[ANOMALY] False outlier filtered by Edge DRE (%s, %s): %s at $%.2f.",
+            source,
+            tick_kind,
+            tick.market_hash_name,
+            tick.price_usd,
         )
 
 
@@ -233,7 +264,7 @@ async def update_window_and_detect(
         tick.price_usd,
         score.z_score,
     )
-    anomalies_detected_total.labels(source=score.source).inc()
+    anomalies_detected_total.labels(source=score.source, tick_kind=tick_kind_label(tick)).inc()
     await anomaly_pool.submit(
         partial(
             evaluate_and_execute,

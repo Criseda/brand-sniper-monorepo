@@ -17,6 +17,7 @@ from baseline_loader import BaselineState, baselines_url, keep_baselines_loaded
 from batch_delivery import RedisBatchStore, StoredBatch, deliver_stored_batch
 from detection import (
     DedupCache,
+    initialise_anomaly_counters,
     is_duplicate,
     is_unchanged_snapshot,
     push_to_window,
@@ -359,6 +360,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     # Start Prometheus metrics HTTP server on a background thread
     _metrics_port = int(os.getenv("LISTENER_METRICS_PORT", "9100"))
+    initialise_anomaly_counters()
     start_http_server(_metrics_port)
     logger.info("[METRICS] Prometheus metrics endpoint listening on :%d/metrics", _metrics_port)
 

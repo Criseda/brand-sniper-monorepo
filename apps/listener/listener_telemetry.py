@@ -21,20 +21,25 @@ snapshots_unchanged_total = Counter(
     "REST snapshots whose price had not changed since the item's previous snapshot: windowed, not scored",
 )
 
+# Labels on the anomaly counters: `source` is the Z-score source (local, hybrid, macro), `tick_kind`
+# tells a REST lowest ask (rest_snapshot) from a live feed listing (listing), and `reason` is the DRE
+# rule that approved the anomaly.
 anomalies_detected_total = Counter(
     "listener_anomalies_detected_total",
     "Total number of anomalies flagged by Z-score analysis",
-    labelnames=["source"],
+    labelnames=["source", "tick_kind"],
 )
 
 anomalies_confirmed_total = Counter(
     "listener_anomalies_confirmed_total",
     "Total number of anomalies approved by the DRE",
+    labelnames=["source", "tick_kind", "reason"],
 )
 
 anomalies_rejected_total = Counter(
     "listener_anomalies_rejected_total",
     "Total number of anomalies filtered out by the DRE",
+    labelnames=["source", "tick_kind"],
 )
 
 dedup_cache_size = Gauge(
