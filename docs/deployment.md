@@ -289,7 +289,8 @@ any, and later starts find none. Nothing has to be done by hand. If the edge Red
 is nothing to move and the windows fill again from the next polls, as after any Redis restart.
 
 The dedup cache lives in the listener's memory and starts empty on every start, as before. It holds up to
-`DEDUP_CACHE_MAX_SIZE` items per venue (25,000; one Skinport poll returns about 21,300).
+`DEDUP_CACHE_MAX_SIZE` items per venue (100,000). One tradable Skinport poll returns about 25,300 items, so
+the old limit of 25,000 evicted items on every poll. If your `.env` still sets 25000, remove that line.
 `listener_dedup_cache_evictions_total` counts the items a full cache pushed out, per venue. It should stay
 at 0: an evicted item whose lowest ask never changes is scored again on its next poll. If it grows, raise
 `DEDUP_CACHE_MAX_SIZE`.
