@@ -124,3 +124,27 @@ def detect_downtrend(history_entry: dict) -> tuple[bool, float]:
         downtrend_severity += (m7 - m24) / m7
 
     return downtrend_detected, downtrend_severity
+
+
+def edge_baseline_payload(
+    *,
+    support_floor_cents: int,
+    latest_price_cents: int,
+    rolling_30d_avg_cents: int,
+    volatility_cents: int,
+    drift_percent: float,
+) -> dict:
+    """The per-item baseline document the edge reads from `baseline:<market_hash_name>`.
+
+    Built in one place so the Redis sync and the replay harness give the decision path identical inputs.
+    """
+    return {
+        "support_floor_cents": support_floor_cents,
+        "latest_price_cents": latest_price_cents,
+        "rolling_30d_avg_cents": rolling_30d_avg_cents,
+        "volatility_cents": volatility_cents,
+        "drift_percent": drift_percent,
+        "coefficient_of_variation": round(volatility_cents / rolling_30d_avg_cents, 4)
+        if rolling_30d_avg_cents and volatility_cents
+        else 0.0,
+    }

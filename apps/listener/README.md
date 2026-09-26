@@ -29,6 +29,12 @@ reported through `listener_trade_submissions_total` and
 
 The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO `saleFeed`. The sidecar forwards every event type (`listed`, `sold`, ...) untouched, wrapped with a receive timestamp, to the local Redis Pub/Sub channel `skinport:sale_feed`. The main Python process records each raw event (`feed_events`) and every sale as a listing-level tick; only `listed` sales (and REST snapshots) enter the anomaly detection pipeline. See [`docs/skinport_feed.md`](../../docs/skinport_feed.md) and the official [Sale Feed](https://docs.skinport.com/websocket/sale-feed) and [Items](https://docs.skinport.com/items) docs. (The subprocess stdout/stderr are captured solely for application logging).
 
+## Replay & Backtests
+
+`python -m backtest` replays recorded feed events and REST snapshots through the same decision code
+(`detection.py`, `zscore.py`, `rules_engine.py`) against an in-memory edge store, and writes a
+deterministic decision log. See [docs/backtesting.md](../../docs/backtesting.md).
+
 ## Setup & Execution
 
 ### 1. Environment Configuration

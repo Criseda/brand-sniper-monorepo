@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 setup_script_environment(__file__)
 
-from shared_utils import get_logger, validate_required_env
+from shared_utils import edge_baseline_payload, get_logger, validate_required_env
 from shared_utils.db_connection import async_engine
 from shared_utils.models import ItemMacroBaseline, MarketItem
 
@@ -52,14 +52,13 @@ async def sync_baselines_to_edge():
 
     async with redis.pipeline(transaction=False) as pipe:
         for market_hash_name, support_floor, latest_price, rolling_30d_avg, volatility, drift in rows:
-            data = {
-                "support_floor_cents": support_floor,
-                "latest_price_cents": latest_price,
-                "rolling_30d_avg_cents": rolling_30d_avg,
-                "volatility_cents": volatility,
-                "drift_percent": drift,
-                "coefficient_of_variation": round(volatility / rolling_30d_avg, 4) if rolling_30d_avg and volatility else 0.0,
-            }
+            data = edge_baseline_payload(
+                support_floor_cents=support_floor,
+                latest_price_cents=latest_price,
+                rolling_30d_avg_cents=rolling_30d_avg,
+                volatility_cents=volatility,
+                drift_percent=drift,
+            )
             pipe.set(f"baseline:{market_hash_name}", json.dumps(data))
 
         # Execute pipeline

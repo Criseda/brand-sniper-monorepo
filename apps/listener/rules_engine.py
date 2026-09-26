@@ -3,10 +3,17 @@ import json
 from models import MarketTick
 from redis.asyncio import Redis
 
+# Why the DRE approved an opportunity (see dre_approval_reason).
+REASON_SUPPORT_FLOOR = "support_floor"
+REASON_MACRO_SIGMA = "macro_sigma"
+REASON_STICKERS_BELOW_BASE = "stickers_below_base"
+REASON_STICKER_PREMIUM = "sticker_premium"
 
-async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> bool:
+
+async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> str | None:
     """
     Evaluates a market anomaly deterministically using macro baselines and sticker valuations.
+    Returns the rule that approved it, or None when it is rejected.
 
     Three-tiered guard:
       1.  Hard floor check  (price <= support_floor_cents)
@@ -17,7 +24,7 @@ async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: 
     if baseline is None:
         baseline_raw = await redis_client.get(f"baseline:{tick.market_hash_name}")
         if not baseline_raw:
-            return False
+            return None
         baseline = json.loads(baseline_raw)
 
     support_floor_cents = baseline.get("support_floor_cents", 0)
@@ -27,7 +34,7 @@ async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: 
 
     # 2. Hard Floor Check
     if tick.price_cents <= support_floor_cents:
-        return True
+        return REASON_SUPPORT_FLOOR
 
     # 3. Volatility-Aware Macro Floor  (Layer 3 fix for #31)
     # Catches illiquid items that drop far below their long-term average
@@ -35,7 +42,7 @@ async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: 
     if rolling_30d_avg_cents is not None and volatility_cents is not None and volatility_cents > 0:
         sigma_distance = (rolling_30d_avg_cents - tick.price_cents) / volatility_cents
         if sigma_distance >= 2.0:
-            return True
+            return REASON_MACRO_SIGMA
 
     # 4. Sticker Premium Valuation
     total_sticker_value_cents = 0
@@ -58,11 +65,16 @@ async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: 
 
         # If the premium is negative, we are getting stickers for free below base price
         if premium_cents <= 0:
-            return True
+            return REASON_STICKERS_BELOW_BASE
 
         sp_percentage = (premium_cents / total_sticker_value_cents) * 100
 
         if sp_percentage <= 3.0:
-            return True
+            return REASON_STICKER_PREMIUM
 
-    return False
+    return None
+
+
+async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> bool:
+    """True when the DRE approves the anomaly (see dre_approval_reason for the rules)."""
+    return await dre_approval_reason(tick, redis_client, baseline) is not None

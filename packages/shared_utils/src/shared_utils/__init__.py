@@ -31,7 +31,7 @@ from .pnl import (
     net_resale_margin_cents,
     seller_fee_cents,
 )
-from .pricing_utils import detect_downtrend, resolve_recent_median, to_cents
+from .pricing_utils import detect_downtrend, edge_baseline_payload, resolve_recent_median, to_cents
 from .script_utils import setup_script_environment, setup_service_environment, validate_required_env
 from .time_utils import utc_fromtimestamp_naive, utc_now_naive
 
@@ -68,6 +68,7 @@ __all__ = [
     "to_cents",
     "resolve_recent_median",
     "detect_downtrend",
+    "edge_baseline_payload",
     "setup_script_environment",
     "setup_service_environment",
     "validate_required_env",

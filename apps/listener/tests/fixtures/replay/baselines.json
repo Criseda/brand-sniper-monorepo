@@ -1,0 +1,190 @@
+{
+  "as_of": "2026-07-11T00:11:29.409389",
+  "baselines": {
+    "AK-47 | Cartel (Minimal Wear)": {
+      "coefficient_of_variation": 0.0257,
+      "drift_percent": -2.2785128947818323,
+      "latest_price_cents": 1213,
+      "rolling_30d_avg_cents": 1207,
+      "support_floor_cents": 403,
+      "volatility_cents": 31
+    },
+    "AK-47 | Elite Build (Field-Tested)": {
+      "coefficient_of_variation": 0.0374,
+      "drift_percent": -0.4978220286247781,
+      "latest_price_cents": 110,
+      "rolling_30d_avg_cents": 107,
+      "support_floor_cents": 83,
+      "volatility_cents": 4
+    },
+    "AK-47 | Fuel Injector (Minimal Wear)": {
+      "coefficient_of_variation": 0.0455,
+      "drift_percent": -1.7341211611460379,
+      "latest_price_cents": 23212,
+      "rolling_30d_avg_cents": 21757,
+      "support_floor_cents": 3465,
+      "volatility_cents": 989
+    },
+    "AWP | Worm God (Minimal Wear)": {
+      "coefficient_of_variation": 0.0305,
+      "drift_percent": -4.252724020165875,
+      "latest_price_cents": 133,
+      "rolling_30d_avg_cents": 131,
+      "support_floor_cents": 104,
+      "volatility_cents": 4
+    },
+    "Chroma 3 Case": {
+      "coefficient_of_variation": 0.0184,
+      "drift_percent": 0.5101252125521692,
+      "latest_price_cents": 216,
+      "rolling_30d_avg_cents": 217,
+      "support_floor_cents": 3,
+      "volatility_cents": 4
+    },
+    "Desert Eagle | Night (Minimal Wear)": {
+      "coefficient_of_variation": 0.0954,
+      "drift_percent": -0.7879450163915577,
+      "latest_price_cents": 952,
+      "rolling_30d_avg_cents": 1342,
+      "support_floor_cents": 106,
+      "volatility_cents": 128
+    },
+    "Dreams & Nightmares Case": {
+      "coefficient_of_variation": 0.0247,
+      "drift_percent": 3.0453257790368236,
+      "latest_price_cents": 80,
+      "rolling_30d_avg_cents": 81,
+      "support_floor_cents": 61,
+      "volatility_cents": 2
+    },
+    "Dual Berettas | Flora Carnivora (Field-Tested)": {
+      "coefficient_of_variation": 0.0238,
+      "drift_percent": -0.7081038552320941,
+      "latest_price_cents": 42,
+      "rolling_30d_avg_cents": 42,
+      "support_floor_cents": 41,
+      "volatility_cents": 1
+    },
+    "Galil AR | Eco (Field-Tested)": {
+      "coefficient_of_variation": 0.0359,
+      "drift_percent": -2.419747081712072,
+      "latest_price_cents": 420,
+      "rolling_30d_avg_cents": 446,
+      "support_floor_cents": 118,
+      "volatility_cents": 16
+    },
+    "Galil AR | Kami (Minimal Wear)": {
+      "coefficient_of_variation": 0.1775,
+      "drift_percent": -4.2147007285806435,
+      "latest_price_cents": 202,
+      "rolling_30d_avg_cents": 231,
+      "support_floor_cents": 14,
+      "volatility_cents": 41
+    },
+    "Lt. Commander Ricksaw | NSWC SEAL": {
+      "coefficient_of_variation": 0.0231,
+      "drift_percent": -0.20155854826492373,
+      "latest_price_cents": 863,
+      "rolling_30d_avg_cents": 864,
+      "support_floor_cents": 632,
+      "volatility_cents": 20
+    },
+    "M4A1-S | Nitro (Field-Tested)": {
+      "coefficient_of_variation": 0.025,
+      "drift_percent": -1.0342950462710991,
+      "latest_price_cents": 40,
+      "rolling_30d_avg_cents": 40,
+      "support_floor_cents": 55,
+      "volatility_cents": 1
+    },
+    "M4A4 | Temukau (Field-Tested)": {
+      "coefficient_of_variation": 0.0838,
+      "drift_percent": 0.10558355536125211,
+      "latest_price_cents": 1326,
+      "rolling_30d_avg_cents": 1348,
+      "support_floor_cents": 1502,
+      "volatility_cents": 113
+    },
+    "Souvenir AK-47 | Gold Arabesque (Field-Tested)": {
+      "coefficient_of_variation": 0.1042,
+      "drift_percent": -1.1671340718085397,
+      "latest_price_cents": 132444,
+      "rolling_30d_avg_cents": 132284,
+      "support_floor_cents": 115450,
+      "volatility_cents": 13778
+    },
+    "StatTrak™ M4A1-S | Golden Coil (Minimal Wear)": {
+      "coefficient_of_variation": 0.075,
+      "drift_percent": 1.7247173790204868,
+      "latest_price_cents": 16744,
+      "rolling_30d_avg_cents": 18363,
+      "support_floor_cents": 4820,
+      "volatility_cents": 1377
+    },
+    "StatTrak™ M4A4 | Magnesium (Minimal Wear)": {
+      "coefficient_of_variation": 0.0279,
+      "drift_percent": -2.827345068724378,
+      "latest_price_cents": 191,
+      "rolling_30d_avg_cents": 179,
+      "support_floor_cents": 103,
+      "volatility_cents": 5
+    },
+    "★ Bowie Knife | Lore (Battle-Scarred)": {
+      "coefficient_of_variation": 0.0565,
+      "drift_percent": -0.36972715512636933,
+      "latest_price_cents": 14936,
+      "rolling_30d_avg_cents": 13991,
+      "support_floor_cents": 12075,
+      "volatility_cents": 790
+    },
+    "★ Butterfly Knife | Urban Masked (Field-Tested)": {
+      "coefficient_of_variation": 0.0527,
+      "drift_percent": 10.142980756378526,
+      "latest_price_cents": 60937,
+      "rolling_30d_avg_cents": 62626,
+      "support_floor_cents": 6500,
+      "volatility_cents": 3299
+    },
+    "★ Hydra Gloves | Rattler (Minimal Wear)": {
+      "coefficient_of_variation": 0.0596,
+      "drift_percent": -2.9865761212886928,
+      "latest_price_cents": 6300,
+      "rolling_30d_avg_cents": 6825,
+      "support_floor_cents": 5566,
+      "volatility_cents": 407
+    },
+    "★ Karambit | Tiger Tooth (Factory New)": {
+      "coefficient_of_variation": 0.0604,
+      "drift_percent": 6.340921631668703,
+      "latest_price_cents": 108753,
+      "rolling_30d_avg_cents": 125374,
+      "support_floor_cents": 31761,
+      "volatility_cents": 7575
+    },
+    "★ Nomad Knife | Night Stripe (Field-Tested)": {
+      "coefficient_of_variation": 0.1936,
+      "drift_percent": -2.2850575417196652,
+      "latest_price_cents": 16856,
+      "rolling_30d_avg_cents": 17713,
+      "support_floor_cents": 8219,
+      "volatility_cents": 3430
+    },
+    "★ Stiletto Knife | Tiger Tooth (Factory New)": {
+      "coefficient_of_variation": 0.0382,
+      "drift_percent": 2.907393483828092,
+      "latest_price_cents": 44478,
+      "rolling_30d_avg_cents": 48238,
+      "support_floor_cents": 18890,
+      "volatility_cents": 1843
+    },
+    "★ Ursus Knife | Urban Masked (Field-Tested)": {
+      "coefficient_of_variation": 0.0556,
+      "drift_percent": -2.4716398467651826,
+      "latest_price_cents": 11377,
+      "rolling_30d_avg_cents": 11380,
+      "support_floor_cents": 7729,
+      "volatility_cents": 633
+    }
+  },
+  "sticker_prices": {}
+}
