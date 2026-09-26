@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import detection
 import pytest
 from backtest.store import InMemoryEdgeStore
+from listener_telemetry import anomalies_confirmed_total, anomalies_detected_total, anomalies_rejected_total
 from models import MarketTick
 from redis.asyncio import Redis
 
@@ -53,6 +54,21 @@ async def test_outlier_is_submitted_to_the_dre():
     assert job.args[0] is outlier
     assert job.args[1] < -2.0  # z-score
     assert job.args[5] == "local"
+
+
+@pytest.mark.asyncio
+async def test_flagged_outlier_is_counted_by_source_and_tick_kind():
+    store = InMemoryEdgeStore()
+    await _fill_window(store, [1000, 1010, 990, 1005, 995])
+    pool = MagicMock()
+    pool.submit = AsyncMock()
+    counter = anomalies_detected_total.labels(source="local", tick_kind="listing")
+    before = counter._value.get()
+
+    listing = _tick(5.00, timestamp=1_790_000_100, event_type="listed", listing_id="1")
+    await detection.update_window_and_detect(listing, store, pool, AsyncMock())
+
+    assert counter._value.get() == before + 1
 
 
 @pytest.mark.asyncio
@@ -149,7 +165,7 @@ def test_dedup_cache_evicts_the_least_recently_used_item(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_approved_trade_records_the_bought_listing(monkeypatch):
-    monkeypatch.setattr(detection, "evaluate_opportunity", AsyncMock(return_value=True))
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
     executor = AsyncMock()
     tick = MarketTick(
         venue="skinport",
@@ -177,7 +193,7 @@ async def test_approved_trade_records_the_bought_listing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_approved_trade_without_baseline_price_records_no_estimate(monkeypatch):
-    monkeypatch.setattr(detection, "evaluate_opportunity", AsyncMock(return_value=True))
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
     executor = AsyncMock()
 
     await detection.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), executor, {"rolling_30d_avg_cents": 1500})
@@ -187,7 +203,7 @@ async def test_approved_trade_without_baseline_price_records_no_estimate(monkeyp
 
 @pytest.mark.asyncio
 async def test_approved_trade_fetches_the_baseline_when_none_was_passed(monkeypatch):
-    monkeypatch.setattr(detection, "evaluate_opportunity", AsyncMock(return_value=True))
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
     store = _store_with_baseline(latest_price_cents=1500)
     executor = AsyncMock()
 
@@ -198,7 +214,7 @@ async def test_approved_trade_fetches_the_baseline_when_none_was_passed(monkeypa
 
 @pytest.mark.asyncio
 async def test_rejected_opportunity_is_not_executed(monkeypatch):
-    monkeypatch.setattr(detection, "evaluate_opportunity", AsyncMock(return_value=False))
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value=None))
     executor = AsyncMock()
 
     await detection.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), executor, {"latest_price_cents": 1500})
@@ -210,10 +226,55 @@ async def test_rejected_opportunity_is_not_executed(monkeypatch):
 async def test_approved_trade_on_venue_without_fee_schedule_fails_loudly(monkeypatch):
     from shared_utils import UnknownVenueError
 
-    monkeypatch.setattr(detection, "evaluate_opportunity", AsyncMock(return_value=True))
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
     executor = AsyncMock()
     tick = MarketTick(venue="unlisted-venue", market_hash_name="Item", price_usd=10.0, timestamp=1_790_000_000)
 
     with pytest.raises(UnknownVenueError):
         await detection.evaluate_and_execute(tick, -3.0, MagicMock(), executor, {"latest_price_cents": 1500})
     executor.execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [({}, "rest_snapshot"), ({"event_type": "listed", "listing_id": "1"}, "listing")],
+)
+def test_tick_kind_label_tells_rest_snapshots_from_listings(fields, expected):
+    assert detection.tick_kind_label(_tick(10.0, **fields)) == expected
+
+
+@pytest.mark.asyncio
+async def test_approval_is_counted_and_logged_with_its_rule(monkeypatch, caplog):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="macro_sigma"))
+    counter = anomalies_confirmed_total.labels(source="macro", tick_kind="rest_snapshot", reason="macro_sigma")
+    before = counter._value.get()
+
+    with caplog.at_level("INFO", logger="listener.main"):
+        await detection.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), AsyncMock(), {}, "macro")
+
+    assert counter._value.get() == before + 1
+    assert "(macro, rest_snapshot, rule macro_sigma)" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_rejection_is_counted_by_source_and_tick_kind(monkeypatch):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value=None))
+    counter = anomalies_rejected_total.labels(source="hybrid", tick_kind="listing")
+    before = counter._value.get()
+
+    listing = _tick(10.0, event_type="listed", listing_id="1")
+    await detection.evaluate_and_execute(listing, -3.0, MagicMock(), AsyncMock(), {}, "hybrid")
+
+    assert counter._value.get() == before + 1
+
+
+def test_every_anomaly_counter_series_exists_before_the_first_anomaly():
+    detection.initialise_anomaly_counters()
+
+    def label_values(counter, label: str) -> set[str]:
+        return {sample.labels[label] for sample in counter.collect()[0].samples if sample.name.endswith("_total")}
+
+    reasons = {"support_floor", "macro_sigma", "stickers_below_base", "sticker_premium"}
+    assert label_values(anomalies_confirmed_total, "reason") == reasons
+    assert label_values(anomalies_rejected_total, "tick_kind") == {"rest_snapshot", "listing"}
+    assert label_values(anomalies_detected_total, "source") == {"local", "hybrid", "macro"}

@@ -9,6 +9,7 @@ REASON_SUPPORT_FLOOR = "support_floor"
 REASON_MACRO_SIGMA = "macro_sigma"
 REASON_STICKERS_BELOW_BASE = "stickers_below_base"
 REASON_STICKER_PREMIUM = "sticker_premium"
+APPROVAL_REASONS = (REASON_SUPPORT_FLOOR, REASON_MACRO_SIGMA, REASON_STICKERS_BELOW_BASE, REASON_STICKER_PREMIUM)
 
 
 async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> str | None:

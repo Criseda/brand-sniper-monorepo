@@ -39,16 +39,21 @@ groups:
     interval: 30s
     rules:
       - alert: AnomalyRateSpike
-        expr: rate(listener_anomalies_detected_total[5m]) * 60 > 50
+        expr: sum by (source) (rate(listener_anomalies_detected_total[5m])) * 60 > 50
         for: 2m
         labels: { severity: info }
         annotations: { summary: "High anomaly detection rate", description: "More than 50 anomalies/min — possible market event or misconfiguration" }
 
-      - alert: LowConfirmationRate
-        expr: sum(rate(listener_anomalies_confirmed_total[15m])) / (sum(rate(listener_anomalies_confirmed_total[15m])) + sum(rate(listener_anomalies_rejected_total[15m]))) < 0.1
+      # A health check, not a measure of edge: the DRE rejects every flag it has no baseline for, so
+      # almost no approvals over a busy hour usually means the edge baselines did not load.
+      - alert: DRERejectsAlmostEverything
+        expr: |
+          sum(increase(listener_anomalies_confirmed_total[1h]))
+            / (sum(increase(listener_anomalies_confirmed_total[1h])) + sum(increase(listener_anomalies_rejected_total[1h]))) < 0.1
+          and (sum(increase(listener_anomalies_confirmed_total[1h])) + sum(increase(listener_anomalies_rejected_total[1h]))) >= 20
         for: 15m
         labels: { severity: warning }
-        annotations: { summary: "DRE confirmation rate below 10%", description: "Almost all anomalies are being rejected — check thresholds" }
+        annotations: { summary: "DRE approved under 10% of at least 20 flags in the last hour", description: "Check that the edge baselines loaded (listener_baselines_loaded) before touching thresholds" }
 
   - name: sniper_backend_errors
     interval: 30s

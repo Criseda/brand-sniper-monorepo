@@ -13,6 +13,9 @@ MIN_HISTORY_POINTS = int(os.getenv("MIN_HISTORY_POINTS", "4"))
 MACRO_ZSCORE_FALLBACK = os.getenv("MACRO_ZSCORE_FALLBACK", "true").lower() in ("true", "1", "yes")
 MACRO_PRIOR_WEIGHT = float(os.getenv("MACRO_PRIOR_WEIGHT", "5.0"))
 
+# Every source calculate_z_score can report.
+ZSCORE_SOURCES = ("local", "hybrid", "macro")
+
 
 def calculate_z_score(
     prices: list[int],

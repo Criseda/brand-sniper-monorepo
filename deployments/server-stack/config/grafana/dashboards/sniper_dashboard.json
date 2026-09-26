@@ -139,9 +139,9 @@
       "title": "Potential Anomalies Flagged/min",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 12 },
       "targets": [
-        { "expr": "rate(listener_anomalies_detected_total{source=\"local\"}[1m]) * 60", "legendFormat": "Local", "refId": "A" },
-        { "expr": "rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m]) * 60", "legendFormat": "Hybrid", "refId": "B" },
-        { "expr": "rate(listener_anomalies_detected_total{source=\"macro\"}[1m]) * 60", "legendFormat": "Macro", "refId": "C" }
+        { "expr": "sum(rate(listener_anomalies_detected_total{source=\"local\"}[1m])) * 60", "legendFormat": "Local", "refId": "A" },
+        { "expr": "sum(rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m])) * 60", "legendFormat": "Hybrid", "refId": "B" },
+        { "expr": "sum(rate(listener_anomalies_detected_total{source=\"macro\"}[1m])) * 60", "legendFormat": "Macro", "refId": "C" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: detections/min" } },
       "stack": { "mode": "normal" }
@@ -151,36 +151,25 @@
       "title": "DRE Decisions/min",
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 12 },
       "targets": [
-        { "expr": "rate(listener_anomalies_confirmed_total[1m]) * 60", "legendFormat": "Confirmed by DRE", "refId": "A" },
-        { "expr": "rate(listener_anomalies_rejected_total[1m]) * 60", "legendFormat": "Filtered/Rejected", "refId": "B" }
+        { "expr": "sum(rate(listener_anomalies_confirmed_total[1m])) * 60", "legendFormat": "Confirmed by DRE", "refId": "A" },
+        { "expr": "sum(rate(listener_anomalies_rejected_total[1m])) * 60", "legendFormat": "Filtered/Rejected", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: outcomes/min" } }
     },
     {
-      "type": "stat",
-      "title": "DRE Confirmation Rate",
+      "type": "timeseries",
+      "title": "DRE Approvals/hour by Rule and Source",
+      "description": "Approvals in the last hour by the DRE rule that approved them, the Z-score source that flagged them, and whether the price was a REST lowest ask or a live listing. This counts decisions; it says nothing about whether they make money.",
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 12 },
       "targets": [
         {
-          "expr": "sum(rate(listener_anomalies_confirmed_total[15m])) / (sum(rate(listener_anomalies_confirmed_total[15m])) + sum(rate(listener_anomalies_rejected_total[15m]))) * 100",
-          "legendFormat": "Rate",
+          "expr": "sum by (reason, source, tick_kind) (increase(listener_anomalies_confirmed_total[1h])) > 0",
+          "legendFormat": "{{reason}} | {{source}} | {{tick_kind}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "min": 0,
-          "max": 100,
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "red", "value": null },
-            { "color": "orange", "value": 25 },
-            { "color": "green", "value": 50 }
-          ]}
-        }
-      },
-      "options": { "colorMode": "value", "graphMode": "none" }
+      "fieldConfig": { "defaults": { "unit": "suffix: approvals/h", "decimals": 0 } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
       "type": "row",
