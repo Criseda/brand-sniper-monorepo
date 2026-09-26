@@ -157,19 +157,33 @@
       "fieldConfig": { "defaults": { "unit": "suffix: outcomes/min" } }
     },
     {
-      "type": "timeseries",
-      "title": "DRE Approvals/hour by Rule and Source",
-      "description": "Approvals in the last hour by the DRE rule that approved them, the Z-score source that flagged them, and whether the price was a REST lowest ask or a live listing. This counts decisions; it says nothing about whether they make money.",
+      "type": "bargauge",
+      "title": "DRE Approvals by Rule and Source (selected range)",
+      "description": "How many listings the DRE approved in the selected time range. Each bar is one combination of: the DRE rule that approved it, the Z-score source that flagged it (local window, hybrid, or macro baseline), and where the price came from (rest_snapshot is a REST lowest ask, listing is a live feed listing). It counts decisions, not profit.",
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 12 },
       "targets": [
         {
-          "expr": "sum by (reason, source, tick_kind) (increase(listener_anomalies_confirmed_total[1h])) > 0",
-          "legendFormat": "{{reason}} | {{source}} | {{tick_kind}}",
+          "expr": "round(sum by (reason, source, tick_kind) (increase(listener_anomalies_confirmed_total{reason!=\"\"}[$__range]))) > 0",
+          "instant": true,
+          "legendFormat": "{{reason}} rule, {{source}} Z-score, {{tick_kind}}",
           "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "suffix: approvals/h", "decimals": 0 } },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "noValue": "No approvals in this range"
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
     },
     {
       "type": "row",

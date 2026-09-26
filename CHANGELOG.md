@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- The DRE approvals panel from #266 drew one hard to read line per label combination, including an unnamed one from the unlabelled counter; it is now a bar gauge of approvals in the selected time range, labelled by rule, Z-score source and tick kind (#266).
 - A REST snapshot whose lowest ask had not changed was scored and paper traded again on every poll, because polls are further apart than the 300 s dedup window. It still enters the price window but is no longer scored, every snapshot is recorded, and the paper executor buys each listing (or REST item and price) once (#265).
 - The #259 migration branched from an older revision and left Alembic with two heads; it now revises the current head, and a test fails whenever migrations have more than one head.
 - The DRE sticker premium rule never matched a sticker price: prices were keyed `Sticker | <name>` while listings name the applied sticker `<name>`. Sticker prices now use the listing's naming (#259).
