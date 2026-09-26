@@ -83,7 +83,9 @@ the replay start, and the log header records `baseline_as_of` and a content hash
 
 The baseline file is `{"baselines": {name: document}, "sticker_prices": {name: cents}, "as_of": ...}`.
 `export` keeps only the sale fields the parser and labeler read (`SANITIZED_SALE_FIELDS` in
-`backtest/sources.py`). That drops personal data the live feed carries, such as the seller's `steamid`.
+`backtest/sources.py`). That drops personal data the live feed carries, such as the seller's `steamid`. The `feed_events` table
+itself keeps the payload verbatim, `steamid` included (see [skinport_feed.md](skinport_feed.md)), so never
+share raw rows or a fixture written by hand from them.
 
 ## Replay order and routing
 
@@ -112,6 +114,23 @@ Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`
 `zscore_dre` reasons: `insufficient_history`, `below_threshold`, `dre_rejected`, and on approval the DRE
 rule that approved (`support_floor`, `macro_sigma`, `stickers_below_base`, `sticker_premium`). An
 approval's `features.estimated_net_profit_cents` is the fee-aware estimate the live paper trade records.
+
+## Reading the results
+
+**Check how old the baselines are.** The header's `baseline_as_of` is the newest `item_macro_baselines`
+update. The live edge reads the same baselines, so stale baselines skew both live decisions and the
+replay: support floors and 30-day averages from months ago approve or reject on old prices. Baselines are
+refreshed by `long_term_macro.py`, which also pushes them to the edge Redis (see
+[deployment.md](deployment.md#1-macro-baseline-calculation--edge-redis-sync)). Refresh them before a
+backtest that matters, and note `baseline_as_of` with any result.
+
+**Most listings are never scored.** A `listed` tick at the same price as the item's previous tick within
+300 seconds is dropped by the live dedup rule before the Z-score runs. On the committed fixture that is 112
+of the 141 listing ticks, almost all of them (107) repeating an earlier listing of the same item at
+the same price, the rest repeating a REST snapshot. Such rows carry reason `duplicate` and no score: the
+rules never looked at them, so count them as "not evaluated", not as rejections, when you measure
+precision or coverage against `listing_outcomes`. The summary's `duplicates` count (which also includes
+REST snapshots) shows the scale per run.
 
 ## Strategies
 
