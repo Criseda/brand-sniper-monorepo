@@ -43,7 +43,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **1** | [#232](https://github.com/Criseda/brand-sniper-monorepo/issues/232) | `[PE-01]` Raw feed capture & listing-level tick persistence | None |
 | **2** | [#233](https://github.com/Criseda/brand-sniper-monorepo/issues/233) | `[PE-02]` Fee-aware P&L function & market-outcome labeling | #232 |
 | **3** | [#248](https://github.com/Criseda/brand-sniper-monorepo/issues/248) | `[PE-03]` Deterministic replay & backtest harness | #232 |
-| **4** | [#249](https://github.com/Criseda/brand-sniper-monorepo/issues/249) | `[PE-04]` Baseline scorecard for the current Z-score DRE | #233, #248, #259 |
+| **4** | [#249](https://github.com/Criseda/brand-sniper-monorepo/issues/249) | `[PE-04]` Baseline scorecard for the current Z-score DRE | #233, #248, #259, #275 |
 | **5** | [#175](https://github.com/Criseda/brand-sniper-monorepo/issues/175) | `[PE-05]` Ingress-to-decision latency benchmark (Rust decision gate) | #248 |
 | **6** | [#234](https://github.com/Criseda/brand-sniper-monorepo/issues/234) | `[PE-06]` Shared feature module & walk-forward student model (ONNX) | #249 |
 | **7** | [#236](https://github.com/Criseda/brand-sniper-monorepo/issues/236) | `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate | #234, #175 |
@@ -60,6 +60,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **18** | [#269](https://github.com/Criseda/brand-sniper-monorepo/issues/269) | `[PE-18]` Decide what the price window holds | #249 |
 | **19** | [#270](https://github.com/Criseda/brand-sniper-monorepo/issues/270) | `[PE-19]` Dedup state and price windows keyed by venue | #265 |
 | **20** | [#271](https://github.com/Criseda/brand-sniper-monorepo/issues/271) | `[PE-20]` Buy each listing once across restarts, for any executor | #265 |
+| **21** | [#275](https://github.com/Criseda/brand-sniper-monorepo/issues/275) | `[PE-21]` Poll the lowest ask of tradable listings (`tradable=0` is trade locked only) | #267 |
 
 **Parked**: #237, #238, #239 (compiled Rust edge engine) are not scheduled. Do not start them; a dedicated decision session will review the #175 evidence first.
 
