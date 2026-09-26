@@ -64,6 +64,8 @@ It ingests real-time market data ticks via:
 - **WebSocket sidecar** — Node.js process (`scrapers/skinport_websocket/`) for push-based Socket.IO feeds
 
 Incoming prices are written concurrently to an edge-local Redis hot-cache (sliding window, port **6380**).
+Each venue has its own window per item (`price_window:<venue>:<item>`) and its own dedup state, so prices
+from venues with different fees and price levels are never scored together.
 The **Deterministic Rules Engine (DRE)** evaluates every tick using Z-score anomaly detection against
 the cached price history. On a confirmed anomaly:
 

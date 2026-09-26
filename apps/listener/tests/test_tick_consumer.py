@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from models import FeedEvent, MarketTick
+from models import FeedEvent, MarketTick, TickKind
 
 
 def load_listener_main():
@@ -29,6 +29,7 @@ def _tick(
 ) -> MarketTick:
     return MarketTick(
         venue="skinport",
+        kind=TickKind.REST_SNAPSHOT if event_type is None else TickKind.of_feed_event(event_type),
         market_hash_name="AK-47 | Slate (Field-Tested)",
         price_usd=price_usd,
         timestamp=timestamp,

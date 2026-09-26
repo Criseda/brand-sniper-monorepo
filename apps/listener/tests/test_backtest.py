@@ -321,6 +321,7 @@ async def test_replay_is_byte_identical_across_runs():
     assert header["strategy"] == "zscore_dre"
     assert header["baseline_sha256"] == baselines.sha256()
     assert header["config"]["z_score_threshold"] == -2.0
+    assert header["config"]["state_key"] == "venue_and_item"
 
 
 def _verdicts(log_text: str) -> list[tuple]:

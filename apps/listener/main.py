@@ -2,7 +2,6 @@ import asyncio
 import os
 import signal
 import subprocess
-from collections import OrderedDict
 from functools import partial
 from uuid import uuid4
 
@@ -20,6 +19,7 @@ from detection import (
     initialise_anomaly_counters,
     is_duplicate,
     is_unchanged_snapshot,
+    migrate_legacy_price_windows,
     push_to_window,
     update_dedup_cache,
     update_window_and_detect,
@@ -28,7 +28,6 @@ from executor import ExecutionService, PaperExecutor
 from executor import close_http_session as close_executor_http_session
 from listener_telemetry import (
     batch_buffer_size,
-    dedup_cache_size,
     feed_events_received_total,
     snapshots_unchanged_total,
     tick_queue_size,
@@ -235,7 +234,7 @@ async def tick_consumer(
     batch_buffer: list[dict] = []
     feed_event_buffer: list[dict] = []
     batch_buffer_id: str | None = None
-    dedup_cache: DedupCache = OrderedDict()
+    dedup_cache = DedupCache()
 
     logger.info("Telemetry processing consumer loop is active (Redis: %s).", edge_redis_url)
 
@@ -266,7 +265,6 @@ async def tick_consumer(
                     else:
                         unchanged_snapshot = is_unchanged_snapshot(item, dedup_cache)
                         update_dedup_cache(item, dedup_cache)
-                        dedup_cache_size.set(len(dedup_cache))
                         ticks_processed_total.inc()
 
                         # Accumulate records for long-term database tracking
@@ -409,6 +407,10 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
             ) as batch_pool,
         ):
             await recover_pending_batches(batch_store, batch_pool)
+            # Before any tick is windowed, so no window is written under both key schemes.
+            migrated_windows = await migrate_legacy_price_windows(baseline_cache)
+            if migrated_windows:
+                logger.info("[WINDOWS] Moved %d price windows to venue keyed names (#270).", migrated_windows)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
                     tick_consumer(queue, platform_target, anomaly_pool, batch_pool, batch_store, executor),

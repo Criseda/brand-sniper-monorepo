@@ -82,7 +82,7 @@
       "title": "Deduplication Cache Size",
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 6 },
       "targets": [
-        { "expr": "listener_dedup_cache_size", "legendFormat": "Entries", "refId": "A" }
+        { "expr": "listener_dedup_cache_size", "legendFormat": "{{venue}}", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {

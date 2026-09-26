@@ -278,6 +278,22 @@ configuration, so it protects against listener/backend restarts but not an Edge
 Redis restart or host loss. Use persistent Redis if that durability boundary is
 not acceptable for a deployment.
 
+### Price windows keyed by venue
+
+Since #270 the edge Redis keeps one price window per venue and item, under `price_window:<venue>:<item>`.
+Before that the key was `market:ticks:<item>`, and every window held Skinport prices. When the listener
+starts, and before it reads any tick, it renames each old window to `price_window:skinport:<item>`, so a
+deploy keeps the price history it had. If a window already exists under the new name, it is the newer one,
+so the listener keeps it and deletes the old one. It logs `[WINDOWS] Moved N price windows` when it found
+any, and later starts find none. Nothing has to be done by hand. If the edge Redis restarted as well, there
+is nothing to move and the windows fill again from the next polls, as after any Redis restart.
+
+The dedup cache lives in the listener's memory and starts empty on every start, as before. It holds up to
+`DEDUP_CACHE_MAX_SIZE` items per venue (25,000; one Skinport poll returns about 21,300).
+`listener_dedup_cache_evictions_total` counts the items a full cache pushed out, per venue. It should stay
+at 0: an evicted item whose lowest ask never changes is scored again on its next poll. If it grows, raise
+`DEDUP_CACHE_MAX_SIZE`.
+
 ### MLflow resource and credential settings
 
 The repository uses synchronous MLflow tracking calls and does not use MLflow

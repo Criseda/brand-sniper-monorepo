@@ -107,8 +107,8 @@ recording order. Each event expands into the stream items the live producers put
 and each item is routed as `tick_consumer` routes it:
 
 1. Raw feed events and `sold` ticks are outcomes: counted, never scored.
-2. A tick at the same price as the item's previous tick within 300 seconds is a duplicate: logged with
-   reason `duplicate`, never scored.
+2. A tick at the same price as the item's previous tick on the same venue within 300 seconds is a
+   duplicate: logged with reason `duplicate`, never scored.
 3. Any other tick enters the price window, and the strategy decides on it.
 
 ## Decision log
@@ -153,6 +153,11 @@ poll takes, so the 300 second rule never dropped one, and until #265 every poll 
 again and could paper trade it again. The price still enters the window as before, so every other decision
 is the same as it was. The summary counts these as `unchanged_snapshots` and they are not logged. The
 header's `dedup_rule` names the rule a run used.
+
+**Dedup state and price windows are kept per venue.** Since #270 the header's `state_key` is
+`venue_and_item`: each venue has its own dedup state and its own price window per item, and the dedup
+cache holds up to `dedup_cache_max_size_per_venue` items per venue. With Skinport as the only venue this
+makes the same decisions as before; it matters once a second venue feeds the listener.
 
 ## Strategies
 

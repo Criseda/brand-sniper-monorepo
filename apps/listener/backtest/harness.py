@@ -12,7 +12,6 @@ optional `on_timing` hook instead.
 import asyncio
 import json
 import time
-from collections import OrderedDict
 from collections.abc import AsyncIterable, Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -173,7 +172,7 @@ async def run_replay(
             "baseline_as_of": baselines.as_of,
         }
     context = DecisionContext(store=store)
-    dedup_cache: detection.DedupCache = OrderedDict()
+    dedup_cache = detection.DedupCache()
     summary = ReplaySummary()
     previous_time_ms: int | None = None
 

@@ -330,12 +330,14 @@ def test_time_slices_cover_the_range_without_gaps():
 @pytest.mark.parametrize(("z_threshold", "min_savings"), [(-2.0, 50), (-1.5, 25), (-2.5, 100)])
 def test_would_trigger_matches_the_live_rule(monkeypatch, z_score, price_cents, sticker_count, z_threshold, min_savings):
     import zscore
-    from models import MarketTick
+    from models import MarketTick, TickKind
 
     monkeypatch.setattr(zscore, "Z_SCORE_THRESHOLD", z_threshold)
     monkeypatch.setattr(zscore, "MIN_SAVINGS_CENTS", min_savings)
     stickers = [{"name": f"Sticker {i}"} for i in range(sticker_count)]
-    tick = MarketTick(venue="skinport", market_hash_name=NAME, price_usd=price_cents / 100, stickers=stickers)
+    tick = MarketTick(
+        venue="skinport", kind=TickKind.REST_SNAPSHOT, market_hash_name=NAME, price_usd=price_cents / 100, stickers=stickers
+    )
 
     expected = zscore.should_trigger_anomaly(z_score, 1000.0, tick)
 

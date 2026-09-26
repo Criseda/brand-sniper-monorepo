@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 
 import pytest
-from models import MarketTick
+from models import MarketTick, TickKind
+from pydantic import ValidationError
 from scrapers.skinport import parse_sale_feed_message
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -102,6 +103,7 @@ def test_unknown_event_type_is_kept_raw_and_never_feeds_the_price_window():
     feed_event, (tick,) = parse_sale_feed_message(_envelope(payload))
 
     assert feed_event.event_type == "priceChanged"
+    assert tick.kind == TickKind.OTHER_FEED_EVENT
     assert not tick.feeds_price_window
 
 
@@ -139,15 +141,60 @@ def test_unusable_envelopes_are_rejected(message):
 
 
 def test_rest_snapshot_ticks_keep_the_legacy_batch_record():
-    tick = MarketTick(venue="skinport", market_hash_name="Item", price_usd=1.5, timestamp=1_700_000_000)
+    tick = MarketTick(
+        venue="skinport", kind=TickKind.REST_SNAPSHOT, market_hash_name="Item", price_usd=1.5, timestamp=1_700_000_000
+    )
 
     assert tick.feeds_price_window
     assert tick.to_batch_record() == {"market_hash_name": "Item", "price_cents": 150, "timestamp": 1_700_000_000}
 
 
+@pytest.mark.parametrize(
+    ("event_type", "kind", "feeds_price_window"),
+    [
+        (None, TickKind.REST_SNAPSHOT, True),
+        ("listed", TickKind.LISTED, True),
+        ("sold", TickKind.SOLD, False),
+        ("priceChanged", TickKind.OTHER_FEED_EVENT, False),
+    ],
+)
+def test_tick_kind_decides_the_routing(event_type, kind, feeds_price_window):
+    tick = MarketTick(venue="skinport", kind=kind, market_hash_name="Item", price_usd=1.0, event_type=event_type)
+
+    assert tick.is_rest_snapshot is (kind == TickKind.REST_SNAPSHOT)
+    assert tick.feeds_price_window is feeds_price_window
+
+
+@pytest.mark.parametrize(
+    ("kind", "event_type"),
+    [
+        # A feed parser that forgets the event type must not pass as a REST snapshot (#270).
+        (TickKind.LISTED, None),
+        (TickKind.REST_SNAPSHOT, "listed"),
+        (TickKind.SOLD, "listed"),
+        (TickKind.OTHER_FEED_EVENT, "sold"),
+    ],
+)
+def test_tick_kind_must_match_the_event_type(kind, event_type):
+    with pytest.raises(ValidationError, match="cannot carry event_type"):
+        MarketTick(venue="skinport", kind=kind, market_hash_name="Item", price_usd=1.0, event_type=event_type)
+
+
+def test_tick_kind_is_required():
+    with pytest.raises(ValidationError, match="kind"):
+        MarketTick(venue="skinport", market_hash_name="Item", price_usd=1.0)
+
+
+def test_venue_cannot_hold_a_colon():
+    # The venue is the first part of the price window key, so a colon would make keys ambiguous.
+    with pytest.raises(ValidationError, match="venue"):
+        MarketTick(venue="sky:port", kind=TickKind.REST_SNAPSHOT, market_hash_name="Item", price_usd=1.0)
+
+
 def test_listing_tick_batch_record_carries_listing_fields():
     tick = MarketTick(
         venue="skinport",
+        kind=TickKind.LISTED,
         market_hash_name="Item",
         price_usd=1.5,
         timestamp=1_700_000_000,
@@ -175,7 +222,9 @@ def test_listing_tick_batch_record_carries_listing_fields():
 
 
 def test_listing_tick_without_stickers_records_an_explicit_empty_list():
-    tick = MarketTick(venue="skinport", market_hash_name="Item", price_usd=1.0, timestamp=1_700_000_000, event_type="sold")
+    tick = MarketTick(
+        venue="skinport", kind=TickKind.SOLD, market_hash_name="Item", price_usd=1.0, timestamp=1_700_000_000, event_type="sold"
+    )
 
     assert tick.to_batch_record()["stickers"] == []
 
