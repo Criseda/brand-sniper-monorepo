@@ -36,21 +36,24 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 ### Execution Sequence Matrix
 
-Respect the prerequisites below. After #232, the tracks #233, #248, #18, and #33 may proceed in parallel:
+Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18 may run in parallel. New venues (#33, #261) wait for #259 and #260:
 
 | Step | Issue | Focus | Upstream Prerequisite |
 |:---:|:---:|:---|:---|
 | **1** | [#232](https://github.com/Criseda/brand-sniper-monorepo/issues/232) | `[PE-01]` Raw feed capture & listing-level tick persistence | None |
 | **2** | [#233](https://github.com/Criseda/brand-sniper-monorepo/issues/233) | `[PE-02]` Fee-aware P&L function & market-outcome labeling | #232 |
 | **3** | [#248](https://github.com/Criseda/brand-sniper-monorepo/issues/248) | `[PE-03]` Deterministic replay & backtest harness | #232 |
-| **4** | [#249](https://github.com/Criseda/brand-sniper-monorepo/issues/249) | `[PE-04]` Baseline scorecard for the current Z-score DRE | #233, #248 |
+| **4** | [#249](https://github.com/Criseda/brand-sniper-monorepo/issues/249) | `[PE-04]` Baseline scorecard for the current Z-score DRE | #233, #248, #259 |
 | **5** | [#175](https://github.com/Criseda/brand-sniper-monorepo/issues/175) | `[PE-05]` Ingress-to-decision latency benchmark (Rust decision gate) | #248 |
 | **6** | [#234](https://github.com/Criseda/brand-sniper-monorepo/issues/234) | `[PE-06]` Shared feature module & walk-forward student model (ONNX) | #249 |
 | **7** | [#236](https://github.com/Criseda/brand-sniper-monorepo/issues/236) | `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate | #234, #175 |
 | **8** | [#250](https://github.com/Criseda/brand-sniper-monorepo/issues/250) | `[PE-08]` CFO calibration experiment against realized outcomes | #233, #249 |
 | **9** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | `[PE-09]` Realized-performance & feature drift monitoring | #236 |
 | **10** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | `[PE-10]` Discord/Telegram alerts with direct listing links | #232 |
-| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` Multi-venue scrapers (CSFloat & Steam) | #232 |
+| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260 |
+| **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 |
+| **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 |
+| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 |
 
 **Parked**: #237, #238, #239 (compiled Rust edge engine) are not scheduled. Do not start them; a dedicated decision session will review the #175 evidence first.
 
@@ -84,6 +87,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #18, and #33
 - **Script bootstrap**: analytics scripts call `setup_script_environment(__file__)` at the top and `validate_required_env([...])` inside `__main__` (never at import) — do not re-add `load_dotenv`/`sys.path`/`reconfigure` boilerplate
 - **Service bootstrap**: `apps/backend/main.py`, `apps/listener/main.py`, and `apps/listener/replay_batches.py` call `setup_service_environment(__file__)` at the top (`apps/listener/backtest/__main__.py` passes its package directory so the listener `.env` loads) (same dotenv/stream setup, no `sys.path` mutation)
 - **Listener spawns Node.js sidecar** for WebSocket — lives in `scrapers/skinport_websocket/`
+- **Data sources**: read [`docs/data_sources.md`](docs/data_sources.md) before touching baselines, backtests, training data or a new venue. It lists the data we have, explains why the Kaggle Steam baselines cannot be used as live prices (they are older than the knife crash, come from Steam and never change), and notes that both stacks run on a PC that is often off
 - **Skinport API**: read [`docs/skinport_feed.md`](docs/skinport_feed.md) before touching Skinport code. It links the official docs ([sale feed](https://docs.skinport.com/websocket/sale-feed), [items](https://docs.skinport.com/items), [sales history](https://docs.skinport.com/sales/history), [account transactions](https://docs.skinport.com/account/transactions)) and records where the live feed differs from them (e.g. `saleId` is always null; `productId` is the listing key)
 
 ## Testing quirks

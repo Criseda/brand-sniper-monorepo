@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
 - Raw Skinport feed capture (all event types, append-only `feed_events` JSONB) and listing-level tick fields (listing ID, event type, float, pattern, stickers, link) end to end, with feed-schema and retention notes in `docs/skinport_feed.md` (#232).
 - Deterministic replay & backtest harness (`apps/listener/backtest`, `python -m backtest run|export`): replays recorded feed events and REST snapshots through the live decision code, writes byte-identical decision logs, ships a sanitized CI fixture and a live-parity test; see `docs/backtesting.md` (#248).
+- `docs/data_sources.md` describes the data we have, why the Kaggle Steam baselines cannot be used as live prices, the Skinport data, the edge PC not running all the time, and the edge running without baselines since July 2026.
 - Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
 #### Changed
@@ -41,7 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[PE-08]` CFO calibration experiment against realized outcomes (#250).
 - `[PE-09]` Realized-performance & feature drift monitoring (#235).
 - `[PE-10]` Discord/Telegram alerts with direct listing links (#18).
-- `[PE-11]` CSFloat & Steam multi-venue scrapers (#33).
+- `[PE-11]` CSFloat venue (#33); Steam dropped as a venue (reference price only).
+- `[PE-12]` Current baselines per venue from Skinport sales history, loaded when the listener starts (#259).
+- `[PE-13]` P&L for buying and selling on different venues (#260).
+- `[PE-14]` Waxpeer venue (#261).
 
 ---
 
