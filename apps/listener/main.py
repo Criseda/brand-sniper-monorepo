@@ -18,6 +18,8 @@ from batch_delivery import RedisBatchStore, StoredBatch, deliver_stored_batch
 from detection import (
     DedupCache,
     is_duplicate,
+    is_unchanged_snapshot,
+    push_to_window,
     update_dedup_cache,
     update_window_and_detect,
 )
@@ -27,6 +29,7 @@ from listener_telemetry import (
     batch_buffer_size,
     dedup_cache_size,
     feed_events_received_total,
+    snapshots_unchanged_total,
     tick_queue_size,
     ticks_deduplicated_total,
     ticks_processed_total,
@@ -256,17 +259,24 @@ async def tick_consumer(
                         ticks_deduplicated_total.inc()
                         if item.listing_id is not None or item.is_rest_snapshot:
                             # A distinct listing at a repeated price, and every REST snapshot, is still
-                            # recorded (replay sees what live saw); it just does not re-enter the price
-                            # window, so decisions are unchanged.
+                            # recorded (so replay sees every tick live saw); it just does not re-enter
+                            # the price window, so decisions are unchanged.
                             batch_buffer.append(item.to_batch_record())
                     else:
+                        unchanged_snapshot = is_unchanged_snapshot(item, dedup_cache)
                         update_dedup_cache(item, dedup_cache)
                         dedup_cache_size.set(len(dedup_cache))
                         ticks_processed_total.inc()
 
                         # Accumulate records for long-term database tracking
                         batch_buffer.append(item.to_batch_record())
-                        await update_window_and_detect(item, cache, anomaly_pool, executor)
+                        if unchanged_snapshot:
+                            # The lowest ask has not changed since the last poll: keep the window as it
+                            # was, but do not score (or paper trade) the same reading again.
+                            snapshots_unchanged_total.inc()
+                            await push_to_window(item, cache)
+                        else:
+                            await update_window_and_detect(item, cache, anomaly_pool, executor)
                     batch_buffer_size.set(len(batch_buffer))
                 # Broad on purpose: one bad tick must not kill the consumer loop.
                 except Exception as item_err:

@@ -48,10 +48,10 @@ log header.
 
 **Always warm up.** The live edge Redis keeps each item's window across listener restarts, but a replay
 starts with empty windows. Until an item has `MIN_HISTORY_POINTS` prices, the Z-score falls back to the
-macro baseline alone. On the committed fixture that changes the result from 19 approvals (cold) to 1
-after 30 minutes of warm-up. Before #265 it was 25 to none, which is what the live listener did over that
-period. The one left is a Karambit listing that now reaches the Z score with only 3 prices in its window,
-so it is scored on the fixture's old Kaggle baseline alone.
+macro baseline alone. On the committed fixture that changes the result from 14 approvals (cold) to none
+after 30 minutes of warm-up, which is what the live listener did over that period (no paper trades).
+Before #265 the cold run showed 25, because 11 of them were the same REST snapshot approved again on a
+later poll.
 
 ## Input
 
@@ -115,7 +115,7 @@ JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits. Fo
 {"type": "run", "format": 2, "strategy": "zscore_dre", "config": {...}, "source": "...", "baseline_mode": "schedule", "baseline_builds": [3, 4], "log_from_ms": 1790290800000}
 {"type": "baseline", "build_id": 3, "built_at": "2026-10-01T06:12:40", "from_ms": 1790283600000, "look_ahead": false, "sha256": "..."}
 {"type": "decision", "seq": 1, "timestamp": 1790287133, "venue": "skinport", "listing_id": "60823173", "event_type": "listed", "market_hash_name": "...", "price_cents": 412, "approve": false, "reason": "below_threshold", "score": -0.84, "features": {"mean_cents": 430.5, "window_size": 20, "z_source": "local"}}
-{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "decisions": 329, "logged": 160, "approved": 25}
+{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "unchanged_snapshots": 268, "decisions": 61, "logged": 149, "approved": 14}
 ```
 
 A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `baseline_sha256` and
@@ -143,12 +143,12 @@ rules never looked at them, so count them as "not evaluated", not as rejections,
 precision or coverage against `listing_outcomes`. The summary's `duplicates` count (which also includes
 REST snapshots) shows the scale per run.
 
-**A REST snapshot is scored only when its price changes.** A snapshot at the same price as the item's
-previous REST snapshot is a duplicate however old that one is (#265). Polls are 305 seconds apart plus
-the time a poll takes, so the 300 second rule alone never dropped one, and until #265 every poll scored
-the same lowest ask again and could paper trade it again. Price windows now fill only with changes, so an
-item whose lowest ask rarely moves stays under `MIN_HISTORY_POINTS` prices for longer and is scored on its
-macro baseline alone (`z_source` `macro`). Compare runs before and after #265 with that in mind.
+**An unchanged REST snapshot is not scored again.** A snapshot at the same price as the item's previous
+REST snapshot is not scored, however old that one is (#265). Polls are 305 seconds apart plus the time a
+poll takes, so the 300 second rule never dropped one, and until #265 every poll scored the same lowest ask
+again and could paper trade it again. The price still enters the window as before, so every other decision
+is the same as it was. The summary counts these as `unchanged_snapshots` and they are not logged. The
+header's `dedup_rule` names the rule a run used.
 
 ## Strategies
 

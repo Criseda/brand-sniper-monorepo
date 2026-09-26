@@ -102,13 +102,17 @@ async def test_repeated_prices_are_recorded_without_reentering_the_window(monkey
 
 
 @pytest.mark.asyncio
-async def test_unchanged_rest_snapshot_is_recorded_but_scored_once(monkeypatch):
+async def test_unchanged_rest_snapshot_is_windowed_and_recorded_but_scored_once(monkeypatch):
+    window_only = AsyncMock()
+    monkeypatch.setattr(listener_main, "push_to_window", window_only)
     polls = [_tick(3.97, timestamp=1_790_000_000 + poll * 305) for poll in range(4)]
+    changed = _tick(3.80, timestamp=1_790_000_000 + 4 * 305)
 
-    detect, flushed = await _run_consumer(monkeypatch, polls)
+    detect, flushed = await _run_consumer(monkeypatch, [*polls, changed])
 
-    assert [call.args[0] for call in detect.await_args_list] == [polls[0]]
-    assert flushed[0]["ticks"] == [poll.to_batch_record() for poll in polls]
+    assert [call.args[0] for call in detect.await_args_list] == [polls[0], changed]
+    assert [call.args[0] for call in window_only.await_args_list] == polls[1:]
+    assert flushed[0]["ticks"] == [tick.to_batch_record() for tick in [*polls, changed]]
 
 
 @pytest.mark.asyncio

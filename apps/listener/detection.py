@@ -69,19 +69,23 @@ def _decode_zset_element(element: str | bytes) -> str:
 
 
 def is_duplicate(tick: MarketTick, dedup_cache: DedupCache) -> bool:
-    """
-    Returns True if this tick repeats what the item already showed, so it must not be scored again.
-
-    A REST snapshot is a duplicate when its price equals the item's previous REST snapshot, however old
-    that one is: the lowest ask has not changed, and polls are further apart than the dedup window. Any
-    tick is a duplicate when it has the same price as the item's previous tick within the dedup window.
-    """
+    """Returns True if this tick is a duplicate (same price within the dedup window)."""
     entry = dedup_cache.get(tick.market_hash_name)
     if entry is None:
         return False
-    if tick.is_rest_snapshot and tick.price_cents == entry.snapshot_price_cents:
-        return True
     return tick.price_cents == entry.price_cents and (tick.timestamp - entry.timestamp) < DEDUP_WINDOW_SECONDS
+
+
+def is_unchanged_snapshot(tick: MarketTick, dedup_cache: DedupCache) -> bool:
+    """
+    Returns True for a REST snapshot at the same price as the item's previous REST snapshot, however old.
+
+    Polls are further apart than the dedup window, so `is_duplicate` never drops these. The price still
+    enters the window as before, but it is not scored again: the lowest ask has not changed, so scoring it
+    would repeat the previous decision (and its paper trade). Check it before `update_dedup_cache`.
+    """
+    entry = dedup_cache.get(tick.market_hash_name)
+    return entry is not None and tick.is_rest_snapshot and tick.price_cents == entry.snapshot_price_cents
 
 
 def update_dedup_cache(tick: MarketTick, dedup_cache: DedupCache) -> None:

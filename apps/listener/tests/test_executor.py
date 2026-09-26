@@ -96,13 +96,38 @@ async def test_paper_executor_retries_a_buy_the_backend_did_not_take():
     assert mock_send.call_count == 2
 
 
-def test_paper_executor_forgets_the_oldest_purchase(monkeypatch):
+@pytest.mark.asyncio
+async def test_paper_executor_does_not_rebuy_a_listing_seen_again_as_the_lowest_ask():
+    executor = PaperExecutor("http://mock-backend:8080")
+
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
+        await executor.execute("Item", 1000, 500, -3.0, listing_id="58903454")
+        await executor.execute("Item", 1000, 500, -2.2)
+
+    assert mock_send.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_paper_executor_buys_a_new_listing_at_a_price_bought_from_a_snapshot():
+    executor = PaperExecutor("http://mock-backend:8080")
+
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
+        await executor.execute("Item", 1000, 500, -2.5)
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454")
+
+    assert mock_send.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_paper_executor_forgets_the_oldest_purchase(monkeypatch):
     monkeypatch.setattr(executor_module, "BOUGHT_MEMORY_SIZE", 2)
     executor = PaperExecutor("http://mock-backend:8080")
-    for key in ("a", "b", "c"):
-        executor._remember_purchase(key)
 
-    assert list(executor._bought) == ["b", "c"]
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
+        for price_cents in (1000, 1001, 1002, 1000):
+            await executor.execute("Item", price_cents, 500, -2.5)
+
+    assert [call.args[0]["purchase_price_cents"] for call in mock_send.call_args_list] == [1000, 1001, 1002, 1000]
 
 
 class _Response:

@@ -271,6 +271,22 @@ async def test_snapshots_are_logged_only_when_approved():
 
 
 @pytest.mark.asyncio
+async def test_unchanged_snapshots_enter_the_window_but_are_not_scored_again():
+    # Polls are 305 seconds apart, so the repeated 400 is past the dedup window every time.
+    prices = [1000, 1010, 990, 1005, 995, 400, 400, 400, 1000]
+    events = [_snapshot(index * 305, price) for index, price in enumerate(prices)]
+    baselines = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 500, "latest_price_cents": 1000}})
+
+    log_text, decided = await _replay(events, baselines)
+
+    assert _rows(log_text, "summary")[0]["unchanged_snapshots"] == 2
+    assert [(row["price_cents"], row["reason"]) for row in _rows(log_text)] == [(400, REASON_SUPPORT_FLOOR)]
+    assert [tick.price_cents for tick, _ in decided] == [1000, 1010, 990, 1005, 995, 400, 1000]
+    last_decision = decided[-1][1]
+    assert last_decision.features["window_size"] == len(prices)  # the repeats are still in the window
+
+
+@pytest.mark.asyncio
 async def test_warmup_events_fill_the_window_but_are_not_logged():
     events, baselines = synthetic_stream()
 

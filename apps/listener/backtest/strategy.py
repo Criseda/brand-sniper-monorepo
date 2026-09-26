@@ -16,7 +16,11 @@ from redis.asyncio import Redis
 from rules_engine import dre_approval_reason
 
 # Reasons shared by all strategies.
-REASON_DUPLICATE = "duplicate"  # Repeats the item's price (see detection.is_duplicate); never scored.
+REASON_DUPLICATE = "duplicate"  # Same price as the item's previous tick inside the dedup window; never scored.
+# A REST snapshot at the same price as the item's previous snapshot: windowed, never scored (#265).
+REASON_UNCHANGED_SNAPSHOT = "unchanged_snapshot"
+# How the harness and the listener treat repeated prices; written to the log header so runs are comparable.
+DEDUP_RULE = "time_window_and_unchanged_snapshot"
 
 # Reasons specific to the Z-score/DRE strategy. Approvals carry the DRE rule (rules_engine.REASON_*).
 REASON_INSUFFICIENT_HISTORY = "insufficient_history"
@@ -62,6 +66,7 @@ class ZScoreDreStrategy:
     def config(self) -> dict[str, Any]:
         return {
             "sliding_window_size": detection.SLIDING_WINDOW_SIZE,
+            "dedup_rule": DEDUP_RULE,
             "dedup_window_seconds": detection.DEDUP_WINDOW_SECONDS,
             "dedup_cache_max_size": detection.DEDUP_CACHE_MAX_SIZE,
             "z_score_threshold": zscore.Z_SCORE_THRESHOLD,

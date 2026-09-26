@@ -47,10 +47,12 @@ class ExecutionError(RuntimeError):
     """Raised when an execution cannot be submitted to the backend."""
 
 
-def purchase_key(market_hash_name: str, purchase_price_cents: int, listing_id: str | None) -> str:
-    """What a paper buy bought. A REST snapshot names no listing, so its item and price stand in for one."""
-    if listing_id is not None:
-        return f"listing:{market_hash_name}:{listing_id}"
+def listing_purchase_key(market_hash_name: str, listing_id: str) -> str:
+    return f"listing:{market_hash_name}:{listing_id}"
+
+
+def snapshot_purchase_key(market_hash_name: str, purchase_price_cents: int) -> str:
+    """A REST snapshot names no listing, so its item and price stand in for one."""
     return f"snapshot:{market_hash_name}:{purchase_price_cents}"
 
 
@@ -70,7 +72,8 @@ class PaperExecutor(ExecutionService):
         float_value: float | None = None,
         profit_estimate_basis: str | None = None,
     ) -> None:
-        key = purchase_key(market_hash_name, purchase_price_cents, listing_id)
+        snapshot_key = snapshot_purchase_key(market_hash_name, purchase_price_cents)
+        key = listing_purchase_key(market_hash_name, listing_id) if listing_id is not None else snapshot_key
         if key in self._bought:
             logger.info(
                 "[PAPER TRADE] Skipped repeat buy | Item: %s | Price: $%.2f | Listing: %s",
@@ -102,8 +105,11 @@ class PaperExecutor(ExecutionService):
         )
 
         await self._send_to_backend(payload)
-        # Remembered only once recorded, so a buy the backend did not take can happen again.
+        # Remembered only once the backend took it, so a failed buy is not blocked if the tick is scored again.
         self._remember_purchase(key)
+        if key != snapshot_key:
+            # The next REST poll usually shows this listing as the item's lowest ask; do not buy it again.
+            self._remember_purchase(snapshot_key)
 
     def _remember_purchase(self, key: str) -> None:
         self._bought[key] = None
