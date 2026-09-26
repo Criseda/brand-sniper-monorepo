@@ -17,9 +17,11 @@ Usage (from apps/analytics):
 """
 
 import asyncio
+import time
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 import aiohttp
 from shared_utils import setup_script_environment
@@ -50,6 +52,10 @@ DEFAULT_CHECK_INTERVAL_MINUTES = 60.0
 # Earlier builds' 24 hour medians from this far back feed the volatility estimate.
 DAILY_MEDIAN_LOOKBACK_DAYS = 30
 _INSERT_CHUNK_SIZE = 1000
+# The --loop service touches this file after every successful check; its healthcheck reads the age.
+HEARTBEAT_PATH = Path("/tmp/baseline-builder.heartbeat")
+# Three missed hourly checks in a row mark the service unhealthy.
+HEARTBEAT_MAX_AGE_SECONDS = 3 * 3600
 
 
 async def fetch_sales_history() -> list[dict[str, Any]]:
@@ -141,12 +147,12 @@ async def save_build(venue: str, built_at: datetime, baselines: list[ItemBaselin
     """Store one build and its rows in a single transaction; returns the build ID."""
     async with async_engine.begin() as conn:
         result = await conn.execute(
-            insert(BaselineBuild).values(venue=venue, method=BASELINE_METHOD, built_at=built_at, item_count=len(baselines))
+            insert(BaselineBuild)
+            .values(venue=venue, method=BASELINE_METHOD, built_at=built_at, item_count=len(baselines))
+            .returning(col(BaselineBuild.id))
         )
-        inserted_key = result.inserted_primary_key
-        if inserted_key is None:
-            raise RuntimeError("The database did not return the new build ID")
-        build_id = inserted_key[0]
+        # The model types the key as optional because it is unset before insert; RETURNING always has it.
+        build_id = cast(int, result.scalar_one())
         rows = [baseline_row(build_id, baseline) for baseline in baselines]
         for start in range(0, len(rows), _INSERT_CHUNK_SIZE):
             await conn.execute(insert(VenueBaseline), rows[start : start + _INSERT_CHUNK_SIZE])
@@ -186,11 +192,24 @@ async def build_venue_baselines(max_age_hours: float = DEFAULT_MAX_AGE_HOURS, fo
     return build_id
 
 
+def record_heartbeat(path: Path = HEARTBEAT_PATH) -> None:
+    path.touch()
+
+
+def heartbeat_is_fresh(path: Path = HEARTBEAT_PATH, max_age_seconds: float = HEARTBEAT_MAX_AGE_SECONDS) -> bool:
+    """True when the service completed a check recently. Used by the container healthcheck."""
+    try:
+        return time.time() - path.stat().st_mtime < max_age_seconds
+    except FileNotFoundError:
+        return False
+
+
 async def run_forever(max_age_hours: float, check_interval_minutes: float) -> None:  # pragma: no cover - service loop
     """The baseline-builder service: check on start, then every interval. A failed run is retried next time."""
     while True:
         try:
             await build_venue_baselines(max_age_hours=max_age_hours)
+            record_heartbeat()
         # Broad on purpose: one failed run (network, database) must not stop the service.
         except Exception:
             logger.exception("[BASELINES] Build failed; retrying in %.0f minutes.", check_interval_minutes)

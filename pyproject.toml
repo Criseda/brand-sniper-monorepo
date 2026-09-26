@@ -61,6 +61,8 @@ quote-style = "double"
 
 [tool.coverage.run]
 branch = true
+# SQLAlchemy's async engine runs queries in greenlets; without this, lines after an awaited query look uncovered.
+concurrency = ["greenlet", "thread"]
 source = [
     "apps/backend",
     "apps/listener",

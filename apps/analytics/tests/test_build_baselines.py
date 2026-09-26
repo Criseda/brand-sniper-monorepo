@@ -217,3 +217,13 @@ async def test_fetch_rejects_errors_and_unexpected_shapes(monkeypatch):
                 await build_baselines.fetch_sales_history()
         finally:
             await runner.cleanup()
+
+
+def test_heartbeat_is_fresh_only_after_a_recent_check(tmp_path):
+    heartbeat = tmp_path / "heartbeat"
+    assert build_baselines.heartbeat_is_fresh(heartbeat) is False
+
+    build_baselines.record_heartbeat(heartbeat)
+
+    assert build_baselines.heartbeat_is_fresh(heartbeat) is True
+    assert build_baselines.heartbeat_is_fresh(heartbeat, max_age_seconds=0) is False

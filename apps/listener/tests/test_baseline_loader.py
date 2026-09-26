@@ -167,6 +167,10 @@ async def test_fetch_raises_on_errors_and_malformed_builds(backend):
         await fetch_latest_build(session, url, None)
 
     fake.status = None
+    fake.documents.append([build()])
+    with pytest.raises(ValueError, match="JSON object"):
+        await fetch_latest_build(session, url, None)
+
     for malformed in (
         {"build_id": 1},
         {**build(), "baselines": {}},

@@ -232,3 +232,13 @@ def test_export_writes_a_fixture_that_replays(monkeypatch, tmp_path):
         )
         == 0
     )
+
+
+def test_export_without_any_build_stops_with_a_hint(monkeypatch, tmp_path):
+    async def no_builds(start, end, *, venue):
+        return BaselineSchedule(builds=[], load=_never_called)
+
+    monkeypatch.setattr(database, "load_baseline_schedule", no_builds)
+
+    with pytest.raises(SystemExit, match="build_baselines.py"):
+        cli.main(["export", "--start", "2026-09-24T21:58", "--end", "2026-09-24T23:40", "--out-dir", str(tmp_path)])

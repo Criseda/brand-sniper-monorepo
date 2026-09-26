@@ -33,6 +33,7 @@ SERVER_NETWORKS = {
     "backend": {"application", "data", "observability"},
     "listener": {"application", "data", "observability"},
     "analytics": {"application", "data"},
+    "baseline-builder": {"application", "data"},
 }
 
 SERVER_DEPENDENCIES = {
@@ -46,6 +47,7 @@ SERVER_DEPENDENCIES = {
         "mlflow-server": "service_healthy",
         "prefect-server": "service_healthy",
     },
+    "baseline-builder": {"prefect-server": "service_healthy"},
 }
 
 SERVER_PORTS = {
@@ -207,6 +209,10 @@ def main() -> int:
         "backend": {"redis": "service_healthy", "postgres": "service_healthy"},
         "analytics": {
             **SERVER_DEPENDENCIES["analytics"],
+            "postgres": "service_healthy",
+        },
+        "baseline-builder": {
+            **SERVER_DEPENDENCIES["baseline-builder"],
             "postgres": "service_healthy",
         },
     }
