@@ -1,48 +1,52 @@
-# Data Sources & Data State
+# Data Sources
 
-What market data Brand Sniper has, where it came from, what each source is fit for, and the known
-problems with it. Read this before touching baselines, backtests, training data, or a new venue.
-Figures are a snapshot taken on **2026-09-26** from the production database.
+This is the market data I have for Brand Sniper, where each part came from, and what I trust it for.
+Read it before working on baselines, backtests, training data or a new venue. The numbers below come
+from the production database on 2026-09-26.
 
 ## Summary
 
 | Source | Table | Venue | Covers | Status |
 |:---|:---|:---|:---|:---|
-| Kaggle Steam price dataset | `historical_prices` | Steam Community Market | 2013-04-26 to 2024-06-15 | Static, **pre-crash**. Long-term context only; not a live reference price. |
-| Skinport REST snapshots (`/v1/items`) | `live_market_ticks` (`event_type` NULL) | Skinport | 22 days between 2026-06 and 2026-09 | Lowest ask per item, not sales. Gaps whenever the PC was off. |
-| Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` (`event_type` set) | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event, listing-level (#232). The basis for labels. |
-| Outcome labels | `listing_outcomes` | Skinport | Empty until about 2026-10-08 | A label exists only 14 days + 1 h after a listing (#233). |
+| Kaggle Steam price dataset | `historical_prices` | Steam Community Market | 2013-04-26 to 2024-06-15 | Static and older than the crash. Long term context only. |
+| Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Gaps whenever my PC was off. |
+| Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` with an `event_type` | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event with listing details (#232). Labels are built from this. |
+| Outcome labels | `listing_outcomes` | Skinport | Empty until about 2026-10-08 | A listing gets its label 14 days and 1 hour after it was seen (#233). |
 
-## Kaggle: Steam Community Market price history
+## The Kaggle dataset
 
-- **Source:** [Steam Market Price Dataset - CS:GO](https://www.kaggle.com/datasets/leawind/steam-market-price-dataset-csgo) (Kaggle, `leawind`).
-- **What it is:** one CSV per item (URL-encoded `market_hash_name` as the file name) with columns
-  `price, quantity, date, unix timestamp`: the Steam Community Market's median sale price and volume per
-  time bucket. About 22,500 files, 105M rows, 22,446 items.
-- **Where it lives:** downloaded into `data/items/` (not in git), checked with
-  `apps/analytics/validate_historical.py`, and loaded once into `historical_prices` with
-  `apps/analytics/seed_historical.py`. Nothing writes to `historical_prices` after that.
-- **How it is used:** `apps/analytics/long_term_macro.py` computes every `item_macro_baselines` row
-  (latest price, 30/90-day averages, volatility, support floor) from it; `update_baselines.py` pushes those
-  rows into the edge Redis as `baseline:<market_hash_name>`, where the Z-score and the DRE read them. The
-  backend's long-term Steam baseline query (`apps/backend/queries.py`) also reads it.
+I seeded the project with the [Steam Market Price Dataset for CS:GO](https://www.kaggle.com/datasets/leawind/steam-market-price-dataset-csgo)
+on Kaggle. It has one CSV per item, named after the URL encoded `market_hash_name`, with the columns
+`price, quantity, date, unix timestamp`. Each row is the median Steam Community Market sale price and the
+volume for one time bucket. In total it is about 22,500 files, 105 million rows and 22,446 items.
 
-### Problems
+The files go in `data/items/`, which is not in git. `apps/analytics/validate_historical.py` checks them
+and `apps/analytics/seed_historical.py` loads them once into `historical_prices`. Nothing writes to that
+table afterwards.
 
-1. **It ends before the CS2 market crash.** The data stops on 2024-06-15. On 2025-10-23 Valve added
-   knife and glove trade-up contracts (five Covert skins trade up into a knife or gloves). Knife and glove
-   prices fell sharply, and Covert skins rose because they became trade-up inputs
-   ([HLTV](https://www.hltv.org/news/43004/knife-trade-ups-and-return-of-retakes-headline-cs2-update)).
-   The baselines therefore describe a market that no longer exists.
-2. **It is the wrong venue.** Steam prices include Steam's roughly 15% fee and are paid in
-   non-withdrawable Steam wallet funds, so they sit above third-party markets such as Skinport. Measuring a
-   Skinport listing against a Steam average makes it look cheaper than it is.
-3. **It is static.** Because `historical_prices` never changes, the daily baseline job recomputes the same
-   numbers every run. The "30-day average" is the last 30 days of the dataset, not the last 30 days of the
-   market. (Upside: a replay does not suffer baseline look-ahead as long as this stays true.)
+Every baseline comes from it. `apps/analytics/long_term_macro.py` computes the `item_macro_baselines` rows
+(latest price, 30 and 90 day averages, volatility, support floor) and `update_baselines.py` copies them
+into the edge Redis as `baseline:<market_hash_name>`. The Z score and the DRE read them from there. The
+backend also reads `historical_prices` for its long term Steam price (`apps/backend/queries.py`).
 
-Measured on 2026-09-26: the baseline's latest price divided by the item's median Skinport price over the
-previous two days (asks and sales mixed, so rough):
+### Why these baselines are wrong today
+
+The dataset stops on 2024-06-15, which is before the CS2 market crash. On 2025-10-23 Valve let players
+trade up five Covert skins into a knife or gloves
+([HLTV](https://www.hltv.org/news/43004/knife-trade-ups-and-return-of-retakes-headline-cs2-update)).
+Knife and glove prices dropped hard after that, and Covert skins went up because everyone needed them
+for the contracts. So the baselines describe a market that no longer exists.
+
+It is also the wrong venue. Steam prices include Steam's fee of about 15% and are paid in wallet money
+you cannot withdraw, so they sit above Skinport prices. Compared against a Steam average, a normal
+Skinport listing looks cheap.
+
+And it never changes. Because nothing updates `historical_prices`, the daily baseline job gets the same
+numbers every time, and the "30 day average" is really the last 30 days of the dataset. The one good side
+effect is that replaying an old date does not leak future baselines, as long as this stays true.
+
+This is how far off they were on 2026-09-26. I divided each item's baseline latest price by its median
+Skinport price over the two days before. That median mixes asks and sales, so it is a rough measure.
 
 | Item type | Items | Baseline / current | Current median at or below the baseline support floor |
 |:---|---:|---:|---:|
@@ -52,51 +56,55 @@ previous two days (asks and sales mixed, so rough):
 | Sticker | 865 | 0.86 | 19% |
 | Agent | 160 | 0.63 | 1% |
 
-With these baselines the DRE approves ordinary knife and glove listings as bargains and overstates
-their profit, and it misses real bargains on items that have risen. **Do not use the Kaggle baselines as the
-live reference price.** Keep the dataset for long-term context (for example, how an item behaved over
-years), and build live baselines from current data from the venue being traded.
+With these numbers the DRE treats ordinary knife and glove listings as bargains and overstates the profit,
+and it misses real bargains on items that went up. Do not use the Kaggle baselines as the live reference
+price. The dataset is still useful for how an item behaved over the years. Live baselines should come from
+recent prices on the venue being traded (#259).
 
 ## Skinport data
 
-See [`docs/skinport_feed.md`](skinport_feed.md) for the feed's fields and quirks.
+[`docs/skinport_feed.md`](skinport_feed.md) covers the feed fields and quirks.
 
-- **REST snapshots** poll `https://api.skinport.com/v1/items` and store each item's `min_price` (the
-  lowest current ask). They are not sale prices. About 10.4M rows over 22 days (2026-06: 3 days,
-  2026-07: 7, 2026-08: 8, 2026-09: 4 so far); one stray row is dated 2024-06-15. Only the server insert time
-  is stored (#256).
-- **Sale feed** (Node.js sidecar, `apps/listener/scrapers/skinport_websocket/`) records every `listed` and
-  `sold` event since 2026-09-24 21:58 UTC, raw in `feed_events` and normalized in `live_market_ticks`
-  with listing ID, float, pattern, stickers, and link. Exact edge receive times.
-- **Sales history** (`/v1/sales/history`, 7/30/90-day aggregates per item) is documented but not yet used.
-  It is the natural source for current Skinport baselines.
+The REST poller calls `https://api.skinport.com/v1/items` and stores each item's `min_price`, the lowest
+ask at that moment. These are not sale prices. There are about 10.4 million rows over 22 days: 3 in June,
+7 in July, 8 in August and 4 so far in September 2026. One stray row is dated 2024-06-15. Only the server
+insert time is stored, not the edge time (#256).
 
-## Operating model: the edge is not always on
+The sale feed runs through the Node.js sidecar in `apps/listener/scrapers/skinport_websocket/`. Since
+2026-09-24 21:58 UTC it records every `listed` and `sold` event, raw in `feed_events` and normalized in
+`live_market_ticks` with the listing ID, float, pattern, stickers and link. The receive times are exact.
 
-Both Docker stacks (edge and server: listener, edge Redis, Prefect, MLflow, Prometheus, Grafana) run on
-the owner's PC, which is **not on 24/7**. Only PostgreSQL (Azure) is always on. Consequences:
+Skinport also has a sales history endpoint (`/v1/sales/history`) with 7, 30 and 90 day aggregates per
+item. I do not use it yet, but it is the obvious source for current Skinport baselines.
 
-- **Recorded data has gaps.** The feed is not replayed after downtime, so listings and sales that happened
-  while the PC was off are missing. Labels count fewer comparable sales and mark more listings
-  `sale_censored` across a gap; backtests must not treat a gap as a quiet market.
-- **Scheduled jobs must catch up.** A job pinned to a fixed time silently skips days. Prefer flows that
-  process everything missed since their last successful run and are safe to re-run (the outcome labeler
-  already upserts over a date range).
-- **Edge state must rebuild on startup.** The edge Redis is RAM-only. Anything the listener needs, such
-  as baselines, has to be reloaded when the stack starts, not only by a daily job.
+## My PC is not always on
 
-### Known incident: no baselines on the edge since July 2026
+Both Docker stacks run on my PC, which I turn off. That covers the listener, the edge Redis, Prefect,
+MLflow, Prometheus and Grafana. Only PostgreSQL on Azure stays up all the time. That has three effects.
 
-The edge Redis has held no `baseline:*` keys since roughly 2026-07-11, when `update_baselines.py` last ran
-by hand. Without a baseline the DRE rejects every anomaly, so the listener has approved nothing since
-then: `simulated_trades` holds only 22 paper trades, all from 2026-07-10/11 (12 of them knives). Nothing
-warned about it. Recording (#232) is unaffected, because it does not depend on decisions. Reloading the
-Kaggle baselines is not the fix, because of the problems above; the fix is current, venue-specific
-baselines that load at listener startup, with a health check that fails when they are missing.
+1. The recorded data has gaps. The feed does not replay what happened while the PC was off, so those
+   listings and sales are missing. Around a gap, labels see fewer comparable sales and mark more listings
+   `sale_censored`. A backtest should not read a gap as a quiet market.
+2. Jobs pinned to a fixed time skip days without anyone noticing. Jobs should instead process everything
+   missed since their last successful run and be safe to run again. The outcome labeler already works like
+   that.
+3. The edge Redis only lives in RAM, so it is empty after every restart. Whatever the listener needs,
+   baselines included, has to be loaded when the stack starts and not only by a daily job.
+
+### No baselines on the edge since July 2026
+
+The edge Redis has had no `baseline:*` keys since around 2026-07-11, the last time I ran
+`update_baselines.py` by hand. Without a baseline the DRE rejects every anomaly, so the listener has not
+approved anything since then. `simulated_trades` only has 22 paper trades, all from 10 and 11 July 2026, and
+12 of them are knives. Nothing warned about it. Recording (#232) was not affected because it does not depend
+on decisions. Reloading the Kaggle baselines would not fix this, for the reasons above. The fix is current
+baselines per venue that load when the listener starts, plus a health check that fails when they are
+missing (#259).
 
 ## Venues
 
-Fees per venue live in `packages/shared_utils/src/shared_utils/pnl.py` (`VenueFees`, `fees_for`); see
-section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport is the only venue connected.
-More venues are planned under #33. Prefer venues with an official, key-based API over ones that need
-browser cookies or a JavaScript sidecar, as Skinport's feed does.
+Fees for each venue live in `packages/shared_utils/src/shared_utils/pnl.py` (`VenueFees`, `fees_for`),
+described in section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport is the only
+venue connected so far. CSFloat (#33) and Waxpeer (#261) come next. When picking a venue I prefer an
+official API with a key over one that needs browser cookies or a JavaScript sidecar, which is what Skinport's
+feed needs.

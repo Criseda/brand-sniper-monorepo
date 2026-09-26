@@ -70,12 +70,12 @@ flowchart LR
 | **8** | [#250](https://github.com/Criseda/brand-sniper-monorepo/issues/250) | `[PE-08]` CFO calibration experiment | #233, #249 | `docs/benchmarks/cfo_calibration.md` |
 | **9** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | `[PE-09]` Realized-performance & feature drift monitoring | #236 | Prometheus metrics, alert rules |
 | **10** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | `[PE-10]` Discord/Telegram alerts with direct listing links | #232 | Alerting with one-click listing links |
-| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260 | CSFloat listing-level ticks, `VenueFees`, baselines |
-| **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current venue-aware baselines, loaded at listener startup | #232 | Baselines from Skinport sales history, dated history, startup load, health metric |
-| **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` Cross-venue fee-aware P&L | #233 | Separate buy-venue and sell-venue fees in `shared_utils.pnl` |
-| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 | Waxpeer listing-level ticks, `VenueFees`, baselines |
+| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260 | CSFloat listing ticks, `VenueFees`, baselines |
+| **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 | Baselines from Skinport sales history, stored with their build date, loaded at startup, with a health metric |
+| **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 | Separate buy and sell venue fees in `shared_utils.pnl` |
+| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 | Waxpeer listing ticks, `VenueFees`, baselines |
 
-**Parallelism:** after #232, the tracks #233, #248, #259, and #18 can proceed concurrently. #259 comes first in practice: the live baselines are pre-crash Kaggle Steam prices and the edge has had none loaded since July 2026 (see [`data_sources.md`](data_sources.md)), so #249 would mostly measure broken baselines without it. New venues (#33, #261) wait for #259 and #260. #250 can run alongside #234 and #236.
+**Parallelism:** after #232, the tracks #233, #248, #259 and #18 can run at the same time. In practice #259 goes first. The live baselines are Kaggle Steam prices from before the knife crash, and the edge has had none loaded since July 2026 (see [`data_sources.md`](data_sources.md)), so without it #249 would mostly measure broken baselines. New venues (#33, #261) wait for #259 and #260. #250 can run alongside #234 and #236.
 
 **Parked (not scheduled):** [#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237),
 [#238](https://github.com/Criseda/brand-sniper-monorepo/issues/238),
