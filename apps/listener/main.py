@@ -254,9 +254,10 @@ async def tick_consumer(
                         batch_buffer.append(item.to_batch_record())
                     elif is_duplicate(item, dedup_cache):
                         ticks_deduplicated_total.inc()
-                        if item.listing_id is not None:
-                            # A distinct listing at a repeated price is still recorded; it just does
-                            # not re-enter the price window, so decisions are unchanged.
+                        if item.listing_id is not None or item.is_rest_snapshot:
+                            # A distinct listing at a repeated price, and every REST snapshot, is still
+                            # recorded (replay sees what live saw); it just does not re-enter the price
+                            # window, so decisions are unchanged.
                             batch_buffer.append(item.to_batch_record())
                     else:
                         update_dedup_cache(item, dedup_cache)

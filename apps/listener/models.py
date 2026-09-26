@@ -55,6 +55,11 @@ class MarketTick(BaseModel):
         return int(round(self.price_usd * 100))
 
     @property
+    def is_rest_snapshot(self) -> bool:
+        """True for an aggregate REST snapshot: an item's lowest ask, naming no listing."""
+        return self.event_type is None
+
+    @property
     def feeds_price_window(self) -> bool:
         """True for REST snapshots and live listings: the only ticks the Z-score/DRE path may see."""
         return self.event_type is None or self.event_type == LISTED_EVENT_TYPE

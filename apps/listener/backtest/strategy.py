@@ -16,7 +16,7 @@ from redis.asyncio import Redis
 from rules_engine import dre_approval_reason
 
 # Reasons shared by all strategies.
-REASON_DUPLICATE = "duplicate"  # Same price as the item's previous tick inside the dedup window; never scored.
+REASON_DUPLICATE = "duplicate"  # Repeats the item's price (see detection.is_duplicate); never scored.
 
 # Reasons specific to the Z-score/DRE strategy. Approvals carry the DRE rule (rules_engine.REASON_*).
 REASON_INSUFFICIENT_HISTORY = "insufficient_history"

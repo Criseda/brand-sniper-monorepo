@@ -87,14 +87,52 @@ async def test_score_window_falls_back_to_the_macro_baseline():
     assert score.baseline == {"rolling_30d_avg_cents": 2000, "volatility_cents": 100, "coefficient_of_variation": 0.05}
 
 
+def _listed(price_usd: float, timestamp: int = 1_790_000_000, listing_id: str = "1") -> MarketTick:
+    return _tick(price_usd, timestamp=timestamp, event_type="listed", listing_id=listing_id)
+
+
 def test_duplicate_is_the_same_price_inside_the_dedup_window():
+    cache: detection.DedupCache = detection.OrderedDict()
+    first = _listed(10.00)
+    detection.update_dedup_cache(first, cache)
+
+    assert detection.is_duplicate(_listed(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS - 1), cache)
+    assert not detection.is_duplicate(_listed(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS), cache)
+    assert not detection.is_duplicate(_listed(10.01, timestamp=first.timestamp + 1), cache)
+
+
+def test_unchanged_rest_snapshot_is_a_duplicate_however_old():
     cache: detection.DedupCache = detection.OrderedDict()
     first = _tick(10.00)
     detection.update_dedup_cache(first, cache)
 
-    assert detection.is_duplicate(_tick(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS - 1), cache)
-    assert not detection.is_duplicate(_tick(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS), cache)
-    assert not detection.is_duplicate(_tick(10.01, timestamp=first.timestamp + 1), cache)
+    # Polls are 305 seconds or more apart, longer than the dedup window.
+    for poll in range(1, 4):
+        assert detection.is_duplicate(_tick(10.00, timestamp=first.timestamp + poll * 305), cache)
+    assert detection.is_duplicate(_tick(10.00, timestamp=first.timestamp + 86_400), cache)
+
+
+def test_rest_snapshot_at_a_new_price_is_not_a_duplicate():
+    cache: detection.DedupCache = detection.OrderedDict()
+    detection.update_dedup_cache(_tick(10.00), cache)
+
+    changed = _tick(9.50, timestamp=1_790_000_305)
+    assert not detection.is_duplicate(changed, cache)
+    detection.update_dedup_cache(changed, cache)
+
+    # Back to the earlier price: the lowest ask changed again, so it is scored again.
+    assert not detection.is_duplicate(_tick(10.00, timestamp=1_790_000_610), cache)
+
+
+def test_listing_does_not_replace_the_remembered_snapshot_price():
+    cache: detection.DedupCache = detection.OrderedDict()
+    detection.update_dedup_cache(_tick(10.00), cache)
+    detection.update_dedup_cache(_listed(12.00, timestamp=1_790_000_100), cache)
+
+    assert cache[ITEM].snapshot_price_cents == 1000
+    assert detection.is_duplicate(_tick(10.00, timestamp=1_790_000_305), cache)
+    # A listing at the snapshot price after the dedup window is a new offer and is scored.
+    assert not detection.is_duplicate(_listed(10.00, timestamp=1_790_000_500, listing_id="2"), cache)
 
 
 def test_dedup_cache_evicts_the_least_recently_used_item(monkeypatch):

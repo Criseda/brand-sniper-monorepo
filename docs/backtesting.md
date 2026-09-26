@@ -48,8 +48,10 @@ log header.
 
 **Always warm up.** The live edge Redis keeps each item's window across listener restarts, but a replay
 starts with empty windows. Until an item has `MIN_HISTORY_POINTS` prices, the Z-score falls back to the
-macro baseline alone. On the committed fixture that changes the result from 25 approvals (cold) to none
-after 30 minutes of warm-up, which is what the live listener did over that period (no paper trades).
+macro baseline alone. On the committed fixture that changes the result from 19 approvals (cold) to 1
+after 30 minutes of warm-up. Before #265 it was 25 to none, which is what the live listener did over that
+period. The one left is a Karambit listing that now reaches the Z score with only 3 prices in its window,
+so it is scored on the fixture's old Kaggle baseline alone.
 
 ## Input
 
@@ -64,9 +66,10 @@ than 60 seconds apart are treated as one poll and stamped with the poll's first 
 the 300-second dedup rule from dropping ticks that live kept. Snapshot timing is therefore approximate to
 a few seconds until the edge time is persisted (#256). Feed-event timing is exact.
 
-Only ticks the live listener stored exist in the database. The listener does not store a REST tick that
-repeats the previous price within 300 seconds, but live dropped those as duplicates anyway, so the
-decisions are unaffected.
+Only ticks the live listener stored exist in the database. Since #265 it stores every REST snapshot,
+including the ones the dedup rule drops. Before that it did not store a REST tick that repeated the
+previous price within 300 seconds, but live dropped those as duplicates anyway, so the decisions are
+unaffected.
 
 **Baselines** come from the dated builds in `baseline_builds` (see [data_sources.md](data_sources.md)),
 shaped exactly as the backend serves them to the listener. A database replay loads every build that was in
@@ -139,6 +142,13 @@ the same price, the rest repeating a REST snapshot. Such rows carry reason `dupl
 rules never looked at them, so count them as "not evaluated", not as rejections, when you measure
 precision or coverage against `listing_outcomes`. The summary's `duplicates` count (which also includes
 REST snapshots) shows the scale per run.
+
+**A REST snapshot is scored only when its price changes.** A snapshot at the same price as the item's
+previous REST snapshot is a duplicate however old that one is (#265). Polls are 305 seconds apart plus
+the time a poll takes, so the 300 second rule alone never dropped one, and until #265 every poll scored
+the same lowest ask again and could paper trade it again. Price windows now fill only with changes, so an
+item whose lowest ask rarely moves stays under `MIN_HISTORY_POINTS` prices for longer and is scored on its
+macro baseline alone (`z_source` `macro`). Compare runs before and after #265 with that in mind.
 
 ## Strategies
 

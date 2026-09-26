@@ -54,6 +54,9 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 |
 | **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 |
 | **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 |
+| **15** | [#265](https://github.com/Criseda/brand-sniper-monorepo/issues/265) | `[PE-15]` Stop scoring and paper trading unchanged REST snapshots | #248 |
+| **16** | [#266](https://github.com/Criseda/brand-sniper-monorepo/issues/266) | `[PE-16]` DRE approvals by rule and source on the dashboard | #265 |
+| **17** | [#267](https://github.com/Criseda/brand-sniper-monorepo/issues/267) | `[PE-17]` REST lowest asks below the 30 day sale minimum | None |
 
 **Parked**: #237, #238, #239 (compiled Rust edge engine) are not scheduled. Do not start them; a dedicated decision session will review the #175 evidence first.
 

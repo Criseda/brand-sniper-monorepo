@@ -39,7 +39,17 @@ DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "25000"))
 # A tick at the same price as the item's previous tick within this many seconds is a duplicate.
 DEDUP_WINDOW_SECONDS = 300
 
-DedupCache = OrderedDict[str, tuple[int, int]]
+
+@dataclass(frozen=True, slots=True)
+class DedupEntry:
+    """What the dedup rules remember about one item."""
+
+    timestamp: int  # Time of the item's last tick that was not a duplicate
+    price_cents: int  # Price of that tick
+    snapshot_price_cents: int | None  # Price of the item's last REST snapshot; None before the first one
+
+
+DedupCache = OrderedDict[str, DedupEntry]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,17 +69,37 @@ def _decode_zset_element(element: str | bytes) -> str:
 
 
 def is_duplicate(tick: MarketTick, dedup_cache: DedupCache) -> bool:
-    """Returns True if this tick is a duplicate (same price within the dedup window)."""
-    last_ts, last_price = dedup_cache.get(tick.market_hash_name, (0, 0))
-    return tick.price_cents == last_price and (tick.timestamp - last_ts) < DEDUP_WINDOW_SECONDS
+    """
+    Returns True if this tick repeats what the item already showed, so it must not be scored again.
+
+    A REST snapshot is a duplicate when its price equals the item's previous REST snapshot, however old
+    that one is: the lowest ask has not changed, and polls are further apart than the dedup window. Any
+    tick is a duplicate when it has the same price as the item's previous tick within the dedup window.
+    """
+    entry = dedup_cache.get(tick.market_hash_name)
+    if entry is None:
+        return False
+    if tick.is_rest_snapshot and tick.price_cents == entry.snapshot_price_cents:
+        return True
+    return tick.price_cents == entry.price_cents and (tick.timestamp - entry.timestamp) < DEDUP_WINDOW_SECONDS
 
 
 def update_dedup_cache(tick: MarketTick, dedup_cache: DedupCache) -> None:
     """Updates the LRU dedup cache with the latest tick, evicting oldest if over capacity."""
+    previous = dedup_cache.get(tick.market_hash_name)
+    if tick.is_rest_snapshot:
+        snapshot_price_cents: int | None = tick.price_cents
+    else:
+        snapshot_price_cents = previous.snapshot_price_cents if previous is not None else None
+
     # Move to end if exists (LRU touch), or insert fresh
-    if tick.market_hash_name in dedup_cache:
+    if previous is not None:
         dedup_cache.move_to_end(tick.market_hash_name)
-    dedup_cache[tick.market_hash_name] = (tick.timestamp, tick.price_cents)
+    dedup_cache[tick.market_hash_name] = DedupEntry(
+        timestamp=tick.timestamp,
+        price_cents=tick.price_cents,
+        snapshot_price_cents=snapshot_price_cents,
+    )
     # Evict oldest entries when cache exceeds capacity
     while len(dedup_cache) > DEDUP_CACHE_MAX_SIZE:
         dedup_cache.popitem(last=False)
