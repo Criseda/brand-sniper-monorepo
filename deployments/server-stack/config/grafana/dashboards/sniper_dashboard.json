@@ -80,6 +80,7 @@
     {
       "type": "gauge",
       "title": "Deduplication Cache Size",
+      "description": "Items in each venue's dedup cache against the default cap of 100,000 (DEDUP_CACHE_MAX_SIZE). Orange from 80% and red from 95% of the cap; if the cap is changed, change this max too.",
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 6 },
       "targets": [
         { "expr": "listener_dedup_cache_size{venue!=\"\"}", "legendFormat": "{{venue}}", "refId": "A" }
@@ -88,6 +89,7 @@
         "defaults": {
           "unit": "none",
           "min": 0,
+          "max": 100000,
           "thresholds": { "mode": "percentage", "steps": [
             { "color": "green", "value": null },
             { "color": "orange", "value": 80 },
