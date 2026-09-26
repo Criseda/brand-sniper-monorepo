@@ -35,7 +35,7 @@ Times are ISO 8601. A value without an offset is taken as UTC.
 
 | Option | Meaning |
 |:---|:---|
-| `--strategy` | Decision strategy (default and only one so far: `zscore_dre`, the live rules). |
+| `--strategy` | Decision strategy: `zscore_dre` (default, the live rules) or `zscore_dre_sweep` (the same decisions plus the inputs the scorecard's threshold sweep needs). |
 | `--warmup-hours` | Database replay: also replay this many hours before `--start`. It fills the price windows and the dedup cache; those decisions are not logged. |
 | `--log-from` | Fixture replay: the same idea. Events before this time only warm up. |
 | `--speed` | Replay at recorded pace times this factor (`1` = real time). Omit it to run flat out. |
@@ -160,6 +160,77 @@ A strategy implements `decide(tick, context) -> Decision(approve, reason, score,
 `config()` (see `backtest/strategy.py`). The harness owns routing, deduplication, and the price window,
 so several strategies see identical inputs, as shadow mode (#236) needs. `context.store` exposes the
 window, baselines, and sticker prices as they were at the tick. Register a new strategy in `STRATEGIES`.
+
+`zscore_dre_sweep` makes exactly the decisions `zscore_dre` makes. It also writes each scored tick's
+sticker count, and for a tick below the Z threshold it writes the verdict the DRE would have given
+(`dre_reason`, null for a rejection). The DRE never reads the Z threshold or the savings floor, so with
+those two fields any other threshold can be scored from the same log (see the threshold sweep below).
+
+## Baseline scorecard
+
+The scorecard (#249) is the number every later change has to beat: how the current rules would have done,
+scored against what the market actually did. One command replays a range with `zscore_dre_sweep` and scores it:
+
+```bash
+make scorecard START=2026-09-26T17:30 END=2026-10-10T00:00
+```
+
+That is the same as these two steps, which I can also run apart (for example to score one log against a
+new label version):
+
+```bash
+# From apps/listener
+uv run python -m backtest run --start 2026-09-26T17:30 --end 2026-10-10T00:00 --warmup-hours 2 \
+  --strategy zscore_dre_sweep --out ../../data/scorecard/decisions.jsonl
+
+# From apps/analytics (run label_outcomes.py over the range first)
+uv run python baseline_scorecard.py --decisions ../../data/scorecard/decisions.jsonl
+```
+
+It writes `docs/benchmarks/baseline_scorecard.md` and `docs/benchmarks/baseline_scorecard.json` and logs
+both to the MLflow experiment `baseline-scorecard`, with the headline numbers as metrics and the thresholds,
+label version and fees as parameters, so model runs (#234) can be compared with it. `--no-mlflow` skips
+MLflow, `--as-of` fixes the time labels are read at (the default is now), `--label-version` picks another
+label version, and `--slice-days` sets the length of the time slices (7 by default).
+
+**What it counts as a trade.** Every approval in the range. A feed listing counts once however often it
+was approved, because it can only be bought once. Every approved REST snapshot counts, as the live
+listener paper trades each one. I leave out two kinds of approval and report how many:
+
+- Anything before 2026-09-26 17:30 UTC. REST snapshots were trade locked asks until #275 went live at 15:47
+  that day, and the price windows held them for another 20 polls.
+- Anything decided while a `look_ahead` baseline was in effect, since that used a later build.
+
+**Labels.** A feed listing gets its `listing_outcomes` label. A REST snapshot has no listing ID, so the
+scorecard labels it with the same v1 rule, treating the lowest ask as a listing seen at decision time.
+Only its own sale cannot be left out of the comparable sales. A trade is pending until its label horizon
+(14 days and the hour of settle time) has passed, and unlabeled when the horizon has passed but no label
+exists yet; the report then says to run `label_outcomes.py` over the range. A neutral label (fewer than 3
+comparable sales) counts as a trade but not towards precision or P&L.
+
+**Metrics.** Precision is the share of labeled trades that were profitable. Net P&L is each trade's
+`resale_net_margin_cents`: the fee aware margin from reselling at the median comparable sale after the
+trade hold. Max drawdown is the largest fall of cumulative P&L from its peak, in decision order. Recall is
+the share of listings labeled profitable in the range that the rules approved, so it covers feed listings
+only; listings the dedup rule never scored count as missed. The report gives these for the whole range,
+for each time slice, and broken down by tick kind, DRE rule, Z-score source, buy price, item type and
+liquidity (30 day sales per day from the baseline build the decision used).
+
+**Small samples.** Below 30 labeled trades (or 30 profitable listings, for recall) a cell says
+"insufficient data" instead of a number. Precision and recall carry Wilson 95% intervals. The mean P&L per
+trade carries a percentile bootstrap interval (2000 resamples, seed 249) up to 500 trades, and a normal
+interval above that, so a rerun with the same log and `--as-of` gives the same report.
+
+**Threshold sweep.** The report also scores a grid of Z thresholds (-1.5 to -3.0) and savings floors ($0.25
+to $2.00), with the sticker threshold kept at its live value. It covers feed listings only, because a
+replay logs a REST snapshot only when the live rules approve it. It is in sample: the grid is read from the
+same data it is scored on, so its best cell flatters itself. The cell with the live thresholds must
+approve exactly what the replay approved; if not, the report warns not to trust the table. The scorecard
+never changes a threshold. A change it suggests becomes its own issue.
+
+**When it means something.** Labels arrive 14 days and an hour after a listing, so the first listings after
+the #275 cutover are labeled from 2026-10-10 18:30 UTC. Until a range has 30 labeled trades, every
+metric says insufficient data.
 
 ## Parity and tests
 
