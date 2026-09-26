@@ -129,6 +129,7 @@ def test_read_decision_log_tracks_the_build_behind_each_decision(tmp_path):
         baseline_row(3, START, look_ahead=True),
         decision_row("1", START),
         baseline_row(4, START + DAY),
+        {"type": "note"},  # a record type the scorecard does not read is skipped
         decision_row("2", START + DAY),
     ]
 
@@ -690,10 +691,27 @@ async def test_run_rejects_a_slice_shorter_than_a_day(tmp_path):
 
 
 def _scored_card():
-    trades = [trade(margin=100, at=START + timedelta(hours=i)) for i in range(MIN_SAMPLE)]
+    trades = [trade(margin=100, at=START + timedelta(hours=i), listing_id=f"L{i}") for i in range(MIN_SAMPLE)]
     card = _card_with({"available": False, "reason": "test"})
-    card["overall"] = {**score_trades(trades), "recall": score_recall(trades, ["L"] * MIN_SAMPLE)}
+    universe = [f"L{i}" for i in range(2 * MIN_SAMPLE)]
+    card["overall"] = {**score_trades(trades), "recall": score_recall(trades, universe)}
     return card
+
+
+def test_git_commit_reads_head_and_tolerates_a_missing_git():
+    with patch("baseline_scorecard.subprocess.run") as run:
+        run.return_value.stdout = "abc123\n"
+        assert baseline_scorecard.git_commit() == "abc123"
+        run.side_effect = OSError("no git")
+        assert baseline_scorecard.git_commit() is None
+
+
+def test_main_runs_the_cli(monkeypatch, tmp_path):
+    _fake_database(monkeypatch, labels={}, profitable={})
+    argv = ["--decisions", str(_write_cli_log(tmp_path)), "--out-dir", str(tmp_path), "--no-mlflow"]
+
+    assert baseline_scorecard.main(argv) == 0
+    assert (tmp_path / "baseline_scorecard.json").exists()
 
 
 @patch("baseline_scorecard.MlflowClient")
@@ -714,6 +732,7 @@ def test_log_to_mlflow_logs_params_metrics_and_artifacts(mock_client_cls, tmp_pa
     assert params["config.z_score_threshold"] == "-2.0"
     metrics = {call.args[1]: call.args[2] for call in client.log_metric.call_args_list}
     assert metrics["precision"] == 1.0
+    assert metrics["recall"] == 0.5
     assert metrics["trades"] == MIN_SAMPLE
     client.log_artifact.assert_called_once_with("run-1", str(artifact))
     client.set_terminated.assert_called_once_with("run-1", status="FINISHED")
