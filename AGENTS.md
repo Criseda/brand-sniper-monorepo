@@ -82,7 +82,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #18, and #33
 - **Edge Redis on `localhost:6380`** (not default 6379), `--save "" --appendonly no` (volatile RAM only)
 - **CFO tools** in `apps/analytics/tools.py` — plain functions, registered as OpenAI-compatible function tools
 - **Script bootstrap**: analytics scripts call `setup_script_environment(__file__)` at the top and `validate_required_env([...])` inside `__main__` (never at import) — do not re-add `load_dotenv`/`sys.path`/`reconfigure` boilerplate
-- **Service bootstrap**: `apps/backend/main.py`, `apps/listener/main.py`, and `apps/listener/replay_batches.py` call `setup_service_environment(__file__)` at the top (same dotenv/stream setup, no `sys.path` mutation)
+- **Service bootstrap**: `apps/backend/main.py`, `apps/listener/main.py`, and `apps/listener/replay_batches.py` call `setup_service_environment(__file__)` at the top (`apps/listener/backtest/__main__.py` passes its package directory so the listener `.env` loads) (same dotenv/stream setup, no `sys.path` mutation)
 - **Listener spawns Node.js sidecar** for WebSocket — lives in `scrapers/skinport_websocket/`
 - **Skinport API**: read [`docs/skinport_feed.md`](docs/skinport_feed.md) before touching Skinport code. It links the official docs ([sale feed](https://docs.skinport.com/websocket/sale-feed), [items](https://docs.skinport.com/items), [sales history](https://docs.skinport.com/sales/history), [account transactions](https://docs.skinport.com/account/transactions)) and records where the live feed differs from them (e.g. `saleId` is always null; `productId` is the listing key)
 

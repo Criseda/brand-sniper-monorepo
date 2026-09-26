@@ -18,9 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_proven_edge.md`).
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).
 - Raw Skinport feed capture (all event types, append-only `feed_events` JSONB) and listing-level tick fields (listing ID, event type, float, pattern, stickers, link) end to end, with feed-schema and retention notes in `docs/skinport_feed.md` (#232).
+- Deterministic replay & backtest harness (`apps/listener/backtest`, `python -m backtest run|export`): replays recorded feed events and REST snapshots through the live decision code, writes byte-identical decision logs, ships a sanitized CI fixture and a live-parity test; see `docs/backtesting.md` (#248).
 - Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
 #### Changed
+- The listener's decision path (dedup, price window, Z-score scoring, DRE hand-off) moved from `main.py` to `detection.py` unchanged, with direct tests; the DRE reports which rule approved (`dre_approval_reason`), and edge baseline documents are built by one shared function (`edge_baseline_payload`) (#248).
 - The listener's paper-trade profit estimate deducts the venue's seller fee through the shared P&L function; trades record the estimate's basis (`profit_estimate_basis`, existing rows tagged `gross`) and store no estimate when there is no baseline price (#233).
 - Fee schedules are looked up per venue (`fees_for`) and `MarketTick` carries its `venue`; an unregistered venue fails instead of being priced with Skinport fees (#233).
 - Paper trades record the bought listing (`listing_id`, `float_value`), and the CFO audits that listing's float instead of the latest tick for the item (#232).
@@ -32,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The listener container gets a 120 s `stop_grace_period` in both compose stacks, so Docker no longer kills its shutdown drain after 10 s and drops buffered feed events (#252).
 
 #### In Progress / Planned
-- `[PE-03]` Deterministic replay & backtest harness (#248).
 - `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).
 - `[PE-05]` Ingress-to-decision latency benchmark and Rust decision gate (#175).
 - `[PE-06]` Shared feature module & walk-forward student model with ONNX export (#234).

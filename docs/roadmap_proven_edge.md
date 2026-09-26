@@ -151,6 +151,7 @@ Labels are versioned (`label_version`); changing the definition creates a new ve
 - Replays recorded events in timestamp order through the **real** listener decision code via injectable stores.
 - Strategy interface: `decide(tick, context) -> Decision(score, approve, reason)`.
 - Deterministic: identical input produces byte-identical decision logs. Used for backtests, parity, and #175.
+- Usage, input caveats (baseline look-ahead, approximate REST snapshot times), and the log format: [`docs/backtesting.md`](backtesting.md).
 
 ### 4.5 Feature contract (#234)
 - One shared feature module used by replay, training, and the listener. Never reimplement features per consumer.

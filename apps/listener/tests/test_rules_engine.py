@@ -2,7 +2,14 @@ import json
 from dataclasses import dataclass
 
 import pytest
-from rules_engine import evaluate_opportunity
+from rules_engine import (
+    REASON_MACRO_SIGMA,
+    REASON_STICKER_PREMIUM,
+    REASON_STICKERS_BELOW_BASE,
+    REASON_SUPPORT_FLOOR,
+    dre_approval_reason,
+    evaluate_opportunity,
+)
 
 
 # Mock classes for our input data
@@ -185,3 +192,27 @@ async def test_tick_without_stickers_attribute_is_safe(mock_redis):
         price_cents = 1700
 
     assert await evaluate_opportunity(BareTick(), mock_redis) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("price_cents", "stickers", "baseline", "expected"),
+    [
+        pytest.param(1000, [], None, REASON_SUPPORT_FLOOR, id="support_floor"),
+        pytest.param(
+            1700,
+            [],
+            {"support_floor_cents": 1500, "rolling_30d_avg_cents": 2500, "volatility_cents": 300},
+            REASON_MACRO_SIGMA,
+            id="macro_sigma",
+        ),
+        pytest.param(1501, [{"name": "Titan | Katowice 2014"}], None, REASON_STICKERS_BELOW_BASE, id="stickers_below_base"),
+        pytest.param(6600, [{"name": "Titan | Katowice 2014"}], None, REASON_STICKER_PREMIUM, id="sticker_premium"),
+        pytest.param(1700, [], None, None, id="rejected"),
+    ],
+)
+async def test_dre_approval_reason_names_the_approving_rule(mock_redis, price_cents, stickers, baseline, expected):
+    tick = MockMarketTick(market_hash_name="AK-47 | Redline (Field-Tested)", price_cents=price_cents, stickers=stickers)
+
+    assert await dre_approval_reason(tick, mock_redis, baseline) == expected
+    assert await evaluate_opportunity(tick, mock_redis, baseline) is (expected is not None)
