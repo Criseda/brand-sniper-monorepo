@@ -44,7 +44,14 @@ anomalies_rejected_total = Counter(
 
 dedup_cache_size = Gauge(
     "listener_dedup_cache_size",
-    "Current number of entries in the LRU deduplication cache",
+    "Current number of items in the venue's LRU deduplication cache",
+    labelnames=["venue"],
+)
+
+dedup_cache_evictions_total = Counter(
+    "listener_dedup_cache_evictions_total",
+    "Items evicted from the venue's full deduplication cache; an evicted unchanged REST snapshot is scored again",
+    labelnames=["venue"],
 )
 
 batch_buffer_size = Gauge(

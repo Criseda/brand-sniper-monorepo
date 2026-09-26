@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import aiohttp
-from models import MAX_EVENT_TYPE_LENGTH, MAX_LISTING_URL_LENGTH, FeedEvent, MarketTick
+from models import MAX_EVENT_TYPE_LENGTH, MAX_LISTING_URL_LENGTH, FeedEvent, MarketTick, TickKind
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from scrapers.base import BaseScraper
@@ -73,6 +73,7 @@ def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTic
     try:
         return MarketTick(
             venue=VENUE,
+            kind=TickKind.of_feed_event(event_type),
             market_hash_name=build_versioned_name(market_hash_name, sale.get("version")),
             # salePrice is in USD cents when currency is USD
             price_usd=float(sale_price) / 100.0,
@@ -179,7 +180,10 @@ class SkinportScraper(BaseScraper):
                                 version = item.get("version")
                                 market_hash_name = build_versioned_name(market_hash_name, version)
                                 yield MarketTick(
-                                    venue=VENUE, market_hash_name=market_hash_name, price_usd=float(item["min_price"])
+                                    venue=VENUE,
+                                    kind=TickKind.REST_SNAPSHOT,
+                                    market_hash_name=market_hash_name,
+                                    price_usd=float(item["min_price"]),
                                 )
 
                     elif response.status == 429:

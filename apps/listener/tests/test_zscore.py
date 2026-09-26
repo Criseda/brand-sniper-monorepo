@@ -1,6 +1,6 @@
 import pytest
 import zscore
-from models import MarketTick
+from models import MarketTick, TickKind
 from zscore import calculate_z_score, should_trigger_anomaly
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,13 @@ def _pin_detection_constants(monkeypatch):
 
 
 def _tick(price_usd: float, stickers: list[dict] | None = None) -> MarketTick:
-    return MarketTick(venue="skinport", market_hash_name="Test Item", price_usd=price_usd, stickers=stickers or [])
+    return MarketTick(
+        venue="skinport",
+        kind=TickKind.REST_SNAPSHOT,
+        market_hash_name="Test Item",
+        price_usd=price_usd,
+        stickers=stickers or [],
+    )
 
 
 # ============================================================================
