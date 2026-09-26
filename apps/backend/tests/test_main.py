@@ -579,3 +579,87 @@ def test_cors_origin(client, origin, expected):
     assert response.headers.get("access-control-allow-origin") == expected
     if expected is not None:
         assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def _store_build(venue: str, built_at_iso: str, rows: list[dict]) -> int:
+    from datetime import datetime
+
+    from shared_utils.models import BaselineBuild, VenueBaseline
+
+    async def store() -> int:
+        async with _test_session_maker() as session:
+            build = BaselineBuild(
+                venue=venue, method="sales-history-v1", built_at=datetime.fromisoformat(built_at_iso), item_count=len(rows)
+            )
+            session.add(build)
+            await session.flush()
+            assert build.id is not None
+            for row in rows:
+                session.add(VenueBaseline(build_id=build.id, **row))
+            await session.commit()
+            return build.id
+
+    return asyncio.run(store())
+
+
+def _baseline_row(name: str, latest: int) -> dict:
+    return {
+        "market_hash_name": name,
+        "latest_price_cents": latest,
+        "rolling_30d_avg_cents": latest,
+        "rolling_90d_avg_cents": latest,
+        "volatility_cents": 10,
+        "support_floor_cents": latest - 20,
+        "avg_volume_30d": 1.5,
+        "drift_percent": 0.0,
+        "volatility_method": "sales_spread",
+        "median_24h_cents": None,
+        "volume_24h": 0,
+        "median_7d_cents": latest,
+        "volume_7d": 5,
+        "min_30d_cents": latest - 30,
+        "volume_30d": 45,
+        "volume_90d": 120,
+    }
+
+
+def test_latest_baselines_serves_the_newest_build_with_sticker_prices(client):
+    venue = f"venue-{uuid4().hex[:8]}"
+    _store_build(venue, "2026-09-25T12:00:00", [_baseline_row("AK-47 | Redline (Field-Tested)", 2700)])
+    newest = _store_build(
+        venue,
+        "2026-09-26T12:00:00",
+        [_baseline_row("AK-47 | Redline (Field-Tested)", 2739), _baseline_row("Sticker | Crown (Foil)", 90000)],
+    )
+
+    response = client.get(f"/api/v1/baselines/{venue}/latest")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["build_id"] == newest
+    assert (body["venue"], body["built_at"], body["item_count"]) == (venue, "2026-09-26T12:00:00", 2)
+    assert body["baselines"]["AK-47 | Redline (Field-Tested)"]["latest_price_cents"] == 2739
+    assert body["baselines"]["AK-47 | Redline (Field-Tested)"]["coefficient_of_variation"] == round(10 / 2739, 4)
+    # Sticker prices are keyed the way a listing names an applied sticker.
+    assert body["sticker_prices"] == {"Crown (Foil)": 90000}
+
+
+def test_latest_baselines_returns_no_content_when_the_caller_is_current(client):
+    venue = f"venue-{uuid4().hex[:8]}"
+    build_id = _store_build(venue, "2026-09-26T12:00:00", [_baseline_row("AK-47 | Redline (Field-Tested)", 2739)])
+
+    assert client.get(f"/api/v1/baselines/{venue}/latest", params={"after_build_id": build_id}).status_code == 204
+    assert client.get(f"/api/v1/baselines/{venue}/latest", params={"after_build_id": build_id - 1}).status_code == 200
+
+
+def test_latest_baselines_is_not_found_for_a_venue_without_builds(client):
+    response = client.get("/api/v1/baselines/nowhere/latest")
+
+    assert response.status_code == 404
+    assert "nowhere" in response.json()["detail"]
+
+
+def test_latest_baselines_requires_the_api_key(client):
+    response = client.get("/api/v1/baselines/skinport/latest", headers={BACKEND_API_KEY_HEADER: "wrong-key"})
+
+    assert response.status_code == 401

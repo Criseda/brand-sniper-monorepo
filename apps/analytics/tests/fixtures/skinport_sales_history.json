@@ -1,0 +1,233 @@
+[
+ {
+  "market_hash_name": "Sticker Slab | BIG (Gold) | Stockholm 2021",
+  "version": null,
+  "currency": "USD",
+  "last_24_hours": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_7_days": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_30_days": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_90_days": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  }
+ },
+ {
+  "market_hash_name": "AK-47 | Redline (Field-Tested)",
+  "version": null,
+  "currency": "USD",
+  "last_24_hours": {
+   "min": 23.94,
+   "max": 71.04,
+   "avg": 31.03,
+   "median": 27.39,
+   "volume": 14
+  },
+  "last_7_days": {
+   "min": 22.93,
+   "max": 81.33,
+   "avg": 32.4,
+   "median": 28.21,
+   "volume": 80
+  },
+  "last_30_days": {
+   "min": 21.55,
+   "max": 456.06,
+   "avg": 41.78,
+   "median": 29.29,
+   "volume": 321
+  },
+  "last_90_days": {
+   "min": 21.55,
+   "max": 938.97,
+   "avg": 46.95,
+   "median": 31.26,
+   "volume": 966
+  }
+ },
+ {
+  "market_hash_name": "Sticker | Don't Worry, I'm Pro",
+  "version": null,
+  "currency": "USD",
+  "last_24_hours": {
+   "min": 0.81,
+   "max": 0.81,
+   "avg": 0.81,
+   "median": 0.81,
+   "volume": 1
+  },
+  "last_7_days": {
+   "min": 0.72,
+   "max": 0.81,
+   "avg": 0.76,
+   "median": 0.78,
+   "volume": 3
+  },
+  "last_30_days": {
+   "min": 0.72,
+   "max": 0.81,
+   "avg": 0.75,
+   "median": 0.75,
+   "volume": 4
+  },
+  "last_90_days": {
+   "min": 0.57,
+   "max": 0.81,
+   "avg": 0.74,
+   "median": 0.75,
+   "volume": 12
+  }
+ },
+ {
+  "market_hash_name": "★ Karambit | Doppler (Factory New)",
+  "version": "Phase 4",
+  "currency": "USD",
+  "last_24_hours": {
+   "min": 1291.33,
+   "max": 1308.78,
+   "avg": 1300.06,
+   "median": 1300.06,
+   "volume": 2
+  },
+  "last_7_days": {
+   "min": 1166.89,
+   "max": 1376.79,
+   "avg": 1256.56,
+   "median": 1257.35,
+   "volume": 17
+  },
+  "last_30_days": {
+   "min": 1149.91,
+   "max": 1546.96,
+   "avg": 1299.98,
+   "median": 1288.95,
+   "volume": 39
+  },
+  "last_90_days": {
+   "min": 1149.91,
+   "max": 2714.34,
+   "avg": 1378.99,
+   "median": 1368.17,
+   "volume": 119
+  }
+ },
+ {
+  "market_hash_name": "★ Karambit | Doppler (Factory New)",
+  "version": "Sapphire",
+  "currency": "USD",
+  "last_24_hours": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_7_days": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_30_days": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_90_days": {
+   "min": 3984.45,
+   "max": 5307.33,
+   "avg": 4335.29,
+   "median": 4172.07,
+   "volume": 6
+  }
+ },
+ {
+  "market_hash_name": "Dreams & Nightmares Case",
+  "version": null,
+  "currency": "USD",
+  "last_24_hours": {
+   "min": 0.87,
+   "max": 1.19,
+   "avg": 1.16,
+   "median": 1.19,
+   "volume": 572
+  },
+  "last_7_days": {
+   "min": 0.74,
+   "max": 1.25,
+   "avg": 1.16,
+   "median": 1.19,
+   "volume": 2518
+  },
+  "last_30_days": {
+   "min": 0.48,
+   "max": 1.27,
+   "avg": 1.19,
+   "median": 1.2,
+   "volume": 14162
+  },
+  "last_90_days": {
+   "min": 0.03,
+   "max": 3.11,
+   "avg": 1.25,
+   "median": 1.24,
+   "volume": 56356
+  }
+ },
+ {
+  "market_hash_name": "Sticker | 9INE (Glitter) | Paris 2023",
+  "version": null,
+  "currency": "USD",
+  "last_24_hours": {
+   "min": null,
+   "max": null,
+   "avg": null,
+   "median": null,
+   "volume": 0
+  },
+  "last_7_days": {
+   "min": 0.18,
+   "max": 0.18,
+   "avg": 0.18,
+   "median": 0.18,
+   "volume": 5
+  },
+  "last_30_days": {
+   "min": 0.09,
+   "max": 0.18,
+   "avg": 0.18,
+   "median": 0.18,
+   "volume": 23
+  },
+  "last_90_days": {
+   "min": 0.09,
+   "max": 0.9,
+   "avg": 0.17,
+   "median": 0.09,
+   "volume": 119
+  }
+ }
+]

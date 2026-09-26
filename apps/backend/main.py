@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, Security, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from shared_utils import setup_service_environment
@@ -20,7 +20,7 @@ setup_service_environment(__file__)
 
 from api_errors import COMMON_ERROR_RESPONSES, problem_response, register_error_handlers
 from database import engine, session_scope
-from queries import close_http_session, get_item_market_context
+from queries import close_http_session, get_item_market_context, get_latest_baseline_build
 from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
 from shared_utils import (
@@ -149,6 +149,25 @@ async def market_context(market_hash_name: str):
 async def search_trends(payload: SearchTrendsPayload):
     results = await query_macro_trends(payload.query)
     return {"query": payload.query, "results": results}
+
+
+@app.get(
+    "/api/v1/baselines/{venue}/latest",
+    dependencies=[Depends(require_backend_api_key)],
+    responses={
+        status.HTTP_204_NO_CONTENT: {"description": "The newest build is not newer than after_build_id"},
+        status.HTTP_404_NOT_FOUND: problem_response("The venue has no baseline build yet"),
+        **COMMON_ERROR_RESPONSES,
+    },
+)
+async def latest_baselines(venue: str, after_build_id: Annotated[int | None, Query(ge=0)] = None):
+    """The newest baseline build for a venue, for the listener to load into the edge Redis."""
+    build = await get_latest_baseline_build(venue, after_build_id)
+    if build is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No baseline build for venue '{venue}'")
+    if isinstance(build, int):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return build
 
 
 from prometheus_client import make_asgi_app

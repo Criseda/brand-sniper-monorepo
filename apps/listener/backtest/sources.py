@@ -1,6 +1,7 @@
 """
 Recorded replay input: raw feed events and REST snapshots, merged into one timestamp-ordered stream,
-plus the baseline snapshot the decision path reads. Pure: no database or network access (see database.py).
+plus the baselines the decision path reads: one fixed snapshot, or a schedule of dated builds that take
+effect as replay time passes them. Pure: no database or network access (see database.py).
 
 Fixture format (JSON Lines, one event per line):
     {"kind": "feed", "received_at_ms": <epoch ms>, "payload": <raw saleFeed event>}
@@ -14,7 +15,7 @@ Baseline file (JSON):
 import hashlib
 import heapq
 import json
-from collections.abc import AsyncIterator, Callable, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -106,6 +107,35 @@ class BaselineSnapshot:
     def write(self, path: Path) -> None:
         text = json.dumps(self.to_json(), sort_keys=True, indent=2, ensure_ascii=False) + "\n"
         path.write_text(text, encoding="utf-8", newline="\n")
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledBuild:
+    """A stored baseline build. In a replay it takes effect from its build time."""
+
+    build_id: int
+    built_at: str  # ISO 8601, naive UTC
+    effective_from_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class BaselineSchedule:
+    """
+    Dated baseline builds, oldest first. At any replayed moment the decision path sees the newest build
+    built at or before it, which is what the live listener had loaded (up to its refresh delay). Before
+    the first build, the first build is used; that is a look-ahead, and the log marks it.
+    """
+
+    builds: list[ScheduledBuild]
+    load: Callable[[int], Awaitable[BaselineSnapshot]]
+
+    def active_index(self, time_ms: int) -> int:
+        """Index of the build in effect at `time_ms` (the first build before any has been built)."""
+        active = 0
+        for index, build in enumerate(self.builds):
+            if build.effective_from_ms <= time_ms:
+                active = index
+        return active
 
 
 def sort_key(event: RecordedEvent, sequence: int) -> tuple[int, int, int]:

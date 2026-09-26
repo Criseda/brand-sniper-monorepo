@@ -3,12 +3,21 @@ from typing import Any, TypedDict
 
 import aiohttp
 from database import session_scope
-from shared_utils import detect_downtrend, get_logger, parse_version_from_name, resolve_recent_median, to_cents
-from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
+from shared_utils import (
+    applied_sticker_name,
+    detect_downtrend,
+    edge_baseline_payload,
+    get_logger,
+    parse_version_from_name,
+    resolve_recent_median,
+    to_cents,
+)
+from shared_utils.models import BaselineBuild, HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem, VenueBaseline
 from sqlalchemy import Integer, String, cast, func, select
 from sqlalchemy.engine import Result
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql.selectable import Select
+from sqlmodel import col
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 logger = get_logger("backend.queries")
@@ -451,3 +460,60 @@ async def search_macro_trends(query: str) -> list[dict]:
         )
 
     return results
+
+
+class BaselineBuildDocument(TypedDict):
+    """The newest baseline build for one venue, shaped the way the listener loads it into the edge Redis."""
+
+    build_id: int
+    venue: str
+    method: str
+    built_at: str  # ISO 8601, naive UTC
+    item_count: int
+    baselines: dict[str, dict[str, Any]]  # Versioned item name -> edge baseline document
+    sticker_prices: dict[str, int]  # Sticker name as it appears on a listing -> latest price in cents
+
+
+async def get_latest_baseline_build(venue: str, after_build_id: int | None = None) -> BaselineBuildDocument | int | None:
+    """
+    The newest baseline build for `venue`. Returns None when the venue has no build, and the newest
+    build ID alone when it is not newer than `after_build_id` (the caller already has it).
+    """
+    async with session_scope() as session:
+        build_stmt = (
+            select(BaselineBuild).where(col(BaselineBuild.venue) == venue).order_by(col(BaselineBuild.id).desc()).limit(1)
+        )
+        build = (await _exec_result(session, build_stmt)).scalars().first()
+        if build is None or build.id is None:
+            return None
+        if after_build_id is not None and build.id <= after_build_id:
+            return build.id
+
+        rows_stmt = (
+            select(VenueBaseline).where(col(VenueBaseline.build_id) == build.id).order_by(col(VenueBaseline.market_hash_name))
+        )
+        rows = (await _exec_result(session, rows_stmt)).scalars().all()
+
+    baselines: dict[str, dict[str, Any]] = {}
+    sticker_prices: dict[str, int] = {}
+    for row in rows:
+        baselines[row.market_hash_name] = edge_baseline_payload(
+            support_floor_cents=row.support_floor_cents,
+            latest_price_cents=row.latest_price_cents,
+            rolling_30d_avg_cents=row.rolling_30d_avg_cents,
+            volatility_cents=row.volatility_cents,
+            drift_percent=row.drift_percent,
+        )
+        sticker_name = applied_sticker_name(row.market_hash_name)
+        if sticker_name is not None:
+            sticker_prices[sticker_name] = row.latest_price_cents
+
+    return BaselineBuildDocument(
+        build_id=build.id,
+        venue=build.venue,
+        method=build.method,
+        built_at=build.built_at.isoformat(),
+        item_count=build.item_count,
+        baselines=baselines,
+        sticker_prices=sticker_prices,
+    )

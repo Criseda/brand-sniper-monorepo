@@ -1,5 +1,5 @@
 """
-Replay input from PostgreSQL: recorded feed events, REST snapshots, and the current macro baselines.
+Replay input from PostgreSQL: recorded feed events, REST snapshots, and the dated baseline builds.
 
 Rows are streamed with server-side cursors, so a range of days does not have to fit in memory.
 """
@@ -7,8 +7,17 @@ Rows are streamed with server-side cursors, so a range of days does not have to 
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 
-from backtest.sources import BaselineSnapshot, PollClock, RecordedEvent, RecordedFeedEvent, RecordedSnapshot, merge_ordered
-from shared_utils import edge_baseline_payload
+from backtest.sources import (
+    BaselineSchedule,
+    BaselineSnapshot,
+    PollClock,
+    RecordedEvent,
+    RecordedFeedEvent,
+    RecordedSnapshot,
+    ScheduledBuild,
+    merge_ordered,
+)
+from shared_utils import applied_sticker_name, edge_baseline_payload
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -43,13 +52,29 @@ _SNAPSHOTS_QUERY = text(
     """
 )
 
-_BASELINES_QUERY = text(
+# Builds that can be in effect during [start, end): the newest one built at or before the start, and
+# every one built after it and before the end.
+_BUILDS_QUERY = text(
     """
-    SELECT item.market_hash_name, item.item_type, baseline.support_floor_cents, baseline.latest_price_cents,
-           baseline.rolling_30d_avg_cents, baseline.volatility_cents, baseline.drift_percent, baseline.updated_at
-    FROM item_macro_baselines AS baseline
-    JOIN market_items AS item ON item.id = baseline.item_id
-    ORDER BY item.market_hash_name
+    SELECT id, built_at
+    FROM baseline_builds
+    WHERE venue = :venue
+      AND built_at < :end
+      AND built_at >= COALESCE(
+          (SELECT MAX(built_at) FROM baseline_builds WHERE venue = :venue AND built_at <= :start),
+          :start
+      )
+    ORDER BY built_at, id
+    """
+)
+
+_BUILD_ROWS_QUERY = text(
+    """
+    SELECT market_hash_name, support_floor_cents, latest_price_cents, rolling_30d_avg_cents, volatility_cents,
+           drift_percent
+    FROM venue_baselines
+    WHERE build_id = :build_id
+    ORDER BY market_hash_name
     """
 )
 
@@ -111,20 +136,17 @@ async def stream_recorded_events(
         yield event
 
 
-async def load_current_baselines(engine: AsyncEngine | None = None) -> BaselineSnapshot:
+async def load_build_snapshot(build_id: int, built_at: str, engine: AsyncEngine | None = None) -> BaselineSnapshot:
     """
-    The macro baselines as they are now, built exactly as `update_baselines.py` pushes them to the edge.
-
-    `item_macro_baselines` keeps one row per item and overwrites it, so a replay of a past range uses
-    today's baselines (a look-ahead). The snapshot records `as_of` so the decision log shows it.
+    One stored build, shaped exactly as the backend serves it and the listener loads it into the edge
+    Redis (shared_utils.edge_baseline_payload, sticker prices keyed by applied sticker name).
     """
     engine = engine or _default_engine()
     baselines: dict[str, dict] = {}
     sticker_prices: dict[str, int] = {}
-    newest: datetime | None = None
     async with engine.connect() as connection:
-        result = await connection.execute(_BASELINES_QUERY)
-        for name, item_type, support_floor, latest_price, rolling_30d_avg, volatility, drift, updated_at in result:
+        result = await connection.execute(_BUILD_ROWS_QUERY, {"build_id": build_id})
+        for name, support_floor, latest_price, rolling_30d_avg, volatility, drift in result:
             baselines[name] = edge_baseline_payload(
                 support_floor_cents=support_floor,
                 latest_price_cents=latest_price,
@@ -132,12 +154,26 @@ async def load_current_baselines(engine: AsyncEngine | None = None) -> BaselineS
                 volatility_cents=volatility,
                 drift_percent=drift,
             )
-            if item_type == "Sticker":
-                sticker_prices[name] = latest_price
-            if newest is None or updated_at > newest:
-                newest = updated_at
-    return BaselineSnapshot(
-        baselines=baselines,
-        sticker_prices=sticker_prices,
-        as_of=newest.isoformat() if newest is not None else None,
-    )
+            sticker_name = applied_sticker_name(name)
+            if sticker_name is not None:
+                sticker_prices[sticker_name] = latest_price
+    return BaselineSnapshot(baselines=baselines, sticker_prices=sticker_prices, as_of=built_at)
+
+
+async def load_baseline_schedule(
+    start: datetime, end: datetime, *, venue: str = "skinport", engine: AsyncEngine | None = None
+) -> BaselineSchedule:
+    """The builds in effect during [start, end) (naive UTC). Each build's rows load when replay reaches it."""
+    engine = engine or _default_engine()
+    async with engine.connect() as connection:
+        result = await connection.execute(_BUILDS_QUERY, {"venue": venue, "start": start, "end": end})
+        builds = [
+            ScheduledBuild(build_id=build_id, built_at=built_at.isoformat(), effective_from_ms=_epoch_ms(built_at))
+            for build_id, built_at in result
+        ]
+    built_at_by_id = {build.build_id: build.built_at for build in builds}
+
+    async def load(build_id: int) -> BaselineSnapshot:
+        return await load_build_snapshot(build_id, built_at_by_id[build_id], engine)
+
+    return BaselineSchedule(builds=builds, load=load)

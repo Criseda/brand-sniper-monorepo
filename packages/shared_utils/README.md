@@ -11,7 +11,8 @@ All PostgreSQL tables are defined here declaratively using **SQLModel** (which m
 - `MarketItem`: The master catalog of all tracked digital assets (name, type, rarity).
 - `LiveMarketTick`: High-velocity real-time price updates from live market endpoints.
 - `HistoricalPrice`: Data warehouse table for long-term aggregate historical timelines (e.g. Kaggle).
-- `ItemMacroBaseline`: Persisted results of the long-term macro trend pipeline (rolling averages, volatility, support floors).
+- `ItemMacroBaseline`: Persisted results of the long-term macro trend pipeline (rolling averages, volatility, support floors). Kaggle based, long term context only.
+- `BaselineBuild`, `VenueBaseline`: Dated baseline builds per venue and their per item rows, the live baselines the listener loads. How each field is built is in `baselines.py`.
 - `SimulatedTrade`: The audit log of every paper-trade executed by the Edge node's `PaperExecutor`.
 
 *Note: Alembic uses this exact file in the `/deployments` directory to auto-generate schema migrations.*

@@ -38,6 +38,31 @@ async def test_listener_health_runs_on_asyncio_http_server():
         assert await response.json() == {"status": "healthy"}
 
 
+@pytest.mark.asyncio
+async def test_listener_health_reports_missing_or_stale_baselines():
+    from datetime import timedelta
+
+    from baseline_loader import BaselineState, LoadedBuild
+    from shared_utils import utc_now_naive
+
+    state = BaselineState("skinport", max_age=timedelta(hours=48))
+    async with TestClient(TestServer(create_listener_health_app(state))) as client:
+        missing = await client.get("/health")
+        assert missing.status == 503
+        assert await missing.json() == {
+            "status": "degraded",
+            "reason": "no skinport baselines loaded, so the DRE rejects every anomaly",
+        }
+
+        state.loaded = LoadedBuild(build_id=7, built_at=utc_now_naive() - timedelta(hours=1), item_count=8000)
+        current = await client.get("/health")
+        assert current.status == 200
+        assert await current.json() == {"status": "healthy"}
+
+        state.loaded = LoadedBuild(build_id=7, built_at=utc_now_naive() - timedelta(days=3), item_count=8000)
+        assert (await client.get("/health")).status == 503
+
+
 class _EmptyStream:
     async def readline(self) -> bytes:
         return b""

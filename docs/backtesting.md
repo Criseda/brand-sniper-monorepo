@@ -68,11 +68,15 @@ Only ticks the live listener stored exist in the database. The listener does not
 repeats the previous price within 300 seconds, but live dropped those as duplicates anyway, so the
 decisions are unaffected.
 
-**Baselines** are the per-item macro baselines and sticker prices the DRE reads, built with the same
-function (`shared_utils.edge_baseline_payload`) that `update_baselines.py` uses to fill the edge Redis.
-`item_macro_baselines` keeps one row per item and overwrites it, so **a database replay of a past range
-uses today's baselines**, which is a look-ahead. The CLI logs a warning when the baselines are newer than
-the replay start, and the log header records `baseline_as_of` and a content hash.
+**Baselines** come from the dated builds in `baseline_builds` (see [data_sources.md](data_sources.md)),
+shaped exactly as the backend serves them to the listener. A database replay loads every build that was in
+effect during the range, and switches to each one when replay time reaches its build time, so decisions use
+the baselines that were current then. Before the first build exists there is nothing honest to use, so the
+first build is used and that switch is marked `look_ahead` in the log. The CLI also warns when that
+happens. `--baselines FILE` replaces the schedule with one fixed snapshot.
+
+Live, the listener picks up a new build within 15 minutes, while a replay switches at the build time
+exactly. That difference only matters for the few minutes after each daily build.
 
 **Fixture format** (JSON Lines, one event per line):
 
@@ -82,6 +86,8 @@ the replay start, and the log header records `baseline_as_of` and a content hash
 ```
 
 The baseline file is `{"baselines": {name: document}, "sticker_prices": {name: cents}, "as_of": ...}`.
+`export` writes the build that was in effect at `--start`. The committed fixture's baselines predate #259
+and come from the old Kaggle pipeline; they are only test input.
 `export` keeps only the sale fields the parser and labeler read (`SANITIZED_SALE_FIELDS` in
 `backtest/sources.py`). That drops personal data the live feed carries, such as the seller's `steamid`. The `feed_events` table
 itself keeps the payload verbatim, `steamid` included (see [skinport_feed.md](skinport_feed.md)), so never
@@ -100,13 +106,17 @@ and each item is routed as `tick_consumer` routes it:
 
 ## Decision log
 
-JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits:
+JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits. Format 2 (since #259):
 
 ```json
-{"type": "run", "format": 1, "strategy": "zscore_dre", "config": {...}, "source": "...", "baseline_sha256": "...", "baseline_as_of": "...", "log_from_ms": null}
+{"type": "run", "format": 2, "strategy": "zscore_dre", "config": {...}, "source": "...", "baseline_mode": "schedule", "baseline_builds": [3, 4], "log_from_ms": 1790290800000}
+{"type": "baseline", "build_id": 3, "built_at": "2026-10-01T06:12:40", "from_ms": 1790283600000, "look_ahead": false, "sha256": "..."}
 {"type": "decision", "seq": 1, "timestamp": 1790287133, "venue": "skinport", "listing_id": "60823173", "event_type": "listed", "market_hash_name": "...", "price_cents": 412, "approve": false, "reason": "below_threshold", "score": -0.84, "features": {"mean_cents": 430.5, "window_size": 20, "z_source": "local"}}
 {"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "decisions": 329, "logged": 160, "approved": 25}
 ```
+
+A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `baseline_sha256` and
+`baseline_as_of` in the header instead, and no `baseline` rows.
 
 Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`venue` = `source`,
 `listing_id`). REST snapshots are logged only when approved; live can trade on them too.
@@ -117,12 +127,10 @@ approval's `features.estimated_net_profit_cents` is the fee-aware estimate the l
 
 ## Reading the results
 
-**Check how old the baselines are.** The header's `baseline_as_of` is the newest `item_macro_baselines`
-update. The live edge reads the same baselines, so stale baselines skew both live decisions and the
-replay: support floors and 30-day averages from months ago approve or reject on old prices. Baselines are
-refreshed by `long_term_macro.py`, which also pushes them to the edge Redis (see
-[deployment.md](deployment.md#1-macro-baseline-calculation--edge-redis-sync)). Refresh them before a
-backtest that matters, and note `baseline_as_of` with any result.
+**Check which baselines were used.** The `baseline` rows show every build that took effect and when.
+A `look_ahead` switch means the range starts before the first build, so the decisions before that build
+used later information. Keep that part out of any result that matters. Ranges before 2026-09-26 have no
+build at all.
 
 **Most listings are never scored.** A `listed` tick at the same price as the item's previous tick within
 300 seconds is dropped by the live dedup rule before the Z-score runs. On the committed fixture that is 112

@@ -3,8 +3,9 @@ The replay loop. Routes stream items exactly as `main.tick_consumer` does (outco
 duplicates dropped, everything else pushed into the price window) and asks a strategy for a decision.
 
 The decision log is JSON Lines: a `run` header, one `decision` row per logged tick, and a `summary`.
-It holds no wall-clock times or durations, so identical input produces a byte-identical log; timings
-go to the optional `on_timing` hook instead.
+With a baseline schedule, a `baseline` row marks each point where a new build took effect. The log holds
+no wall-clock times or durations, so identical input produces a byte-identical log; timings go to the
+optional `on_timing` hook instead.
 """
 
 import asyncio
@@ -17,12 +18,12 @@ from pathlib import Path
 from typing import IO, Any
 
 import detection
-from backtest.sources import BaselineSnapshot, RecordedEvent, expand_event
+from backtest.sources import BaselineSchedule, BaselineSnapshot, RecordedEvent, expand_event
 from backtest.store import InMemoryEdgeStore
 from backtest.strategy import REASON_DUPLICATE, Decision, DecisionContext, Strategy
 from models import FeedEvent, MarketTick
 
-LOG_FORMAT_VERSION = 1
+LOG_FORMAT_VERSION = 2
 # Floats in the log are rounded so the bytes do not depend on the last bits of float arithmetic.
 FLOAT_DIGITS = 6
 
@@ -99,10 +100,41 @@ async def _as_async(events: Iterable[RecordedEvent] | AsyncIterable[RecordedEven
             yield event
 
 
+class _BaselineSwitcher:
+    """Loads each scheduled build into the store once replay time reaches it, and logs the switch."""
+
+    def __init__(self, schedule: BaselineSchedule, store: InMemoryEdgeStore, log: IO[str]) -> None:
+        self._schedule = schedule
+        self._store = store
+        self._log = log
+        self._active: int | None = None
+
+    async def advance(self, time_ms: int) -> None:
+        index = self._schedule.active_index(time_ms)
+        if index == self._active:
+            return
+        self._active = index
+        build = self._schedule.builds[index]
+        snapshot = await self._schedule.load(build.build_id)
+        self._store.load_baselines(snapshot.baselines, snapshot.sticker_prices)
+        self._log.write(
+            _log_line(
+                {
+                    "type": "baseline",
+                    "build_id": build.build_id,
+                    "built_at": build.built_at,
+                    "from_ms": time_ms,
+                    "look_ahead": build.effective_from_ms > time_ms,
+                    "sha256": snapshot.sha256(),
+                }
+            )
+        )
+
+
 async def run_replay(
     events: Iterable[RecordedEvent] | AsyncIterable[RecordedEvent],
     strategy: Strategy,
-    baselines: BaselineSnapshot,
+    baselines: BaselineSnapshot | BaselineSchedule,
     log: IO[str],
     *,
     source_label: str,
@@ -114,11 +146,29 @@ async def run_replay(
     """
     Replay `events` (already in replay order) through `strategy` and write the decision log to `log`.
 
-    Events before `log_from_ms` only warm up the price windows and dedup cache; they are not logged.
-    `speed` replays at recorded pace (1.0 = real time, 10.0 = ten times faster); None runs flat out.
+    `baselines` is one fixed snapshot, or a schedule of dated builds that take effect as replay time
+    reaches them. Events before `log_from_ms` only warm up the price windows and dedup cache; they are
+    not logged. `speed` replays at recorded pace (1.0 = real time, 10.0 = ten times faster); None runs
+    flat out.
     """
     store = InMemoryEdgeStore()
-    store.load_baselines(baselines.baselines, baselines.sticker_prices)
+    switcher: _BaselineSwitcher | None = None
+    header_baselines: dict[str, Any]
+    if isinstance(baselines, BaselineSchedule):
+        if not baselines.builds:
+            raise ValueError("The baseline schedule has no builds")
+        switcher = _BaselineSwitcher(baselines, store, log)
+        header_baselines = {
+            "baseline_mode": "schedule",
+            "baseline_builds": [build.build_id for build in baselines.builds],
+        }
+    else:
+        store.load_baselines(baselines.baselines, baselines.sticker_prices)
+        header_baselines = {
+            "baseline_mode": "fixed",
+            "baseline_sha256": baselines.sha256(),
+            "baseline_as_of": baselines.as_of,
+        }
     context = DecisionContext(store=store)
     dedup_cache: detection.DedupCache = OrderedDict()
     summary = ReplaySummary()
@@ -132,8 +182,7 @@ async def run_replay(
                 "strategy": strategy.name,
                 "config": strategy.config(),
                 "source": source_label,
-                "baseline_sha256": baselines.sha256(),
-                "baseline_as_of": baselines.as_of,
+                **header_baselines,
                 "log_from_ms": log_from_ms,
             }
         )
@@ -143,6 +192,8 @@ async def run_replay(
         if speed is not None and previous_time_ms is not None and event.time_ms > previous_time_ms:
             await sleep((event.time_ms - previous_time_ms) / 1000 / speed)
         previous_time_ms = event.time_ms
+        if switcher is not None:
+            await switcher.advance(event.time_ms)
         summary.events += 1
         is_logged_period = log_from_ms is None or event.time_ms >= log_from_ms
 

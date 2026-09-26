@@ -257,6 +257,34 @@ services:
       retries: 3
 
   # ---------------------------------------------------------------------------
+  # APPLICATION LAYER: Baseline Builder (Skinport sales history -> dated baseline builds)
+  # Checks on start and every hour, and builds when the newest build is over 20 hours old,
+  # so a stack that was off for a while catches up as soon as it starts.
+  # ---------------------------------------------------------------------------
+  baseline-builder:
+    build:
+      context: ../../
+      dockerfile: apps/analytics/Dockerfile
+    container_name: sniper_baseline_builder
+    command: ["uv", "run", "python", "build_baselines.py", "--loop"]
+    env_file:
+      - ../../.env
+      - ../../apps/analytics/.env
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+    networks:
+      - application
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Macro Analytics & Adversarial CFO Pipeline  (one-shot batch job)
   # Run manually: docker compose run analytics
   # ---------------------------------------------------------------------------

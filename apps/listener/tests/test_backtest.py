@@ -12,10 +12,12 @@ from backtest import database
 from backtest.harness import run_replay
 from backtest.sources import (
     POLL_GAP_MS,
+    BaselineSchedule,
     BaselineSnapshot,
     PollClock,
     RecordedFeedEvent,
     RecordedSnapshot,
+    ScheduledBuild,
     expand_event,
     load_fixture,
     merge_ordered,
@@ -424,7 +426,7 @@ class FakeConnection:
     async def stream(self, query, params):
         return FakeResult(self._rows_by_query[query.text])
 
-    async def execute(self, query):
+    async def execute(self, query, params=None):
         return FakeResult(self._rows_by_query[query.text])
 
 
@@ -462,17 +464,17 @@ async def test_database_stream_merges_feed_events_and_poll_stamped_snapshots():
 
 
 @pytest.mark.asyncio
-async def test_current_baselines_match_the_edge_sync():
+async def test_build_snapshot_matches_what_the_listener_loads():
     engine = FakeEngine(
         {
-            database._BASELINES_QUERY.text: [
-                (ITEM, "Weapon", 900, 1000, 1100, 110, 1.5, _at(0)),
-                (VALUABLE_STICKER, "Sticker", 400_000, 500_000, 480_000, 0, 0.0, _at(60)),
+            database._BUILD_ROWS_QUERY.text: [
+                (ITEM, 900, 1000, 1100, 110, 1.5),
+                (f"Sticker | {VALUABLE_STICKER}", 400_000, 500_000, 480_000, 4800, 0.0),
             ]
         }
     )
 
-    snapshot = await database.load_current_baselines(engine)
+    snapshot = await database.load_build_snapshot(7, _at(60).isoformat(), engine)
 
     assert snapshot.baselines[ITEM] == {
         "support_floor_cents": 900,
@@ -482,8 +484,92 @@ async def test_current_baselines_match_the_edge_sync():
         "drift_percent": 1.5,
         "coefficient_of_variation": 0.1,
     }
+    # Keyed the way a listing names the applied sticker, as the backend serves it.
     assert snapshot.sticker_prices == {VALUABLE_STICKER: 500_000}
     assert snapshot.as_of == _at(60).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_baseline_schedule_lists_builds_and_loads_them_on_demand():
+    engine = FakeEngine(
+        {
+            database._BUILDS_QUERY.text: [(3, _at(0)), (4, _at(3600))],
+            database._BUILD_ROWS_QUERY.text: [(ITEM, 900, 1000, 1100, 110, 1.5)],
+        }
+    )
+
+    schedule = await database.load_baseline_schedule(_at(0), _at(7200), engine=engine)
+
+    assert [(build.build_id, build.built_at) for build in schedule.builds] == [
+        (3, _at(0).isoformat()),
+        (4, _at(3600).isoformat()),
+    ]
+    assert schedule.builds[1].effective_from_ms == database._epoch_ms(_at(3600))
+    assert (await schedule.load(4)).as_of == _at(3600).isoformat()
+
+
+def _schedule(*builds: tuple[int, int, BaselineSnapshot]) -> BaselineSchedule:
+    """Builds as (build_id, offset_s from T0, snapshot)."""
+    snapshots = {build_id: snapshot for build_id, _, snapshot in builds}
+
+    async def load(build_id: int) -> BaselineSnapshot:
+        return snapshots[build_id]
+
+    return BaselineSchedule(
+        builds=[
+            ScheduledBuild(build_id=build_id, built_at=f"t+{offset_s}", effective_from_ms=T0_MS + offset_s * 1000)
+            for build_id, offset_s, _ in builds
+        ],
+        load=load,
+    )
+
+
+def test_schedule_picks_the_newest_build_at_or_before_a_time():
+    empty = BaselineSnapshot()
+    schedule = _schedule((1, 100, empty), (2, 200, empty))
+
+    assert schedule.active_index(T0_MS) == 0  # before any build: the first one (look-ahead)
+    assert schedule.active_index(T0_MS + 200_000) == 1
+    assert schedule.active_index(T0_MS + 150_000) == 0
+
+
+@pytest.mark.asyncio
+async def test_replay_switches_builds_as_time_passes_and_logs_each_switch():
+    cheap_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 500, "latest_price_cents": 1000}})
+    high_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 900, "latest_price_cents": 1000}})
+    # Build 2 appears between two similar dips, so only the second one is under its higher floor.
+    schedule = _schedule((1, 0, cheap_floor), (2, 1650, high_floor))
+    history = [_snapshot(offset, 1000 + offset % 7) for offset in range(0, 1600, 60)]
+    events = [*history, _feed(1601, "listed", _sale(1, 850)), _feed(1701, "listed", _sale(2, 845))]
+
+    log_text, _ = await _replay(events, schedule)
+    records = [json.loads(line) for line in log_text.splitlines()]
+
+    header = records[0]
+    assert (header["format"], header["baseline_mode"], header["baseline_builds"]) == (2, "schedule", [1, 2])
+    switches = [record for record in records if record["type"] == "baseline"]
+    assert [(record["build_id"], record["look_ahead"]) for record in switches] == [(1, False), (2, False)]
+    assert switches[1]["from_ms"] == T0_MS + 1701 * 1000
+    assert switches[1]["sha256"] == high_floor.sha256()
+    decisions = {record["listing_id"]: record for record in records if record["type"] == "decision"}
+    assert decisions["1"]["approve"] is False
+    assert decisions["2"]["approve"] is True
+
+
+@pytest.mark.asyncio
+async def test_replay_before_the_first_build_marks_the_look_ahead():
+    schedule = _schedule((1, 5000, BaselineSnapshot()))
+
+    log_text, _ = await _replay([_snapshot(0, 1000)], schedule)
+
+    switch = next(json.loads(line) for line in log_text.splitlines() if json.loads(line)["type"] == "baseline")
+    assert switch["look_ahead"] is True
+
+
+@pytest.mark.asyncio
+async def test_replay_rejects_an_empty_schedule():
+    with pytest.raises(ValueError, match="no builds"):
+        await _replay([], _schedule())
 
 
 def test_epoch_ms_is_exact_for_naive_utc():

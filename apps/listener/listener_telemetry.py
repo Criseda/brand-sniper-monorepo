@@ -108,3 +108,15 @@ tick_queue_size = Gauge(
     "listener_tick_queue_size",
     "Current number of ticks waiting for listener processing",
 )
+
+baselines_loaded = Gauge(
+    "listener_baselines_loaded",
+    "Number of item baselines in the edge Redis for the venue (0 means the DRE rejects every anomaly)",
+    labelnames=["venue"],
+)
+
+baseline_build_age_seconds = Gauge(
+    "listener_baseline_build_age_seconds",
+    "Age of the baseline build loaded in the edge Redis, from its build time",
+    labelnames=["venue"],
+)
