@@ -1,11 +1,13 @@
 from datetime import UTC, datetime
-from typing import Any
+from enum import StrEnum
+from typing import Any, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-# Feed event types that represent a live offer and therefore feed the Z-score price window.
-# Anything else (e.g. `sold`) is recorded for labeling but never drives a trading decision.
+# Feed event types the listener knows. Only `listed` is a live offer that feeds the Z-score price window;
+# `sold` (and any other type) is recorded for labeling but never drives a trading decision.
 LISTED_EVENT_TYPE = "listed"
+SOLD_EVENT_TYPE = "sold"
 
 # Limits shared with the backend bulk-ingest schema (apps/backend/schemas.py). The backend rejects a
 # whole batch with a non-retryable 422 when one record breaks them, so the edge enforces them first.
@@ -13,6 +15,28 @@ MAX_EVENT_TYPE_LENGTH = 32
 MAX_VENUE_LENGTH = 32
 MAX_LISTING_ID_LENGTH = 64
 MAX_LISTING_URL_LENGTH = 512
+# Venue names are the first part of edge Redis keys (`price_window:<venue>:<item>`), so they hold no colon.
+VENUE_PATTERN = r"^[a-z0-9_-]+$"
+
+
+class TickKind(StrEnum):
+    """
+    What a tick is. The code that builds a tick states it; it is never inferred from `event_type`, so a new
+    feed parser that forgets the event type fails validation instead of passing as a REST snapshot (#270).
+    """
+
+    REST_SNAPSHOT = "rest_snapshot"  # An item's lowest ask from a REST poll; names no listing
+    LISTED = "listed"  # A listing on the live feed: a price someone can buy now
+    SOLD = "sold"  # A sale on the live feed: a market outcome, recorded only
+    OTHER_FEED_EVENT = "other_feed_event"  # A feed event type the listener does not know: recorded only
+
+    @classmethod
+    def of_feed_event(cls, event_type: str) -> "TickKind":
+        if event_type == LISTED_EVENT_TYPE:
+            return cls.LISTED
+        if event_type == SOLD_EVENT_TYPE:
+            return cls.SOLD
+        return cls.OTHER_FEED_EVENT
 
 
 class MarketTick(BaseModel):
@@ -22,8 +46,10 @@ class MarketTick(BaseModel):
         ...,
         min_length=1,
         max_length=MAX_VENUE_LENGTH,
+        pattern=VENUE_PATTERN,
         description="Marketplace the tick came from (e.g. skinport); selects its fee schedule",
     )
+    kind: TickKind = Field(..., description="REST snapshot, or the kind of feed event the tick came from")
     market_hash_name: str = Field(..., description="The exact decoded identifier string of the asset")
     price_usd: float = Field(..., gt=0, description="Raw listing price in USD float format")
     timestamp: int = Field(
@@ -49,6 +75,14 @@ class MarketTick(BaseModel):
         description="Link that opens the listing (for Skinport, the item page)",
     )
 
+    @model_validator(mode="after")
+    def _kind_matches_event_type(self) -> Self:
+        """A REST snapshot carries no event type, and a feed tick carries the type its kind names."""
+        expected = TickKind.REST_SNAPSHOT if self.event_type is None else TickKind.of_feed_event(self.event_type)
+        if self.kind != expected:
+            raise ValueError(f"A {self.kind} tick cannot carry event_type {self.event_type!r}")
+        return self
+
     @property
     def price_cents(self) -> int:
         """Vector optimization converter to completely eliminate floating-point math rounding errors."""
@@ -57,12 +91,12 @@ class MarketTick(BaseModel):
     @property
     def is_rest_snapshot(self) -> bool:
         """True for an aggregate REST snapshot: an item's lowest ask, naming no listing."""
-        return self.event_type is None
+        return self.kind == TickKind.REST_SNAPSHOT
 
     @property
     def feeds_price_window(self) -> bool:
         """True for REST snapshots and live listings: the only ticks the Z-score/DRE path may see."""
-        return self.event_type is None or self.event_type == LISTED_EVENT_TYPE
+        return self.kind in (TickKind.REST_SNAPSHOT, TickKind.LISTED)
 
     def to_batch_record(self) -> dict[str, Any]:
         """Serialize for the durable bulk-ingest batch; listing fields are omitted when absent.
@@ -85,7 +119,7 @@ class MarketTick(BaseModel):
             if value is not None:
                 record[field_name] = value
         # Listing-level ticks always carry their sticker list ([] = none), so NULL keeps meaning "unknown".
-        if self.stickers or self.event_type is not None:
+        if self.stickers or not self.is_rest_snapshot:
             record["stickers"] = self.stickers
         return record
 

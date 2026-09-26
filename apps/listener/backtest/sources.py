@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from models import FeedEvent, MarketTick
+from models import FeedEvent, MarketTick, TickKind
 from scrapers.skinport import VENUE, parse_sale_feed_message
 
 # Sale fields the listener parser and the outcome labeler read. Fixtures keep only these, which drops
@@ -178,6 +178,7 @@ def expand_event(event: RecordedEvent) -> list[StreamItem]:
     return [
         MarketTick(
             venue=VENUE,
+            kind=TickKind.REST_SNAPSHOT,
             market_hash_name=event.market_hash_name,
             price_usd=event.price_cents / 100.0,
             timestamp=event.observed_at_ms // 1000,

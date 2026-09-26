@@ -68,9 +68,10 @@ class ZScoreDreStrategy:
     def config(self) -> dict[str, Any]:
         return {
             "sliding_window_size": detection.SLIDING_WINDOW_SIZE,
+            "state_key": detection.STATE_KEY,
             "dedup_rule": DEDUP_RULE,
             "dedup_window_seconds": detection.DEDUP_WINDOW_SECONDS,
-            "dedup_cache_max_size": detection.DEDUP_CACHE_MAX_SIZE,
+            "dedup_cache_max_size_per_venue": detection.DEDUP_CACHE_MAX_SIZE,
             "z_score_threshold": zscore.Z_SCORE_THRESHOLD,
             "z_score_sticker_threshold": zscore.Z_SCORE_STICKER_THRESHOLD,
             "min_savings_cents": zscore.MIN_SAVINGS_CENTS,
