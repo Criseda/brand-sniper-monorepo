@@ -423,7 +423,7 @@ class WaxpeerScraper(BaseScraper):
         handing on the raw payloads still pending.
         """
         if not self._api_key:
-            logger.warning("[WAXPEER] %s is not set; connecting to the public feed without it.", API_KEY_ENV)
+            logger.warning("[WAXPEER] WAXPEER_API_KEY is not set; connecting to the public feed without it.")
         cache = self._open_cache()
         session = self._open_session()
         raw_batch = RawEventBatch()
