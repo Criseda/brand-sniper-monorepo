@@ -152,7 +152,7 @@ services:
       retries: 5
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.91.1-alpine
+    image: oliver006/redis_exporter:v1.92.0-alpine
     container_name: sniper_redis_exporter
     env_file:
       - ../../.env
