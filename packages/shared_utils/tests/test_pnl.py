@@ -5,7 +5,9 @@ from shared_utils.pnl import (
     FeeTier,
     UnknownVenueError,
     VenueFees,
+    buyer_fee_cents,
     fees_for,
+    holding_seconds,
     is_profitable_margin,
     net_resale_margin_cents,
     seller_fee_cents,
@@ -50,12 +52,16 @@ def test_net_resale_margin(buy_price_cents, resale_price_cents, expected_margin_
     ids=["zero_meets_zero", "negative", "below_min", "at_min"],
 )
 def test_is_profitable_margin_uses_min_margin(margin_cents, min_margin_cents, expected):
-    fees = VenueFees(venue="test", fee_tiers=(FeeTier(0, 500),), hold_seconds=0, min_margin_cents=min_margin_cents)
+    fees = VenueFees(
+        venue="test", fee_tiers=(FeeTier(0, 500),), buyer_fee_bps=0, hold_seconds=0, min_margin_cents=min_margin_cents
+    )
     assert is_profitable_margin(margin_cents, fees) is expected
 
 
 def test_custom_fee_schedule_is_used():
-    fees = VenueFees(venue="test", fee_tiers=(FeeTier(0, 1000), FeeTier(500, 200)), hold_seconds=0, min_margin_cents=0)
+    fees = VenueFees(
+        venue="test", fee_tiers=(FeeTier(0, 1000), FeeTier(500, 200)), buyer_fee_bps=0, hold_seconds=0, min_margin_cents=0
+    )
     assert net_resale_margin_cents(100, 400, fees) == 400 - 40 - 100
     assert net_resale_margin_cents(100, 500, fees) == 500 - 10 - 100
 
@@ -73,11 +79,28 @@ def test_skinport_hold_is_seven_days():
         {"fee_tiers": (FeeTier(0, -1),)},
         {"hold_seconds": -1},
         {"min_margin_cents": -1},
+        {"buyer_fee_bps": -1},
+        {"buyer_fee_bps": 10_000},
     ],
-    ids=["no_tiers", "no_zero_tier", "fee_100_percent", "negative_fee", "negative_hold", "negative_min_margin"],
+    ids=[
+        "no_tiers",
+        "no_zero_tier",
+        "fee_100_percent",
+        "negative_fee",
+        "negative_hold",
+        "negative_min_margin",
+        "negative_buyer_fee",
+        "buyer_fee_100_percent",
+    ],
 )
 def test_invalid_venue_fees_are_rejected(kwargs):
-    params = {"venue": "test", "fee_tiers": (FeeTier(0, 800),), "hold_seconds": 0, "min_margin_cents": 0} | kwargs
+    params = {
+        "venue": "test",
+        "fee_tiers": (FeeTier(0, 800),),
+        "buyer_fee_bps": 0,
+        "hold_seconds": 0,
+        "min_margin_cents": 0,
+    } | kwargs
     with pytest.raises(ValueError):
         VenueFees(**params)
 
@@ -87,6 +110,8 @@ def test_negative_prices_are_rejected():
         seller_fee_cents(-1, SKINPORT_FEES)
     with pytest.raises(ValueError):
         net_resale_margin_cents(-1, 100, SKINPORT_FEES)
+    with pytest.raises(ValueError):
+        buyer_fee_cents(-1, SKINPORT_FEES)
 
 
 @pytest.mark.parametrize("venue", ["skinport", "Skinport", "SKINPORT"])
@@ -101,3 +126,75 @@ def test_fees_for_unknown_venue_fails_instead_of_falling_back():
 
 def test_registry_is_keyed_by_each_schedules_own_venue():
     assert all(name == fees.venue for name, fees in VENUE_FEES.items())
+
+
+# Two made-up venues for the cross-venue cases: the numbers are chosen for easy arithmetic, they are
+# not any real venue's schedule.
+BUY_VENUE = VenueFees(venue="buy_venue", fee_tiers=(FeeTier(0, 200),), buyer_fee_bps=250, hold_seconds=0, min_margin_cents=0)
+SELL_VENUE = VenueFees(
+    venue="sell_venue",
+    fee_tiers=(FeeTier(0, 500), FeeTier(50_000, 300)),
+    buyer_fee_bps=0,
+    hold_seconds=3 * 86_400,
+    min_margin_cents=100,
+)
+
+
+def test_skinport_has_no_buyer_fee():
+    assert SKINPORT_FEES.buyer_fee_bps == 0
+    assert buyer_fee_cents(123_456, SKINPORT_FEES) == 0
+
+
+@pytest.mark.parametrize(
+    ("buy_price_cents", "resale_price_cents"),
+    [(1000, 1500), (1000, 1087), (1000, 800), (90_000, 100_000), (0, 0), (1, 1)],
+)
+def test_same_venue_is_the_default_and_matches_passing_both_sides(buy_price_cents, resale_price_cents):
+    same_venue = net_resale_margin_cents(buy_price_cents, resale_price_cents, SKINPORT_FEES)
+    explicit = net_resale_margin_cents(buy_price_cents, resale_price_cents, buy_fees=SKINPORT_FEES, sell_fees=SKINPORT_FEES)
+    assert same_venue == explicit
+    # Without a buyer fee the margin is the seller-fee-only formula from before cross-venue support.
+    assert same_venue == resale_price_cents - seller_fee_cents(resale_price_cents, SKINPORT_FEES) - buy_price_cents
+
+
+def test_cross_venue_charges_buyer_fee_on_buy_venue_and_seller_fee_on_sell_venue():
+    # Buy for 1000 + 25 buyer fee (2.5%), resell for 1500 - 75 seller fee (5%).
+    assert net_resale_margin_cents(1000, 1500, buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 1500 - 75 - 1000 - 25
+
+
+def test_cross_venue_direction_matters():
+    # Reversed: no buyer fee on SELL_VENUE, 2% seller fee on BUY_VENUE.
+    assert net_resale_margin_cents(1000, 1500, buy_fees=SELL_VENUE, sell_fees=BUY_VENUE) == 1500 - 30 - 1000
+
+
+def test_cross_venue_uses_the_sell_venue_fee_tiers():
+    # 50000 reaches SELL_VENUE's 3% tier; BUY_VENUE has a single 2% tier and must not be used.
+    assert net_resale_margin_cents(40_000, 50_000, buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 50_000 - 1_500 - 40_000 - 1_000
+    assert net_resale_margin_cents(40_000, 49_999, buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 49_999 - 2_500 - 40_000 - 1_000
+
+
+@pytest.mark.parametrize(
+    ("buy_price_cents", "expected_fee_cents"),
+    [(1000, 25), (1001, 26), (1, 1), (0, 0)],
+    ids=["exact", "round_up", "one_cent", "zero"],
+)
+def test_buyer_fee_rounds_up_so_the_margin_is_never_overstated(buy_price_cents, expected_fee_cents):
+    assert buyer_fee_cents(buy_price_cents, BUY_VENUE) == expected_fee_cents
+
+
+def test_both_fees_round_against_the_trade():
+    # 1001 * 2.5% = 25.025 -> 26 buyer fee; 1001 * 5% = 50.05 -> 51 seller fee.
+    assert net_resale_margin_cents(1001, 1001, buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 1001 - 51 - 1001 - 26
+
+
+def test_cross_venue_hold_is_the_sell_venue_hold():
+    assert holding_seconds(buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 3 * 86_400
+    assert holding_seconds(buy_fees=SELL_VENUE, sell_fees=BUY_VENUE) == 0
+    assert holding_seconds(SKINPORT_FEES, SKINPORT_FEES) == SKINPORT_FEES.hold_seconds
+
+
+def test_cross_venue_minimum_margin_is_the_sell_venue_one():
+    margin = net_resale_margin_cents(1000, 1200, buy_fees=BUY_VENUE, sell_fees=SELL_VENUE)
+    assert margin == 1200 - 60 - 1000 - 25
+    assert is_profitable_margin(margin, SELL_VENUE) is True
+    assert is_profitable_margin(99, SELL_VENUE) is False

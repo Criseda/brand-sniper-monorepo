@@ -53,6 +53,8 @@ class LabelConfig:
     """Parameters of one label version. Changing any of them requires a new `version`."""
 
     version: str = LABEL_VERSION
+    # Fees of the source venue, used for both sides: a label resells the listing on the venue it
+    # was listed on, against that venue's comparable sales.
     fees: VenueFees = field(default_factory=lambda: fees_for(SOURCE))
     # Resale window is [listed_at + fees.hold_seconds, listed_at + horizon_seconds].
     horizon_seconds: int = 14 * 86_400
@@ -133,7 +135,9 @@ def label_listing(listing: FeedSale, sold: SoldIndex, config: LabelConfig) -> di
         # Lower median: the price a resale at the typical market level would have fetched. The
         # single best sale in the window would reward outliers that a seller could not count on.
         resale_price_cents = statistics.median_low(comparable)
-        net_margin_cents = net_resale_margin_cents(listing.price_cents, resale_price_cents, config.fees)
+        net_margin_cents = net_resale_margin_cents(
+            listing.price_cents, resale_price_cents, buy_fees=config.fees, sell_fees=config.fees
+        )
         is_profitable = is_profitable_margin(net_margin_cents, config.fees)
 
     # A sale of this listing counts only inside [listed_at, label_available_at]. No sold event means

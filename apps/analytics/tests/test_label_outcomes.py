@@ -171,7 +171,11 @@ def test_min_margin_from_config_decides_profitability():
     from shared_utils.pnl import VenueFees
 
     strict_fees = VenueFees(
-        venue="skinport", fee_tiers=SKINPORT_FEES.fee_tiers, hold_seconds=SKINPORT_FEES.hold_seconds, min_margin_cents=500
+        venue="skinport",
+        fee_tiers=SKINPORT_FEES.fee_tiers,
+        buyer_fee_bps=SKINPORT_FEES.buyer_fee_bps,
+        hold_seconds=SKINPORT_FEES.hold_seconds,
+        min_margin_cents=500,
     )
     row = only_label([listed("L1", 1000)], comparable_sales([1500, 1500, 1500]), LabelConfig(fees=strict_fees))
 

@@ -742,6 +742,7 @@ async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
         "fees": {
             "venue": config.fees.venue,
             "fee_tiers": [{"min_price_cents": tier.min_price_cents, "fee_bps": tier.fee_bps} for tier in config.fees.fee_tiers],
+            "buyer_fee_bps": config.fees.buyer_fee_bps,
             "hold_seconds": config.fees.hold_seconds,
             "min_margin_cents": config.fees.min_margin_cents,
         },
@@ -869,7 +870,8 @@ def render_markdown(card: dict[str, Any]) -> str:
         f"savings floor {dollars(data['strategy_config'].get('min_savings_cents', 0))}.",
         f"- Labels: `{labels['version']}`, horizon {labels['horizon_seconds'] // 86_400} days, "
         f"at least {labels['min_comparable_sales']} comparable sales, labels read as of {card['as_of']} UTC.",
-        f"- Fees: {fees['venue']} seller fee {fee_text}, trade hold {fees['hold_seconds'] // 86_400} days, "
+        f"- Fees: {fees['venue']} seller fee {fee_text}, buyer fee {fees['buyer_fee_bps'] / 100:g}%, "
+        f"trade hold {fees['hold_seconds'] // 86_400} days, "
         f"minimum margin {dollars(fees['min_margin_cents'])}.",
         f"- Decision log sha256 `{data['decision_log_sha256']}`, commit `{card['git_commit']}`.",
         f"- Minimum sample: {rules['min_sample']} labeled trades (or profitable listings, for recall). "
@@ -989,6 +991,7 @@ def mlflow_params(card: dict[str, Any]) -> dict[str, str]:
         "git_commit": str(card["git_commit"]),
         "min_sample": str(card["rules"]["min_sample"]),
         "fee_tiers": json.dumps(card["fees"]["fee_tiers"], sort_keys=True),
+        "buyer_fee_bps": str(card["fees"]["buyer_fee_bps"]),
         "hold_seconds": str(card["fees"]["hold_seconds"]),
     }
     params.update({f"config.{key}": str(value) for key, value in sorted(data["strategy_config"].items())})

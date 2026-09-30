@@ -94,13 +94,13 @@ compiled runtime is worth it will be decided in a dedicated session that reviews
 - Listing-level ticks carry listing ID, event type, float, pattern, stickers, and a listing link/slug.
 - All models live in `packages/shared_utils/src/shared_utils/models.py`.
 
-### 4.2 Fee-aware P&L (#233)
+### 4.2 Fee-aware P&L (#233, #260)
 One pure function in `shared_utils` (`shared_utils/pnl.py`: `net_resale_margin_cents`), used by the listener
 estimate, the labeler, backtests, and alerts:
 
-$$\mathrm{net\_margin} = P_{\text{resale}} - \mathrm{fee}(P_{\text{resale}}) - P_{\text{buy}}$$
+$$\mathrm{net\_margin} = P_{\text{resale}} - \mathrm{sellerfee}_{\text{sell}}(P_{\text{resale}}) - P_{\text{buy}} - \mathrm{buyerfee}_{\text{buy}}(P_{\text{buy}})$$
 
-Money is integer cents and fees are integer basis points; the fee is rounded up to the next cent, so the
+Money is integer cents and fees are integer basis points. Both fees are rounded up to the next cent, so the
 margin is never overstated. Parameters live in a `VenueFees` value (`SKINPORT_FEES` for Skinport):
 
 | Parameter | Skinport value | Source |
@@ -111,6 +111,14 @@ margin is never overstated. Parameters live in a `VenueFees` value (`SKINPORT_FE
 | Minimum margin | 0 cents | Project default; raise it to demand a cushion |
 
 Private sales (2% fee) are not modeled. Re-check these values when Skinport changes its fee page.
+
+The function takes the fees of the venue I buy on (`buy_fees`) and of the venue I resell on (`sell_fees`).
+The buy venue charges its buyer fee on the buy price and the sell venue charges its seller fee, with its own
+tiers, on the resale price. Leaving out `sell_fees` means reselling where I bought, which gives the same result
+as passing the same schedule twice. `buyer_fee_bps` has no default, so every venue states its buy side cost.
+For a cross venue trade I hold the item for the sell venue's trade hold (`holding_seconds`), and the trade
+counts as profitable when it reaches the sell venue's minimum margin. Deposit, withdrawal and cash out fees
+are not modeled.
 
 Fees are never implied. Every caller passes a `VenueFees` explicitly, looked up with `fees_for(venue)`,
 which raises `UnknownVenueError` for a venue without a registered schedule. `MarketTick` carries its
