@@ -15,12 +15,12 @@ class ScraperFactory:
     _instances: dict[str, BaseScraper] = {}
 
     @classmethod
-    def get_scraper(cls, platform_id: str) -> BaseScraper:
+    def get_scraper(cls, venue: str) -> BaseScraper:
         """Returns a cached scraper instance, creating it on first access."""
-        key = platform_id.lower()
+        key = venue.lower()
         if key not in cls._instances:
             scraper_class = cls._registry.get(key)
             if not scraper_class:
-                raise ValueError(f"Unsupported trading platform driver requested: '{platform_id}'")
+                raise ValueError(f"Unsupported venue requested: '{venue}'")
             cls._instances[key] = scraper_class()
         return cls._instances[key]

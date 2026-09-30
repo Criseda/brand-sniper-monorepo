@@ -38,15 +38,16 @@ services:
   # Set COMPUTE_NODE_IP in your .env or environment to point to the central
   # backend server (e.g. your Windows machine IP or cloud hostname).
   # ---------------------------------------------------------------------------
-  listener:
+  listener-skinport:
     build:
       context: ../../
       dockerfile: apps/listener/Dockerfile
-    container_name: sniper_listener
+    container_name: sniper_listener_skinport
     env_file:
       - ../../.env
       - ../../apps/listener/.env
     environment:
+      - LISTENER_VENUE=skinport
       - EDGE_REDIS_URL=redis://redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -82,7 +83,7 @@ services:
       - ../../.env
       - ../../apps/listener/.env
     environment:
-      - LISTENER_PLATFORM=waxpeer
+      - LISTENER_VENUE=waxpeer
       - EDGE_REDIS_URL=redis://redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379

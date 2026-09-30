@@ -10,7 +10,7 @@ than the database can hold. Waxpeer also publishes no sales, so its listings are
 venue (Skinport, see `shared_utils.resale_venue_for`). The scraper therefore records and scores only listings
 that could be bought for less than the item's resale price: a new listing below it, or a price cut that lands
 below it. It then follows those listings, so their later cuts and their removal are recorded too. Everything
-else is counted in `listener_venue_feed_events_total` and dropped. Measurements and reasoning:
+else is counted in `listener_feed_events_filtered_total` and dropped. Measurements and reasoning:
 docs/waxpeer_feed.md.
 """
 
@@ -24,11 +24,11 @@ from typing import Any
 
 import aiohttp
 from listener_telemetry import (
-    venue_feed_connected,
-    venue_feed_events_total,
-    venue_feed_reconnects_total,
-    venue_feed_reference_prices,
-    venue_feed_tracked_listings,
+    feed_connected,
+    feed_events_filtered_total,
+    feed_reconnects_total,
+    feed_resale_prices,
+    feed_tracked_listings,
 )
 from models import LISTED_EVENT_TYPE, FeedEvent, MarketTick, TickKind
 from pydantic import ValidationError
@@ -63,7 +63,7 @@ UPDATE_EVENT = "update"
 REMOVED_EVENT = "removed"
 REMOVED_EVENT_TYPE = "removed"
 
-# What the recording filter did with a feed event (the `outcome` label of listener_venue_feed_events_total).
+# What the recording filter did with a feed event (the `outcome` label of listener_feed_events_filtered_total).
 OUTCOME_RECORDED = "recorded"
 OUTCOME_NO_BASELINE = "no_baseline"  # The resale venue has no baseline for the item
 OUTCOME_ABOVE_RESALE_PRICE = "above_resale_price"  # Not below the item's resale price
@@ -393,7 +393,7 @@ class WaxpeerScraper(BaseScraper):
     polls_rest = False
 
     def __init__(self) -> None:
-        super().__init__(platform_name=VENUE)
+        super().__init__(venue=VENUE)
         self._api_key = os.getenv(API_KEY_ENV) or None
         self.resale_prices = ResalePrices(resale_venue_for(VENUE))
         self.recording_filter = RecordingFilter(self.resale_prices)
@@ -440,8 +440,8 @@ class WaxpeerScraper(BaseScraper):
                 yield pending
             raise FeedConnectionLost(f"Waxpeer feed connection ended: {reason}")
         finally:
-            venue_feed_connected.labels(venue=VENUE).set(0)
-            venue_feed_reconnects_total.labels(venue=VENUE).inc()
+            feed_connected.set(0)
+            feed_reconnects_total.inc()
             await session.close()
             await cache.aclose()
 
@@ -459,7 +459,7 @@ class WaxpeerScraper(BaseScraper):
                 len(self.resale_prices.latest_price_cents),
                 len(self.resale_prices.sticker_prices_cents),
             )
-        venue_feed_reference_prices.labels(venue=VENUE).set(len(self.resale_prices.latest_price_cents))
+        feed_resale_prices.set(len(self.resale_prices.latest_price_cents))
 
     async def _read_feed(
         self, ws: aiohttp.ClientWebSocketResponse, cache: Redis, raw_batch: RawEventBatch
@@ -480,7 +480,7 @@ class WaxpeerScraper(BaseScraper):
             received_at_ms = int(now * 1000)
             due = raw_batch.take_if_due(received_at_ms)
             if due is not None:
-                venue_feed_tracked_listings.labels(venue=VENUE).set(self.recording_filter.tracked_count)
+                feed_tracked_listings.set(self.recording_filter.tracked_count)
                 yield due
 
             frame: str = message.data
@@ -493,7 +493,7 @@ class WaxpeerScraper(BaseScraper):
                     continue
                 name, data = event
                 if name == SUBSCRIBED_EVENT:
-                    venue_feed_connected.labels(venue=VENUE).set(1)
+                    feed_connected.set(1)
                     logger.info("[WAXPEER] Subscribed to the %s listing feed.", GAME_CHANNEL)
                     continue
                 if now >= next_refresh_at:
@@ -531,7 +531,7 @@ class WaxpeerScraper(BaseScraper):
         try:
             return socketio_event(frame)
         except ValueError:
-            venue_feed_events_total.labels(venue=VENUE, event="unparsed", outcome=OUTCOME_MALFORMED).inc()
+            feed_events_filtered_total.labels(event="unparsed", outcome=OUTCOME_MALFORMED).inc()
             return None
 
     def _filter_event(self, name: str, data: Any, received_at_ms: int) -> MarketTick | None:
@@ -541,5 +541,5 @@ class WaxpeerScraper(BaseScraper):
             outcome, tick = self.recording_filter.removal(data, received_at_ms)
         else:
             return None
-        venue_feed_events_total.labels(venue=VENUE, event=name, outcome=outcome).inc()
+        feed_events_filtered_total.labels(event=name, outcome=outcome).inc()
         return tick

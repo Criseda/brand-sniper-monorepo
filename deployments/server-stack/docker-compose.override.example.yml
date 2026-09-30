@@ -56,7 +56,7 @@ services:
     #   - ../../apps/backend:/app/apps/backend
     #   - ../../packages/shared_utils:/app/packages/shared_utils
 
-  listener:
+  listener-skinport:
     # Uncomment for live-editing listener code from the host.
     # If the Node sidecar needs local dependencies, run npm install in
     # apps/listener/scrapers/skinport_websocket before mounting this directory.

@@ -42,25 +42,25 @@ class BaseScraper(ABC):
     # False for a venue whose live feed is complete on its own, so the listener starts no REST poller.
     polls_rest: bool = True
 
-    def __init__(self, platform_name: str):
-        self.platform_name = platform_name
+    def __init__(self, venue: str):
+        self.venue = venue
         self.sidecar_script_path = None  # Override in subclass if a Node.js sidecar is needed
 
     @abstractmethod
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
         """
-        Continuous non-blocking generator that polls the target platform API
+        Continuous non-blocking generator that polls the venue's REST API
         and yields verified, normalized MarketTick objects.
         """
         pass  # pragma: no cover - abstract body, subclasses override
 
     async def close(self) -> None:
-        """Releases any platform-specific resources (e.g. HTTP sessions). Override in subclass."""
+        """Releases any venue-specific resources (e.g. HTTP sessions). Override in subclass."""
         return
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick | FeedEvent, None]:
         """
-        Optional non-blocking generator that subscribes to the platform's
+        Optional non-blocking generator that subscribes to the venue's
         WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects,
         plus raw FeedEvent records where the venue feed is captured verbatim.
         """

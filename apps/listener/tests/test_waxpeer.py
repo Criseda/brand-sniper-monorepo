@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
-from listener_telemetry import venue_feed_connected, venue_feed_events_total
+from listener_telemetry import feed_connected, feed_events_filtered_total
 from models import FeedEvent, MarketTick, TickKind
 from scrapers.factory import ScraperFactory
 from scrapers.waxpeer import (
@@ -458,7 +458,7 @@ async def _drain(scraper: WaxpeerScraper) -> list[MarketTick | FeedEvent]:
 @pytest.mark.asyncio
 async def test_feed_session_speaks_engine_io_and_records_what_qualifies(monkeypatch):
     scraper, ws, session = _scraper(monkeypatch, [_Message(frame) for frame in FRAMES])
-    recorded_before = venue_feed_events_total.labels(venue="waxpeer", event="new", outcome=OUTCOME_RECORDED)._value.get()
+    recorded_before = feed_events_filtered_total.labels(event="new", outcome=OUTCOME_RECORDED)._value.get()
 
     items = await _drain(scraper)
 
@@ -478,10 +478,10 @@ async def test_feed_session_speaks_engine_io_and_records_what_qualifies(monkeypa
     assert len(batches) == 1
     assert [event["event"] for event in batches[0].payload["events"]] == ["new", "new"]
     assert batches[0].payload["events"][0]["data"]["item_id"] == "53862560251"
-    recorded_after = venue_feed_events_total.labels(venue="waxpeer", event="new", outcome=OUTCOME_RECORDED)._value.get()
+    recorded_after = feed_events_filtered_total.labels(event="new", outcome=OUTCOME_RECORDED)._value.get()
     assert recorded_after - recorded_before == 2
     assert session.closed
-    assert venue_feed_connected.labels(venue="waxpeer")._value.get() == 0
+    assert feed_connected._value.get() == 0
 
 
 @pytest.mark.asyncio
@@ -537,11 +537,11 @@ async def test_silent_server_times_out(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_binary_and_unparsable_frames_are_skipped(monkeypatch):
-    malformed_before = venue_feed_events_total.labels(venue="waxpeer", event="unparsed", outcome=OUTCOME_MALFORMED)._value.get()
+    malformed_before = feed_events_filtered_total.labels(event="unparsed", outcome=OUTCOME_MALFORMED)._value.get()
     scraper, _, _ = _scraper(monkeypatch, [_Message(b"\x00", aiohttp.WSMsgType.BINARY), _Message("42[broken")])
 
     assert await _drain(scraper) == []
-    malformed_after = venue_feed_events_total.labels(venue="waxpeer", event="unparsed", outcome=OUTCOME_MALFORMED)._value.get()
+    malformed_after = feed_events_filtered_total.labels(event="unparsed", outcome=OUTCOME_MALFORMED)._value.get()
     assert malformed_after - malformed_before == 1
 
 

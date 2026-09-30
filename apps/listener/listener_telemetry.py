@@ -138,34 +138,31 @@ baseline_build_age_seconds = Gauge(
     labelnames=["venue"],
 )
 
-# Direct venue feeds (Waxpeer). `event` is the venue's event name (new, update, removed) and `outcome` is
-# what the recording filter did with it (see scrapers/waxpeer.py: FEED_OUTCOMES).
-venue_feed_events_total = Counter(
-    "listener_venue_feed_events_total",
-    "Venue feed events received, by what the recording filter did with them",
-    labelnames=["venue", "event", "outcome"],
+# Venue feeds the listener reads directly (Waxpeer). Each listener process reads one venue; Prometheus tells
+# the processes apart by the `listener` target label. `event` is the venue's event name (new, update, removed)
+# and `outcome` is what the recording filter did with it (see scrapers/waxpeer.py: FEED_OUTCOMES).
+feed_events_filtered_total = Counter(
+    "listener_feed_events_filtered_total",
+    "Live feed events received, by what the recording filter did with them",
+    labelnames=["event", "outcome"],
 )
 
-venue_feed_connected = Gauge(
-    "listener_venue_feed_connected",
-    "1 while the venue's live feed is connected and subscribed, else 0",
-    labelnames=["venue"],
+feed_connected = Gauge(
+    "listener_feed_connected",
+    "1 while the live feed is connected and subscribed, else 0",
 )
 
-venue_feed_reconnects_total = Counter(
-    "listener_venue_feed_reconnects_total",
-    "Times the venue's live feed connection ended and had to be opened again",
-    labelnames=["venue"],
+feed_reconnects_total = Counter(
+    "listener_feed_reconnects_total",
+    "Times the live feed connection ended and had to be opened again",
 )
 
-venue_feed_reference_prices = Gauge(
-    "listener_venue_feed_reference_prices",
+feed_resale_prices = Gauge(
+    "listener_feed_resale_prices",
     "Resale venue prices the recording filter holds in memory (0 means it records nothing)",
-    labelnames=["venue"],
 )
 
-venue_feed_tracked_listings = Gauge(
-    "listener_venue_feed_tracked_listings",
+feed_tracked_listings = Gauge(
+    "listener_feed_tracked_listings",
     "Recorded listings whose later price cuts and removal the filter follows",
-    labelnames=["venue"],
 )

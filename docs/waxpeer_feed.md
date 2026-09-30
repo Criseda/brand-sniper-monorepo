@@ -135,7 +135,7 @@ The last row is the start of a connection, when every listing already on the mar
 time through an update. It fades as the scraper sees each listing once. In steady state that is about 11.5
 recorded listings a second plus the removals of followed ones.
 
-Every event is counted in `listener_venue_feed_events_total{venue, event, outcome}`, where the outcome is
+Every event is counted in `listener_feed_events_filtered_total{event, outcome}`, where the outcome is
 `recorded`, `no_baseline`, `above_resale_price`, `not_a_price_cut`, `untracked_removal` or `malformed`.
 
 ## Recording pipeline
@@ -150,13 +150,13 @@ Every event is counted in `listener_venue_feed_events_total{venue, event, outcom
   `{"venue": "waxpeer", "channel": "csgo", "events": [{"event", "received_at_ms", "data"}, ...]}`, where
   `data` is the payload exactly as received. Grouping them lets PostgreSQL compress the row. A listener that
   stops loses at most the last 10 seconds of raw payloads; the ticks are not affected.
-- The Waxpeer listener runs as its own container (`listener-waxpeer`, `LISTENER_PLATFORM=waxpeer`). It keeps
+- The Waxpeer listener runs as its own container (`listener-waxpeer`, `LISTENER_VENUE=waxpeer`). It keeps
   its batch streams under `listener:ingest:waxpeer:*` in the shared Redis, so neither listener recovers the
   other's pending batches. Replay its dead letters with `python replay_batches.py --venue waxpeer`.
-- `listener_venue_feed_connected{venue="waxpeer"}` is 1 while the feed is subscribed.
-  `listener_venue_feed_reference_prices` is the number of Skinport prices the filter holds; at 0 it records
-  nothing. `listener_venue_feed_tracked_listings` counts the listings it follows (at most
-  `WAXPEER_TRACKED_LISTINGS_MAX`, 200,000).
+- `listener_feed_connected` is 1 while the feed is subscribed. `listener_feed_resale_prices` is the number of
+  Skinport prices the filter holds; at 0 it records nothing. `listener_feed_tracked_listings` counts the
+  listings it follows (at most `WAXPEER_TRACKED_LISTINGS_MAX`, 200,000). Prometheus labels every series from
+  this process `listener="waxpeer"`.
 
 ## Fees
 
@@ -187,7 +187,7 @@ The feed has no documented limit. The REST endpoints I looked at:
 | Raw payloads to `feed_events` | one row per 500 events or 10 seconds, roughly 50 to 120 MB a day after compression |
 
 These are estimates from 3 minutes of traffic. Re-measure after a day of uptime with
-`increase(listener_venue_feed_events_total{venue="waxpeer",outcome="recorded"}[1d])` and
+`sum(increase(listener_feed_events_filtered_total{listener="waxpeer",outcome="recorded"}[1d]))` and
 `SELECT pg_size_pretty(pg_total_relation_size('feed_events'))`.
 
 ## Retention

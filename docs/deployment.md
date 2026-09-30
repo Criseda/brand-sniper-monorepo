@@ -26,8 +26,8 @@ docker compose up -d
 | Grafana | `grafana/grafana:13.1.1` | `sniper_grafana` | always |
 | Redis exporter | `oliver006/redis_exporter:v1.88.0-alpine` | `sniper_redis_exporter` | always |
 | Backend | custom build | `sniper_backend` | always |
-| Listener | custom build | `sniper_listener` | always |
-| Waxpeer listener | custom build (listener image, `LISTENER_PLATFORM=waxpeer`) | `sniper_listener_waxpeer` | always |
+| Skinport listener | custom build (listener image, `LISTENER_VENUE=skinport`) | `sniper_listener_skinport` | always |
+| Waxpeer listener | custom build (listener image, `LISTENER_VENUE=waxpeer`) | `sniper_listener_waxpeer` | always |
 | Baseline builder | custom build (analytics image) | `sniper_baseline_builder` | always |
 | Analytics | custom build | `sniper_analytics` | manual (`docker compose run --rm analytics`) |
 
@@ -41,8 +41,20 @@ docker compose up -d
 | Service | Container Name | Notes |
 |---------|----------------|-------|
 | Redis 8 | `sniper_edge_redis` | Loopback port 6380, `--save "" --appendonly no` (volatile RAM only) |
-| Listener | `sniper_listener` | Connects to a remote backend via `COMPUTE_NODE_IP` |
-| Waxpeer listener | `sniper_listener_waxpeer` | Same image with `LISTENER_PLATFORM=waxpeer`; shares the edge Redis ([`waxpeer_feed.md`](waxpeer_feed.md)) |
+| Skinport listener | `sniper_listener_skinport` | Connects to a remote backend via `COMPUTE_NODE_IP` |
+| Waxpeer listener | `sniper_listener_waxpeer` | Same image with `LISTENER_VENUE=waxpeer`; shares the edge Redis ([`waxpeer_feed.md`](waxpeer_feed.md)) |
+
+One listener process runs per venue, and each compose service is named `listener-<venue>`. Prometheus labels
+their series `listener="skinport"` or `listener="waxpeer"`, and the dashboard and alerts split by that label.
+
+Before #261 the only listener was the service `listener` (container `sniper_listener`). Compose does not
+rename a container, so stop the old one yourself before the first `up`, with its full drain time, then let
+Compose start the renamed services:
+
+```bash
+docker stop -t 120 sniper_listener && docker rm sniper_listener
+docker compose up -d --build --remove-orphans
+```
 
 The edge stack is designed for constrained environments (Raspberry Pi, low-power VPS).
 It contains only the hot-path services; the server node handles the cold path and infra.

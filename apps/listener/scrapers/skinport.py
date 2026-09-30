@@ -188,7 +188,7 @@ class SkinportScraper(BaseScraper):
     """
 
     def __init__(self):
-        super().__init__(platform_name=VENUE)
+        super().__init__(venue=VENUE)
         self.api_url = "https://api.skinport.com/v1/items"
 
         # Sidecar script path for the Node.js WebSocket relay

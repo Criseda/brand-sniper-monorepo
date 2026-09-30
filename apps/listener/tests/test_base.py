@@ -9,7 +9,7 @@ class ConcreteScraper(BaseScraper):
 
 @pytest.mark.asyncio
 async def test_default_websocket_stream_yields_nothing():
-    scraper = ConcreteScraper("test_platform")
+    scraper = ConcreteScraper("test_venue")
 
     messages = [msg async for msg in scraper.listen_websocket_stream()]
 
@@ -18,6 +18,6 @@ async def test_default_websocket_stream_yields_nothing():
 
 @pytest.mark.asyncio
 async def test_default_close_is_noop():
-    scraper = ConcreteScraper("test_platform")
+    scraper = ConcreteScraper("test_venue")
 
     await scraper.close()
