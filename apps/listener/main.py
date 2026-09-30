@@ -152,7 +152,7 @@ async def schedule_stored_batch(
 
 
 async def flush_batch_buffer(
-    source: str,
+    venue: str,
     buffer: list[dict],
     *,
     batch_id: str,
@@ -163,7 +163,7 @@ async def flush_batch_buffer(
     """Persist a stable batch, transfer buffer ownership, then schedule delivery."""
     snapshot = buffer.copy()
     feed_event_snapshot = feed_event_buffer.copy() if feed_event_buffer else []
-    batch = await store.add(source, snapshot, batch_id=batch_id, feed_events=feed_event_snapshot)
+    batch = await store.add(venue, snapshot, batch_id=batch_id, feed_events=feed_event_snapshot)
     buffer.clear()
     if feed_event_buffer is not None:
         feed_event_buffer.clear()

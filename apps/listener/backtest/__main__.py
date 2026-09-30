@@ -80,14 +80,14 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--out", type=Path, required=True, help="Decision log to write (JSON Lines)")
     run.add_argument("--speed", type=float, help="Replay at recorded pace times this factor (omit to run flat out)")
     run.add_argument("--timings", type=Path, help="Also write per-decision latency (JSON Lines, not deterministic)")
-    run.add_argument("--source", default="skinport", help="Venue to replay from the database")
+    run.add_argument("--venue", default="skinport", help="Venue to replay from the database")
 
     export = commands.add_parser("export", help="Write a sanitized fixture and baseline file from the database.")
     export.add_argument("--start", type=parse_utc, required=True)
     export.add_argument("--end", type=parse_utc, required=True)
     export.add_argument("--out-dir", type=Path, required=True)
     export.add_argument("--max-items", type=int, default=50, help="Keep the first N items seen in listed events")
-    export.add_argument("--source", default="skinport")
+    export.add_argument("--venue", default="skinport")
     return parser
 
 
@@ -126,17 +126,17 @@ async def run_command(args: argparse.Namespace) -> int:
         from backtest.database import load_baseline_schedule, stream_recorded_events
 
         replay_start = args.start - timedelta(hours=args.warmup_hours)
-        events = stream_recorded_events(replay_start, args.end, source=args.source)
-        source_label = f"database:{args.source}:{args.start.isoformat()}/{args.end.isoformat()}"
+        events = stream_recorded_events(replay_start, args.end, venue=args.venue)
+        source_label = f"database:{args.venue}:{args.start.isoformat()}/{args.end.isoformat()}"
         log_from_ms = _epoch_ms(args.start)
         if args.baselines:
             baselines = BaselineSnapshot.load(args.baselines)
             first_baseline_time = baselines.as_of
         else:
-            baselines = await load_baseline_schedule(replay_start, args.end, venue=args.source)
+            baselines = await load_baseline_schedule(replay_start, args.end, venue=args.venue)
             if not baselines.builds:
                 raise SystemExit(
-                    f"No {args.source} baseline builds before {args.end.isoformat()}; run apps/analytics/build_baselines.py"
+                    f"No {args.venue} baseline builds before {args.end.isoformat()}; run apps/analytics/build_baselines.py"
                 )
             first_baseline_time = baselines.builds[0].built_at
         if first_baseline_time is not None and parse_utc(first_baseline_time) > replay_start:
@@ -228,14 +228,14 @@ def build_fixture(
 async def export_command(args: argparse.Namespace) -> int:
     from backtest.database import load_baseline_schedule, stream_recorded_events
 
-    schedule = await load_baseline_schedule(args.start, args.end, venue=args.source)
+    schedule = await load_baseline_schedule(args.start, args.end, venue=args.venue)
     if not schedule.builds:
         raise SystemExit(
-            f"No {args.source} baseline builds before {args.end.isoformat()}; run apps/analytics/build_baselines.py"
+            f"No {args.venue} baseline builds before {args.end.isoformat()}; run apps/analytics/build_baselines.py"
         )
     # A fixture holds one snapshot: the build in effect at the start of the range.
     first_build = schedule.builds[schedule.active_index(_epoch_ms(args.start))]
-    events = [event async for event in stream_recorded_events(args.start, args.end, source=args.source)]
+    events = [event async for event in stream_recorded_events(args.start, args.end, venue=args.venue)]
     items = select_items(events, args.max_items)
     kept, fixture_baselines = build_fixture(events, await schedule.load(first_build.build_id), items)
 

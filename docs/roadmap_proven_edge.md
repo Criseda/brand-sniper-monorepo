@@ -137,7 +137,7 @@ resell against. Never aggregate estimates across bases.
 
 ### 4.3 Outcome labels (#233)
 Triple-barrier style labels for each `listed` sale, written by `apps/analytics/label_outcomes.py`
-(Prefect flow `listing-outcome-labeler`) to `listing_outcomes`, keyed by (`source`, `listing_id`, `label_version`).
+(Prefect flow `listing-outcome-labeler`) to `listing_outcomes`, keyed by (`venue`, `listing_id`, `label_version`).
 
 **Label version `v1`** (for a listing first seen at time $t$ at price $p$):
 

@@ -1,7 +1,7 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import AliasChoices, BaseModel, Field, StringConstraints
 
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -61,6 +61,13 @@ class BulkIngestionPayload(BaseModel):
         default=None,
         description="Stable idempotency key for retries of the same batch",
     )
-    source: NonEmptyText = Field(..., description="The platform origin, e.g., 'skinport' or 'steam'")
+    # Sent as `source` before the venue columns were renamed (#261); still accepted, so a listener that is not
+    # upgraded yet, or a batch it stored in Redis, is not rejected.
+    venue: NonEmptyText = Field(
+        ...,
+        max_length=32,
+        validation_alias=AliasChoices("venue", "source"),
+        description="Venue the batch came from, e.g. 'skinport' or 'waxpeer'",
+    )
     ticks: list[BulkPriceTick] = Field(..., description="Array of collected market snapshot blocks")
     feed_events: list[BulkFeedEvent] = Field(default_factory=list, description="Raw feed events captured at the edge")

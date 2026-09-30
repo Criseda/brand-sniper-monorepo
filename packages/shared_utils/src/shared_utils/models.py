@@ -38,7 +38,7 @@ class LiveMarketTick(SQLModel, table=True):
     item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE", index=True)
 
     price_cents: int = Field(nullable=False)
-    marketplace_source: str = Field(default="steam")  # e.g., steam, csfloat, skinport
+    venue: str = Field(nullable=False)  # Venue the tick came from, e.g. skinport, waxpeer
 
     float_value: float | None = Field(default=None, index=True)  # Exact item wear (0.0 - 1.0)
     paint_index: int | None = Field(default=None)  # Finish (skin) identifier, Skinport `finish`
@@ -71,7 +71,7 @@ class IngestionBatch(SQLModel, table=True):
     __tablename__: str = "ingestion_batches"
 
     batch_id: str = Field(primary_key=True, max_length=36)
-    source: str = Field(nullable=False)
+    venue: str = Field(nullable=False)
     record_count: int = Field(nullable=False)
     payload_sha256: str = Field(nullable=False, max_length=64)
     received_at: datetime = Field(
@@ -89,7 +89,7 @@ class FeedEvent(SQLModel, table=True):
     __tablename__: str = "feed_events"
 
     id: int | None = Field(default=None, sa_column=Column(BigIdentity, primary_key=True, autoincrement=True))
-    source: str = Field(nullable=False, max_length=32)  # e.g. skinport
+    venue: str = Field(nullable=False, max_length=32)  # e.g. skinport
     event_type: str = Field(nullable=False, max_length=32)
     received_at: datetime = Field(nullable=False, index=True)  # Edge receive time (UTC)
     payload: dict[str, Any] = Field(sa_column=Column(JsonDocument, nullable=False))
@@ -219,7 +219,7 @@ class ListingOutcome(SQLModel, table=True):
 
     __tablename__: str = "listing_outcomes"
 
-    source: str = Field(primary_key=True, max_length=32)  # e.g. skinport
+    venue: str = Field(primary_key=True, max_length=32)  # e.g. skinport
     listing_id: str = Field(primary_key=True, max_length=64)  # Skinport productId
     label_version: str = Field(primary_key=True, max_length=32)
 

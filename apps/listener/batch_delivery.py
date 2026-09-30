@@ -35,13 +35,13 @@ SessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
 class StoredBatch:
     record_id: str
     batch_id: str
-    source: str
+    venue: str
     ticks: list[dict[str, Any]]
     feed_events: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def payload(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {"batch_id": self.batch_id, "source": self.source, "ticks": self.ticks}
+        payload: dict[str, Any] = {"batch_id": self.batch_id, "venue": self.venue, "ticks": self.ticks}
         # Omitted when empty so batches without raw events keep their pre-#232 wire format.
         if self.feed_events:
             payload["feed_events"] = self.feed_events
@@ -59,15 +59,16 @@ class StoredBatch:
             raise ValueError("Stored batch payload must be a JSON object")
 
         batch_id = data["batch_id"]
-        source = data["source"]
+        # Batches stored before the venue columns were renamed (#261) carry the venue as `source`.
+        venue = data["venue"] if "venue" in data else data["source"]
         ticks = data["ticks"]
         # Batches persisted before #232 carry no feed_events key.
         feed_events = data.get("feed_events", [])
         if not isinstance(batch_id, str) or not batch_id:
             raise ValueError("Stored batch_id must be a non-empty string")
         UUID(batch_id)
-        if not isinstance(source, str) or not source.strip():
-            raise ValueError("Stored batch source must be a non-empty string")
+        if not isinstance(venue, str) or not venue.strip():
+            raise ValueError("Stored batch venue must be a non-empty string")
         if not isinstance(ticks, list) or not all(isinstance(tick, dict) for tick in ticks):
             raise ValueError("Stored batch ticks must be a list of objects")
         if not isinstance(feed_events, list) or not all(isinstance(event, dict) for event in feed_events):
@@ -76,7 +77,7 @@ class StoredBatch:
         return cls(
             record_id=decoded_id,
             batch_id=batch_id,
-            source=source,
+            venue=venue,
             ticks=ticks,
             feed_events=feed_events,
         )
@@ -190,7 +191,7 @@ class RedisBatchStore:
 
     async def add(
         self,
-        source: str,
+        venue: str,
         ticks: list[dict[str, Any]],
         *,
         batch_id: str | None = None,
@@ -199,7 +200,7 @@ class RedisBatchStore:
         batch = StoredBatch(
             record_id="",
             batch_id=batch_id or str(uuid4()),
-            source=source,
+            venue=venue,
             ticks=ticks,
             feed_events=feed_events or [],
         )
@@ -209,7 +210,7 @@ class RedisBatchStore:
         return StoredBatch(
             record_id=decoded_record_id,
             batch_id=batch.batch_id,
-            source=source,
+            venue=venue,
             ticks=ticks,
             feed_events=batch.feed_events,
         )

@@ -38,7 +38,7 @@ from shared_utils import setup_script_environment
 
 REPO_ROOT = setup_script_environment(__file__)
 
-from label_outcomes import LABEL_VERSION, SOURCE, FeedSale, LabelConfig, SoldIndex, fetch_feed_sales, label_listing
+from label_outcomes import LABEL_VERSION, VENUE, FeedSale, LabelConfig, SoldIndex, fetch_feed_sales, label_listing
 from mlflow.client import MlflowClient
 from shared_utils import get_logger, parse_item_meta, parse_version_from_name, utc_fromtimestamp_naive, utc_now_naive
 from shared_utils.db_connection import async_engine
@@ -327,13 +327,13 @@ def _chunks(values: Sequence[Any]) -> Iterable[Sequence[Any]]:
 _LABELS_QUERY = """
 SELECT listing_id, is_profitable, resale_net_margin_cents, label_available_at
 FROM listing_outcomes
-WHERE source = :source AND label_version = :label_version AND listing_id = ANY(:listing_ids)
+WHERE venue = :venue AND label_version = :label_version AND listing_id = ANY(:listing_ids)
 """
 
 _PROFITABLE_LISTINGS_QUERY = """
 SELECT listing_id, listed_at
 FROM listing_outcomes
-WHERE source = :source AND label_version = :label_version AND is_profitable IS TRUE
+WHERE venue = :venue AND label_version = :label_version AND is_profitable IS TRUE
   AND listed_at >= :start AND listed_at < :end AND label_available_at <= :as_of
 """
 
@@ -348,7 +348,7 @@ async def fetch_listing_labels(listing_ids: Sequence[str], label_version: str) -
     labels: dict[str, dict[str, Any]] = {}
     async with async_engine.connect() as conn:
         for chunk in _chunks(sorted(set(listing_ids))):
-            params = {"source": SOURCE, "label_version": label_version, "listing_ids": list(chunk)}
+            params = {"venue": VENUE, "label_version": label_version, "listing_ids": list(chunk)}
             result = await conn.execute(text(_LABELS_QUERY), params)
             for listing_id, is_profitable, margin, available_at in result.fetchall():
                 labels[listing_id] = {
@@ -361,7 +361,7 @@ async def fetch_listing_labels(listing_ids: Sequence[str], label_version: str) -
 
 async def fetch_profitable_listings(start: datetime, end: datetime, label_version: str, as_of: datetime) -> dict[str, datetime]:
     """Every listing first seen in [start, end) whose label says it was profitable: the recall denominator."""
-    params = {"source": SOURCE, "label_version": label_version, "start": start, "end": end, "as_of": as_of}
+    params = {"venue": VENUE, "label_version": label_version, "start": start, "end": end, "as_of": as_of}
     async with async_engine.connect() as conn:
         result = await conn.execute(text(_PROFITABLE_LISTINGS_QUERY), params)
         return {listing_id: listed_at for listing_id, listed_at in result.fetchall()}
@@ -632,8 +632,8 @@ class ScorecardInputs:
 
 async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
     log = inputs.log
-    if log.venue != SOURCE:
-        raise ValueError(f"Labels exist for {SOURCE} only; this log replays {log.venue}")
+    if log.venue != VENUE:
+        raise ValueError(f"Labels exist for {VENUE} only; this log replays {log.venue}")
     config = LabelConfig()
     start = scorable_start(log)
     end = log.end

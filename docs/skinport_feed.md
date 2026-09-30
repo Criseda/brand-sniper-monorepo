@@ -195,7 +195,7 @@ Trimmed, sanitized `sold` sale:
    Idempotency is still per `batch_id`, and the payload digest covers the feed events. Batches written before
    #232 keep their digest and wire format, so replaying them is still acknowledged as a duplicate.
 5. **PostgreSQL**:
-   - `feed_events` is append-only: `source`, `event_type`, `received_at`, `payload` JSONB.
+   - `feed_events` is append-only: `venue`, `event_type`, `received_at`, `payload` JSONB.
    - `live_market_ticks` gains `listing_id`, `event_type`, `pattern`, `stickers` (JSONB), and `listing_url`,
      and now fills the existing `float_value` and `paint_index`. On REST snapshot rows all listing columns
      stay NULL. On listing rows, `stickers` is `[]` when the item has none.
