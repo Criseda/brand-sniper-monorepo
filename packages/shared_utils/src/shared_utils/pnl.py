@@ -1,13 +1,18 @@
 """
-Fee-aware P&L for a buy-then-resell trade.
+Fee-aware P&L for a buy-then-resell trade, on one venue or across two.
 
 This is the single profit definition for the listener's estimate, the outcome labeler, backtests,
 and alerts. Do not compute a profit number anywhere else.
 
-    net_margin = resale_price - seller_fee(resale_price) - buy_price
+    net_margin = resale_price - seller_fee_on_sell_venue(resale_price)
+                 - buy_price - buyer_fee_on_buy_venue(buy_price)
+
+The buy venue charges the buyer fee and the sell venue charges the seller fee, so a trade bought and
+resold on the same venue passes the same `VenueFees` for both sides. A cross-venue trade is held for
+the sell venue's trade hold (`holding_seconds`), and its minimum margin is the sell venue's.
 
 Money is integer cents throughout and fees are integer basis points, so results are exact and
-reproducible. The seller fee is rounded up to the next cent, which never overstates the margin.
+reproducible. Both fees are rounded up to the next cent, which never overstates the margin.
 
 Fees are always passed explicitly: look them up per venue with `fees_for(venue)`, which fails on a
 venue that has no schedule instead of silently pricing it with another venue's fees. To add a venue,
@@ -46,10 +51,14 @@ class FeeTier:
 
 @dataclass(frozen=True)
 class VenueFees:
-    """Venue economics for resale: seller fee tiers, trade hold, and the smallest margin worth taking."""
+    """Venue economics: buyer fee, seller fee tiers, trade hold, and the smallest margin worth taking.
+
+    `buyer_fee_bps` has no default, so every venue states its buy-side cost instead of implying zero.
+    """
 
     venue: str
     fee_tiers: tuple[FeeTier, ...]
+    buyer_fee_bps: int
     hold_seconds: int
     min_margin_cents: int
 
@@ -61,6 +70,8 @@ class VenueFees:
         for tier in self.fee_tiers:
             if not 0 <= tier.fee_bps < BASIS_POINTS:
                 raise ValueError(f"Fee must be in [0, {BASIS_POINTS}) basis points, got {tier.fee_bps}")
+        if not 0 <= self.buyer_fee_bps < BASIS_POINTS:
+            raise ValueError(f"Buyer fee must be in [0, {BASIS_POINTS}) basis points, got {self.buyer_fee_bps}")
         if self.hold_seconds < 0:
             raise ValueError("hold_seconds must not be negative")
         if self.min_margin_cents < 0:
@@ -78,6 +89,7 @@ SKINPORT_FEES = VenueFees(
         FeeTier(min_price_cents=0, fee_bps=800),
         FeeTier(min_price_cents=100_000, fee_bps=600),
     ),
+    buyer_fee_bps=0,
     hold_seconds=7 * SECONDS_PER_DAY,
     min_margin_cents=0,
 )
@@ -102,16 +114,43 @@ def seller_fee_cents(resale_price_cents: int, fees: VenueFees) -> int:
     if resale_price_cents < 0:
         raise ValueError("resale_price_cents must not be negative")
     fee_bps = fees.seller_fee_bps(resale_price_cents)
-    return -(-resale_price_cents * fee_bps // BASIS_POINTS)
+    return _fee_rounded_up_cents(resale_price_cents, fee_bps)
 
 
-def net_resale_margin_cents(buy_price_cents: int, resale_price_cents: int, fees: VenueFees) -> int:
-    """Profit in cents from buying at `buy_price_cents` and reselling at `resale_price_cents`, after fees."""
+def buyer_fee_cents(buy_price_cents: int, fees: VenueFees) -> int:
+    """Buyer fee on a purchase, rounded up to the next cent."""
     if buy_price_cents < 0:
         raise ValueError("buy_price_cents must not be negative")
-    return resale_price_cents - seller_fee_cents(resale_price_cents, fees) - buy_price_cents
+    return _fee_rounded_up_cents(buy_price_cents, fees.buyer_fee_bps)
+
+
+def _fee_rounded_up_cents(price_cents: int, fee_bps: int) -> int:
+    return -(-price_cents * fee_bps // BASIS_POINTS)
+
+
+def net_resale_margin_cents(
+    buy_price_cents: int,
+    resale_price_cents: int,
+    buy_fees: VenueFees,
+    sell_fees: VenueFees | None = None,
+) -> int:
+    """Profit in cents from buying at `buy_price_cents` and reselling at `resale_price_cents`, after fees.
+
+    `buy_fees` belongs to the venue the item is bought on and `sell_fees` to the venue it is resold on.
+    Without `sell_fees` the item is resold on the venue it was bought on.
+    """
+    if sell_fees is None:
+        sell_fees = buy_fees
+    proceeds_cents = resale_price_cents - seller_fee_cents(resale_price_cents, sell_fees)
+    cost_cents = buy_price_cents + buyer_fee_cents(buy_price_cents, buy_fees)
+    return proceeds_cents - cost_cents
+
+
+def holding_seconds(buy_fees: VenueFees, sell_fees: VenueFees) -> int:
+    """How long a bought item is held before it can be resold: the sell venue's trade hold."""
+    return sell_fees.hold_seconds
 
 
 def is_profitable_margin(net_margin_cents: int, fees: VenueFees) -> bool:
-    """True when a net margin reaches the venue's minimum margin."""
+    """True when a net margin reaches the minimum margin of `fees` (the sell venue's)."""
     return net_margin_cents >= fees.min_margin_cents

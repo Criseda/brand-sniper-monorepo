@@ -494,7 +494,12 @@ def _card_with(sweep):
             "strategy_config": LIVE_CONFIG,
         },
         "labels": {"version": "v1", "horizon_seconds": 14 * 86_400, "min_comparable_sales": 3},
-        "fees": {"venue": "skinport", "fee_tiers": [{"min_price_cents": 0, "fee_bps": 800}], "hold_seconds": 7 * 86_400},
+        "fees": {
+            "venue": "skinport",
+            "fee_tiers": [{"min_price_cents": 0, "fee_bps": 800}],
+            "buyer_fee_bps": 0,
+            "hold_seconds": 7 * 86_400,
+        },
         "rules": {"min_sample": 30, "bootstrap_resamples": 2000, "bootstrap_seed": 249, "bootstrap_max_trades": 500},
         "notes": [],
         "coverage": {

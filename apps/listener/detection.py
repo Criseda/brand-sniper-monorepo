@@ -233,7 +233,7 @@ async def score_window(tick: MarketTick, cache: Redis) -> WindowScore | None:
 
 
 def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int | None:
-    """Fee-aware estimate: resell at the baseline price, after the venue's seller fee.
+    """Fee-aware estimate: buy on the tick's venue and resell there at its baseline price.
 
     Without a baseline price there is nothing to resell against, so there is no estimate.
     """
@@ -243,7 +243,8 @@ def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int
     return net_resale_margin_cents(
         buy_price_cents=tick.price_cents,
         resale_price_cents=resale_price_cents,
-        fees=fees_for(tick.venue),
+        buy_fees=fees_for(tick.venue),
+        sell_fees=fees_for(tick.venue),
     )
 
 
