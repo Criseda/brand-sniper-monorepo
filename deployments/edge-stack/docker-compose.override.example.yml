@@ -2,7 +2,7 @@
 # Docker Compose automatically merges docker-compose.yml with docker-compose.override.yml.
 
 services:
-  listener:
+  listener-skinport:
     environment:
       # Compose interpolates this from the shell env or deployments/edge-stack/.env
       # only (never the root .env, whose value would be shadowed here anyway).
@@ -17,6 +17,12 @@ services:
     # volumes:
     #   - ../../apps/listener:/app/apps/listener
     #   - ../../packages/shared_utils:/app/packages/shared_utils
+
+  listener-waxpeer:
+    environment:
+      COMPUTE_NODE_IP: ${COMPUTE_NODE_IP:?Set COMPUTE_NODE_IP in the edge-stack .env or shell}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 # The base stack already exposes Redis on loopback port 6380. To change that
 # binding without also publishing 6380, use an explicit full Compose file set

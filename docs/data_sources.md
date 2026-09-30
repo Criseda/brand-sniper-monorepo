@@ -155,7 +155,11 @@ sticker prices use the listing's naming.
 ## Venues
 
 Fees for each venue live in `packages/shared_utils/src/shared_utils/pnl.py` (`VenueFees`, `fees_for`),
-described in section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport is the only
-venue connected so far. CSFloat (#33) and Waxpeer (#261) come next. When picking a venue I prefer an
-official API with a key over one that needs browser cookies or a JavaScript sidecar, which is what Skinport's
-feed needs.
+described in section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport and Waxpeer
+(#261) are connected, and CSFloat (#33) comes next. When picking a venue I prefer an official API with a key
+over one that needs browser cookies or a JavaScript sidecar, which is what Skinport's feed needs.
+
+Waxpeer publishes listings only, no sales, so it has no baselines of its own. Its listings are scored against
+the Skinport baselines and priced as bought on Waxpeer and resold on Skinport (`resale_venue_for`). The
+listener records only the Waxpeer listings priced below the item's Skinport price, because the full feed is
+about 11 GB a day. The details are in [`waxpeer_feed.md`](waxpeer_feed.md).

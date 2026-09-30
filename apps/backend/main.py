@@ -275,6 +275,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload):
         item_id = await get_or_create_item_id(session, payload.market_hash_name, pending_items)
         trade = SimulatedTrade(
             item_id=item_id,
+            venue=payload.venue,
             purchase_price_cents=payload.purchase_price_cents,
             estimated_profit_cents=payload.estimated_profit_cents,
             profit_estimate_basis=payload.profit_estimate_basis,

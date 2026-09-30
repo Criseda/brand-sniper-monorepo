@@ -1,0 +1,10 @@
+0{"sid":"test-engine-sid","upgrades":[],"pingInterval":25000,"pingTimeout":20000,"maxPayload":1000000}
+40{"sid":"test-socket-sid"}
+42["handshake",{"id":"00000000-0000-0000-0000-000000000000"}]
+42["subscribed",{"name":"csgo"}]
+2
+42["new",{"auto":true,"classid":7993049410,"float":0.004105276428163052,"game":"csgo","instance_id":9030224248,"item_id":"53862560251","name":"★ StatTrak™ Survival Knife | Doppler Phase 1 (Factory New)","paint_index":418,"phase":"Phase 1","price":222809,"steam_id":"76561190000000001","steam_price":249929,"sticker_names":null}]
+42["new",{"auto":true,"classid":7993041265,"float":0.020351996645331383,"game":"csgo","instance_id":9051978814,"item_id":"53862994884","name":"Galil AR | Black Sand (Factory New)","paint_index":629,"phase":"","price":13403,"steam_id":"76561190000000002","steam_price":619,"sticker_names":["Sticker | Team Liquid | Paris 2023","Sticker | Batter Up"]}]
+42["new",{"auto":true,"classid":7993043334,"float":0.049167096614837646,"game":"csgo","instance_id":9058975339,"item_id":"53994255693","name":"StatTrak™ Glock-18 | Bullet Queen (Factory New)","paint_index":957,"phase":"","price":157611,"send_until":"2026-10-08T21:00:00Z","steam_id":"76561190000000003","steam_price":232135,"sticker_names":["Sticker | donk (Champion) | Shanghai 2024","Sticker | Head In Hands"],"unlock_at":"2026-10-07T21:00:00Z"}]
+42["update",{"auto":true,"classid":7993036125,"float":0.27988848090171814,"game":"csgo","instance_id":9022136709,"item_id":"53834879679","name":"StatTrak™ MAC-10 | Sakkaku (Field-Tested)","paint_index":1229,"phase":"","price":1736,"steam_price":2492,"sticker_names":[]}]
+42["removed",{"game":"csgo","item_id":"53889572020","name":"USP-S | The Traitor (Field-Tested)","price":35835}]

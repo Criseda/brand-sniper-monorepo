@@ -38,7 +38,7 @@ from models import FeedEvent, MarketTick
 from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from scrapers.factory import ScraperFactory
-from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger, utc_now_naive
+from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger, resale_venue_for, utc_now_naive
 from task_supervisor import BoundedTaskPool
 
 logger = get_logger("listener.main")
@@ -203,7 +203,7 @@ async def rest_poll_producer(scraper, queue: asyncio.Queue[StreamItem | None]) -
 
 
 async def websocket_subscriber_producer(scraper, queue: asyncio.Queue[StreamItem | None]) -> None:
-    """Listens to real-time events from the platform's WebSocket stream relay and puts them into the queue."""
+    """Listens to real-time events from the venue's live feed and puts them into the queue."""
     if not hasattr(scraper, "listen_websocket_stream"):
         return
 
@@ -220,7 +220,7 @@ async def websocket_subscriber_producer(scraper, queue: asyncio.Queue[StreamItem
 
 async def tick_consumer(
     queue: asyncio.Queue[StreamItem | None],
-    platform_target: str,
+    venue: str,
     anomaly_pool: BoundedTaskPool,
     batch_pool: BoundedTaskPool,
     batch_store: RedisBatchStore,
@@ -286,7 +286,7 @@ async def tick_consumer(
                 if len(batch_buffer) >= CHUNK_LIMIT or len(feed_event_buffer) >= CHUNK_LIMIT:
                     batch_buffer_id = batch_buffer_id or str(uuid4())
                     await flush_batch_buffer(
-                        platform_target,
+                        venue,
                         batch_buffer,
                         batch_id=batch_buffer_id,
                         store=batch_store,
@@ -301,7 +301,7 @@ async def tick_consumer(
             if batch_buffer or feed_event_buffer:
                 batch_buffer_id = batch_buffer_id or str(uuid4())
                 await flush_batch_buffer(
-                    platform_target,
+                    venue,
                     batch_buffer,
                     batch_id=batch_buffer_id,
                     store=batch_store,
@@ -353,7 +353,7 @@ async def start_sidecar_process(scraper) -> None:
                 logger.warning("Error terminating sidecar process: %s", e)
 
 
-async def process_live_telemetry_stream(platform_target: str) -> None:
+async def process_live_telemetry_stream(venue: str) -> None:
     get_backend_api_key()
 
     # Start Prometheus metrics HTTP server on a background thread
@@ -363,18 +363,21 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
     logger.info("[METRICS] Prometheus metrics endpoint listening on :%d/metrics", _metrics_port)
 
     logger.info("======================================================================")
-    logger.info("Initializing Extensible Stream Engine: %s", platform_target.upper())
+    logger.info("Initializing Extensible Stream Engine: %s", venue.upper())
     logger.info("Target Routing Node Core             : %s:%s", COMPUTE_NODE_IP, COMPUTE_PORT)
     logger.info("======================================================================")
 
     queue: asyncio.Queue[StreamItem | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
-    scraper = ScraperFactory.get_scraper(platform_target)
-    # Fail at startup, not on the first approved trade, when the venue has no fee schedule.
-    fees_for(scraper.platform_name)
+    scraper = ScraperFactory.get_scraper(venue)
+    # A venue without sales data of its own (Waxpeer) is scored against, and resold on, its resale venue.
+    resale_venue = resale_venue_for(scraper.venue)
+    # Fail at startup, not on the first approved trade, when either venue has no fee schedule.
+    fees_for(scraper.venue)
+    fees_for(resale_venue)
     executor = PaperExecutor(BACKEND_BASE_URL)
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
-    baseline_state = BaselineState(scraper.platform_name)
+    baseline_state = BaselineState(resale_venue)
     baseline_cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
     # Register graceful shutdown on SIGINT/SIGTERM
@@ -392,7 +395,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     try:
         async with (
-            RedisBatchStore.from_url(edge_redis_url, password=redis_password) as batch_store,
+            RedisBatchStore.for_venue(edge_redis_url, password=redis_password, venue=scraper.venue) as batch_store,
             BoundedTaskPool(
                 "anomaly",
                 workers=ANOMALY_WORKERS,
@@ -413,13 +416,16 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                 logger.info("[WINDOWS] Moved %d price windows to venue keyed names (#270).", migrated_windows)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
-                    tick_consumer(queue, platform_target, anomaly_pool, batch_pool, batch_store, executor),
+                    tick_consumer(queue, scraper.venue, anomaly_pool, batch_pool, batch_store, executor),
                     name="tick-consumer",
                 )
                 producer_tasks = [
-                    task_group.create_task(rest_poll_producer(scraper, queue), name="rest-poll-producer"),
                     task_group.create_task(websocket_subscriber_producer(scraper, queue), name="websocket-producer"),
                 ]
+                if scraper.polls_rest:
+                    producer_tasks.append(
+                        task_group.create_task(rest_poll_producer(scraper, queue), name="rest-poll-producer"),
+                    )
                 baseline_task = task_group.create_task(
                     keep_baselines_loaded(
                         baseline_state,
@@ -471,5 +477,5 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
 
 if __name__ == "__main__":
-    platform_target = os.getenv("LISTENER_PLATFORM", "skinport")
-    asyncio.run(process_live_telemetry_stream(platform_target))
+    # One listener process per venue (listener-skinport, listener-waxpeer).
+    asyncio.run(process_live_telemetry_stream(os.getenv("LISTENER_VENUE", "skinport")))

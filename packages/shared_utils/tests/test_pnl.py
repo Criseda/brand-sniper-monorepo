@@ -1,7 +1,9 @@
 import pytest
 from shared_utils.pnl import (
+    RESALE_VENUES,
     SKINPORT_FEES,
     VENUE_FEES,
+    WAXPEER_FEES,
     FeeTier,
     UnknownVenueError,
     VenueFees,
@@ -10,6 +12,7 @@ from shared_utils.pnl import (
     holding_seconds,
     is_profitable_margin,
     net_resale_margin_cents,
+    resale_venue_for,
     seller_fee_cents,
 )
 
@@ -198,3 +201,32 @@ def test_cross_venue_minimum_margin_is_the_sell_venue_one():
     assert margin == 1200 - 60 - 1000 - 25
     assert is_profitable_margin(margin, SELL_VENUE) is True
     assert is_profitable_margin(99, SELL_VENUE) is False
+
+
+def test_waxpeer_fee_schedule():
+    # 6% seller fee at every price, no buyer fee, 7 day hold (checked 2026-09-30, docs/waxpeer_feed.md).
+    assert fees_for("waxpeer") is WAXPEER_FEES
+    assert seller_fee_cents(10_000, WAXPEER_FEES) == 600
+    assert seller_fee_cents(1_000_000, WAXPEER_FEES) == 60_000
+    assert buyer_fee_cents(10_000, WAXPEER_FEES) == 0
+    assert WAXPEER_FEES.hold_seconds == 7 * 86_400
+
+
+@pytest.mark.parametrize(
+    ("venue", "expected"),
+    [("waxpeer", "skinport"), ("Waxpeer", "skinport"), ("skinport", "skinport"), ("SKINPORT", "skinport")],
+)
+def test_resale_venue(venue, expected):
+    assert resale_venue_for(venue) == expected
+
+
+def test_every_resale_venue_pair_has_fees():
+    for buy_venue, sell_venue in RESALE_VENUES.items():
+        assert buy_venue in VENUE_FEES
+        assert sell_venue in VENUE_FEES
+
+
+def test_waxpeer_listing_resold_on_skinport():
+    # Buy on Waxpeer for $10.00 (no buyer fee), resell on Skinport for $12.00 minus its 8% seller fee.
+    margin = net_resale_margin_cents(1000, 1200, buy_fees=WAXPEER_FEES, sell_fees=fees_for(resale_venue_for("waxpeer")))
+    assert margin == 1200 - 96 - 1000

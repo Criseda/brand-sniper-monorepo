@@ -11,10 +11,14 @@ scrape_configs:
     static_configs:
       - targets: ['backend:8080']
 
+  # One listener process per venue. The `listener` label tells their series apart.
   - job_name: 'sniper-listener'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['listener:9100']
+      - targets: ['listener-skinport:9100']
+        labels: { listener: 'skinport' }
+      - targets: ['listener-waxpeer:9100']
+        labels: { listener: 'waxpeer' }
 
   - job_name: 'sniper-redis'
     static_configs:

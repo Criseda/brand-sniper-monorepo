@@ -71,8 +71,8 @@
       "title": "Ticks Processed/sec",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 6 },
       "targets": [
-        { "expr": "rate(listener_ticks_processed_total[1m])", "legendFormat": "Processed", "refId": "A" },
-        { "expr": "rate(listener_ticks_deduplicated_total[1m])", "legendFormat": "Deduplicated", "refId": "B" }
+        { "expr": "sum by (listener) (rate(listener_ticks_processed_total[1m]))", "legendFormat": "{{listener}} processed", "refId": "A" },
+        { "expr": "sum by (listener) (rate(listener_ticks_deduplicated_total[1m]))", "legendFormat": "{{listener}} deduplicated", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: ticks/s" } },
       "stack": { "mode": "normal" }
@@ -83,7 +83,7 @@
       "description": "Items in each venue's dedup cache against the default cap of 100,000 (DEDUP_CACHE_MAX_SIZE). Orange from 80% and red from 95% of the cap; if the cap is changed, change this max too.",
       "gridPos": { "h": 5, "w": 4, "x": 8, "y": 6 },
       "targets": [
-        { "expr": "listener_dedup_cache_size{venue!=\"\"}", "legendFormat": "{{venue}}", "refId": "A" }
+        { "expr": "listener_dedup_cache_size{venue!=\"\"}", "legendFormat": "{{listener}}", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -104,7 +104,7 @@
       "title": "Batch Buffer Size",
       "gridPos": { "h": 5, "w": 4, "x": 12, "y": 6 },
       "targets": [
-        { "expr": "listener_batch_buffer_size", "legendFormat": "Entries", "refId": "A" }
+        { "expr": "listener_batch_buffer_size", "legendFormat": "{{listener}}", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -124,9 +124,9 @@
       "title": "Batch Flushes/min",
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 6 },
       "targets": [
-        { "expr": "rate(listener_batch_flush_total{status=\"success\"}[5m]) * 60", "legendFormat": "Success", "refId": "A" },
-        { "expr": "rate(listener_batch_flush_total{status=\"retry\"}[5m]) * 60", "legendFormat": "Retry", "refId": "B" },
-        { "expr": "rate(listener_batch_flush_total{status=\"dead_letter\"}[5m]) * 60", "legendFormat": "Dead letter", "refId": "C" }
+        { "expr": "sum by (listener) (rate(listener_batch_flush_total{status=\"success\"}[5m])) * 60", "legendFormat": "{{listener}} success", "refId": "A" },
+        { "expr": "sum by (listener) (rate(listener_batch_flush_total{status=\"retry\"}[5m])) * 60", "legendFormat": "{{listener}} retry", "refId": "B" },
+        { "expr": "sum by (listener) (rate(listener_batch_flush_total{status=\"dead_letter\"}[5m])) * 60", "legendFormat": "{{listener}} dead letter", "refId": "C" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: flushes/min" } }
     },
@@ -141,9 +141,9 @@
       "title": "Potential Anomalies Flagged/min",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 12 },
       "targets": [
-        { "expr": "sum(rate(listener_anomalies_detected_total{source=\"local\"}[1m])) * 60", "legendFormat": "Local", "refId": "A" },
-        { "expr": "sum(rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m])) * 60", "legendFormat": "Hybrid", "refId": "B" },
-        { "expr": "sum(rate(listener_anomalies_detected_total{source=\"macro\"}[1m])) * 60", "legendFormat": "Macro", "refId": "C" }
+        { "expr": "sum by (listener) (rate(listener_anomalies_detected_total{source=\"local\"}[1m])) * 60", "legendFormat": "{{listener}} local", "refId": "A" },
+        { "expr": "sum by (listener) (rate(listener_anomalies_detected_total{source=\"hybrid\"}[1m])) * 60", "legendFormat": "{{listener}} hybrid", "refId": "B" },
+        { "expr": "sum by (listener) (rate(listener_anomalies_detected_total{source=\"macro\"}[1m])) * 60", "legendFormat": "{{listener}} macro", "refId": "C" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: detections/min" } },
       "stack": { "mode": "normal" }
@@ -153,8 +153,8 @@
       "title": "DRE Decisions/min",
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 12 },
       "targets": [
-        { "expr": "sum(rate(listener_anomalies_confirmed_total[1m])) * 60", "legendFormat": "Confirmed by DRE", "refId": "A" },
-        { "expr": "sum(rate(listener_anomalies_rejected_total[1m])) * 60", "legendFormat": "Filtered/Rejected", "refId": "B" }
+        { "expr": "sum by (listener) (rate(listener_anomalies_confirmed_total[1m])) * 60", "legendFormat": "{{listener}} confirmed by DRE", "refId": "A" },
+        { "expr": "sum by (listener) (rate(listener_anomalies_rejected_total[1m])) * 60", "legendFormat": "{{listener}} filtered/rejected", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: outcomes/min" } }
     },
@@ -165,9 +165,9 @@
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 12 },
       "targets": [
         {
-          "expr": "round(sum by (reason, source, tick_kind) (increase(listener_anomalies_confirmed_total{reason!=\"\"}[$__range]))) > 0",
+          "expr": "round(sum by (listener, reason, source, tick_kind) (increase(listener_anomalies_confirmed_total{reason!=\"\"}[$__range]))) > 0",
           "instant": true,
-          "legendFormat": "{{reason}} rule, {{source}} Z-score, {{tick_kind}}",
+          "legendFormat": "{{listener}}: {{reason}} rule, {{source}} Z-score, {{tick_kind}}",
           "refId": "A"
         }
       ],
@@ -198,9 +198,9 @@
       "title": "DRE Latency (ms)",
       "gridPos": { "h": 5, "w": 12, "x": 0, "y": 18 },
       "targets": [
-        { "expr": "histogram_quantile(0.50, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p50 (ms)", "refId": "A" },
-        { "expr": "histogram_quantile(0.95, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p95 (ms)", "refId": "B" },
-        { "expr": "histogram_quantile(0.99, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le)) * 1000", "legendFormat": "p99 (ms)", "refId": "C" }
+        { "expr": "histogram_quantile(0.50, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le, listener)) * 1000", "legendFormat": "{{listener}} p50 (ms)", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le, listener)) * 1000", "legendFormat": "{{listener}} p95 (ms)", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(listener_rules_engine_latency_seconds_bucket[1m])) by (le, listener)) * 1000", "legendFormat": "{{listener}} p99 (ms)", "refId": "C" }
       ],
       "fieldConfig": { "defaults": { "unit": "ms" } }
     },
@@ -209,7 +209,7 @@
       "title": "Redis Latency (ms)",
       "gridPos": { "h": 5, "w": 12, "x": 12, "y": 18 },
       "targets": [
-        { "expr": "rate(listener_redis_operation_latency_seconds_sum[1m]) / rate(listener_redis_operation_latency_seconds_count[1m]) * 1000", "legendFormat": "Avg (ms)", "refId": "A" }
+        { "expr": "sum by (listener) (rate(listener_redis_operation_latency_seconds_sum[1m])) / sum by (listener) (rate(listener_redis_operation_latency_seconds_count[1m])) * 1000", "legendFormat": "{{listener}} avg (ms)", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "ms" } }
     },
@@ -262,7 +262,7 @@
       "gridPos": { "h": 5, "w": 7, "x": 17, "y": 24 },
       "targets": [
         { "expr": "up{job=\"sniper-backend\"}", "legendFormat": "Backend", "refId": "A" },
-        { "expr": "up{job=\"sniper-listener\"}", "legendFormat": "Listener", "refId": "B" },
+        { "expr": "up{job=\"sniper-listener\"}", "legendFormat": "Listener {{listener}}", "refId": "B" },
         { "expr": "up{job=\"sniper-redis\"}", "legendFormat": "Redis", "refId": "C" }
       ],
       "fieldConfig": {
@@ -287,8 +287,8 @@
       "title": "Background Queue Depth",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 30 },
       "targets": [
-        { "expr": "listener_background_jobs_queued", "legendFormat": "{{job_type}}", "refId": "A" },
-        { "expr": "listener_tick_queue_size", "legendFormat": "ticks", "refId": "B" }
+        { "expr": "listener_background_jobs_queued", "legendFormat": "{{listener}} {{job_type}}", "refId": "A" },
+        { "expr": "listener_tick_queue_size", "legendFormat": "{{listener}} ticks", "refId": "B" }
       ],
       "fieldConfig": { "defaults": { "unit": "none", "min": 0 } }
     },
@@ -297,7 +297,7 @@
       "title": "Background Job Outcomes/min",
       "gridPos": { "h": 5, "w": 8, "x": 8, "y": 30 },
       "targets": [
-        { "expr": "sum by (job_type, outcome) (rate(listener_background_jobs_total[5m])) * 60", "legendFormat": "{{job_type}} {{outcome}}", "refId": "A" }
+        { "expr": "sum by (listener, job_type, outcome) (rate(listener_background_jobs_total[5m])) * 60", "legendFormat": "{{listener}} {{job_type}} {{outcome}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: jobs/min" } }
     },
@@ -306,9 +306,37 @@
       "title": "Trade Submission Outcomes/min",
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 30 },
       "targets": [
-        { "expr": "sum by (outcome) (rate(listener_trade_submissions_total[5m])) * 60", "legendFormat": "{{outcome}}", "refId": "A" }
+        { "expr": "sum by (listener, outcome) (rate(listener_trade_submissions_total[5m])) * 60", "legendFormat": "{{listener}} {{outcome}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: submissions/min" } }
+    },
+    {
+      "type": "row",
+      "title": "Live Feeds (Waxpeer)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Feed Events/min by Filter Outcome",
+      "description": "Live feed events per minute by what the recording filter did with them. Only 'recorded' reaches the database (docs/waxpeer_feed.md).",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 36 },
+      "targets": [
+        { "expr": "sum by (listener, event, outcome) (rate(listener_feed_events_filtered_total[5m])) * 60", "legendFormat": "{{listener}} {{event}} {{outcome}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "suffix: events/min", "min": 0 } }
+    },
+    {
+      "type": "stat",
+      "title": "Feed State",
+      "description": "Connected is 1 while the feed is subscribed. Resale prices is how many Skinport prices the filter holds; at 0 it records nothing.",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 36 },
+      "targets": [
+        { "expr": "listener_feed_connected", "legendFormat": "{{listener}} connected", "refId": "A" },
+        { "expr": "listener_feed_resale_prices", "legendFormat": "{{listener}} resale prices", "refId": "B" },
+        { "expr": "listener_feed_tracked_listings", "legendFormat": "{{listener}} tracked listings", "refId": "C" }
+      ],
+      "options": { "colorMode": "value", "graphMode": "none" }
     }
   ]
 }

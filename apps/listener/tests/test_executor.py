@@ -17,7 +17,7 @@ async def test_paper_executor_sends_payload():
     z_score = -2.5
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        await executor.execute(market_hash_name, purchase_price, est_profit, z_score)
+        await executor.execute(market_hash_name, purchase_price, est_profit, z_score, venue="skinport")
 
         mock_send.assert_called_once()
         called_payload = mock_send.call_args.args[0]
@@ -35,7 +35,7 @@ async def test_paper_executor_sends_the_bought_listing():
     executor = PaperExecutor("http://mock-backend:8080")
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", float_value=0.36)
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", float_value=0.36, venue="skinport")
 
     called_payload = mock_send.call_args.args[0]
     assert called_payload["listing_id"] == "58903454"
@@ -47,7 +47,7 @@ async def test_paper_executor_sends_estimate_basis_and_missing_estimate():
     executor = PaperExecutor("http://mock-backend:8080")
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        await executor.execute("Item", 1000, None, -2.5, profit_estimate_basis="net_of_seller_fee")
+        await executor.execute("Item", 1000, None, -2.5, profit_estimate_basis="net_of_seller_fee", venue="skinport")
 
     called_payload = mock_send.call_args.args[0]
     assert called_payload["estimated_profit_cents"] is None
@@ -59,9 +59,9 @@ async def test_paper_executor_buys_a_listing_once():
     executor = PaperExecutor("http://mock-backend:8080")
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454")
-        await executor.execute("Item", 1000, 500, -2.1, listing_id="58903454")
-        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903455")
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.1, listing_id="58903454", venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903455", venue="skinport")
 
     assert [call.args[0]["listing_id"] for call in mock_send.call_args_list] == ["58903454", "58903455"]
 
@@ -72,9 +72,9 @@ async def test_paper_executor_buys_a_rest_snapshot_price_once():
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
         for _ in range(4):
-            await executor.execute("Item", 1000, 500, -2.5)
-        await executor.execute("Item", 990, 510, -2.6)
-        await executor.execute("Other item", 1000, 500, -2.5)
+            await executor.execute("Item", 1000, 500, -2.5, venue="skinport")
+        await executor.execute("Item", 990, 510, -2.6, venue="skinport")
+        await executor.execute("Other item", 1000, 500, -2.5, venue="skinport")
 
     assert [(call.args[0]["market_hash_name"], call.args[0]["purchase_price_cents"]) for call in mock_send.call_args_list] == [
         ("Item", 1000),
@@ -90,8 +90,8 @@ async def test_paper_executor_retries_a_buy_the_backend_did_not_take():
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
         mock_send.side_effect = [ExecutionError("down"), None]
         with pytest.raises(ExecutionError):
-            await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454")
-        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454")
+            await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="skinport")
 
     assert mock_send.call_count == 2
 
@@ -101,8 +101,8 @@ async def test_paper_executor_does_not_rebuy_a_listing_seen_again_as_the_lowest_
     executor = PaperExecutor("http://mock-backend:8080")
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        await executor.execute("Item", 1000, 500, -3.0, listing_id="58903454")
-        await executor.execute("Item", 1000, 500, -2.2)
+        await executor.execute("Item", 1000, 500, -3.0, listing_id="58903454", venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.2, venue="skinport")
 
     assert mock_send.call_count == 1
 
@@ -112,8 +112,8 @@ async def test_paper_executor_buys_a_new_listing_at_a_price_bought_from_a_snapsh
     executor = PaperExecutor("http://mock-backend:8080")
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
-        await executor.execute("Item", 1000, 500, -2.5)
-        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454")
+        await executor.execute("Item", 1000, 500, -2.5, venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="skinport")
 
     assert mock_send.call_count == 2
 
@@ -125,7 +125,7 @@ async def test_paper_executor_forgets_the_oldest_purchase(monkeypatch):
 
     with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
         for price_cents in (1000, 1001, 1002, 1000):
-            await executor.execute("Item", price_cents, 500, -2.5)
+            await executor.execute("Item", price_cents, 500, -2.5, venue="skinport")
 
     assert [call.args[0]["purchase_price_cents"] for call in mock_send.call_args_list] == [1000, 1001, 1002, 1000]
 

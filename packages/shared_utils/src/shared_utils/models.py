@@ -189,6 +189,8 @@ class SimulatedTrade(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE", index=True)
+    # Venue the listing was bought on (skinport, waxpeer). Its resale venue is shared_utils.resale_venue_for(venue).
+    venue: str = Field(nullable=False, max_length=32)
 
     purchase_price_cents: int = Field(nullable=False)
     # NULL when the listener had no baseline price to estimate a resale from.

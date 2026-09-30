@@ -79,7 +79,7 @@ async def test_store_build_replaces_the_venue_hashes_and_records_the_build():
     assert json.loads(cache.hashes["baselines:skinport"][ITEM]) == {"latest_price_cents": 2739, "support_floor_cents": 2637}
     assert "Old Item" not in cache.hashes["baselines:skinport"]
     assert cache.hashes["sticker_prices:skinport"] == {"Crown (Foil)": "90000"}
-    assert not any(key.endswith(":staging") for key in cache.hashes)
+    assert not any(":staging" in key for key in cache.hashes)
     assert await read_loaded_build(as_redis(cache), VENUE) == loaded
 
 

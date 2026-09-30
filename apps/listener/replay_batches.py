@@ -27,10 +27,11 @@ class ReplayResult:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Replay listener batches from the Redis dead-letter stream.")
     parser.add_argument("--limit", type=int, default=100, help="Maximum batches to replay")
+    parser.add_argument("--venue", default="skinport", help="Venue whose listener wrote the dead letters (skinport, waxpeer)")
     return parser.parse_args()
 
 
-async def replay(limit: int) -> ReplayResult:
+async def replay(limit: int, venue: str = "skinport") -> ReplayResult:
     if limit < 1:
         raise ValueError("--limit must be at least 1")
 
@@ -47,7 +48,7 @@ async def replay(limit: int) -> ReplayResult:
     failed = 0
 
     async with (
-        RedisBatchStore.from_url(redis_url, password=redis_password) as store,
+        RedisBatchStore.for_venue(redis_url, password=redis_password, venue=venue) as store,
         aiohttp.ClientSession(headers=backend_api_headers()) as session,
     ):
 
@@ -85,7 +86,7 @@ async def replay(limit: int) -> ReplayResult:
 
 def main() -> int:
     arguments = parse_args()
-    result = asyncio.run(replay(arguments.limit))
+    result = asyncio.run(replay(arguments.limit, arguments.venue))
     return result.exit_code
 
 

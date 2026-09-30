@@ -26,7 +26,8 @@ docker compose up -d
 | Grafana | `grafana/grafana:13.1.1` | `sniper_grafana` | always |
 | Redis exporter | `oliver006/redis_exporter:v1.88.0-alpine` | `sniper_redis_exporter` | always |
 | Backend | custom build | `sniper_backend` | always |
-| Listener | custom build | `sniper_listener` | always |
+| Skinport listener | custom build (listener image, `LISTENER_VENUE=skinport`) | `sniper_listener_skinport` | always |
+| Waxpeer listener | custom build (listener image, `LISTENER_VENUE=waxpeer`) | `sniper_listener_waxpeer` | always |
 | Baseline builder | custom build (analytics image) | `sniper_baseline_builder` | always |
 | Analytics | custom build | `sniper_analytics` | manual (`docker compose run --rm analytics`) |
 
@@ -40,7 +41,20 @@ docker compose up -d
 | Service | Container Name | Notes |
 |---------|----------------|-------|
 | Redis 8 | `sniper_edge_redis` | Loopback port 6380, `--save "" --appendonly no` (volatile RAM only) |
-| Listener | `sniper_listener` | Connects to a remote backend via `COMPUTE_NODE_IP` |
+| Skinport listener | `sniper_listener_skinport` | Connects to a remote backend via `COMPUTE_NODE_IP` |
+| Waxpeer listener | `sniper_listener_waxpeer` | Same image with `LISTENER_VENUE=waxpeer`; shares the edge Redis ([`waxpeer_feed.md`](waxpeer_feed.md)) |
+
+One listener process runs per venue, and each compose service is named `listener-<venue>`. Prometheus labels
+their series `listener="skinport"` or `listener="waxpeer"`, and the dashboard and alerts split by that label.
+
+Before #261 the only listener was the service `listener` (container `sniper_listener`). Compose does not
+rename a container, so stop the old one yourself before the first `up`, with its full drain time, then let
+Compose start the renamed services:
+
+```bash
+docker stop -t 120 sniper_listener && docker rm sniper_listener
+docker compose up -d --build --remove-orphans
+```
 
 The edge stack is designed for constrained environments (Raspberry Pi, low-power VPS).
 It contains only the hot-path services; the server node handles the cold path and infra.
@@ -212,6 +226,7 @@ additional environment variables from the compose file for Docker-internal netwo
 | `LLM_REQUEST_TIMEOUT_SECONDS` | Optional request timeout, default `60` |
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard. Not used yet: the listener calls only public endpoints, without credentials (#275). Kept for the account API |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard. Not used yet, as above |
+| `WAXPEER_API_KEY` | https://waxpeer.com/profile/user. Sent with the Waxpeer feed connection (`apps/listener/.env`). The key can also buy items and move money, so keep the Waxpeer balance at zero |
 | `REDIS_PASSWORD` | Strong password used for securing the Edge Redis cache service |
 | `BACKEND_API_KEY` | Random shared secret of at least 32 characters; the same value is installed on the server and every edge node |
 | `MLFLOW_BACKEND_STORE_URI` | PostgreSQL connection URL with psycopg2 driver schema for MLflow data storage |
@@ -271,6 +286,11 @@ The limit applies to attempted batches. The command exits non-zero if any
 attempt fails, making it safe to use from operational automation. Malformed
 stream records are isolated in `listener:ingest:malformed` so that one poison
 record cannot block recovery of valid pending or dead-letter batches.
+
+Each venue's listener has its own streams, because each recovers every pending
+batch of its streams when it starts. Skinport keeps the names above. The Waxpeer
+listener uses `listener:ingest:waxpeer:pending`, `:dead-letter` and `:malformed`;
+replay its dead letters with `uv run python replay_batches.py --venue waxpeer`.
 
 Batch IDs make replays idempotent at the backend. Reusing an ID with different
 content returns HTTP 409. The stream uses the existing volatile Edge Redis
@@ -336,14 +356,19 @@ Apply migrations **before** starting a backend image that adds new tables. Backe
 `SQLModel.metadata.create_all`. If that creates a new table first, the migration that creates the same table
 then fails.
 
+The same goes for new columns. `create_all` never adds a column to an existing table, so a backend that
+writes `simulated_trades.venue` (#261) fails every paper trade until migration `a7d3e5c19b62` has run. That
+migration marks every earlier trade as bought on Skinport.
+
 ## Data Retention
 
 | Table | Policy | Status |
 |---|---|---|
-| `feed_events` (raw Skinport feed payloads, #232) | Keep 90 days in PostgreSQL. Export older rows month by month to compressed JSONL/Parquet in object storage, verify the export, and only then delete them (batched, on the `received_at` index) | **Manual. No job exists yet.** Capture started 2026-09-24, so the first export is due by **2026-12-23** |
+| `feed_events` (raw Skinport feed payloads, #232, and grouped Waxpeer payloads, #261) | Keep 90 days in PostgreSQL. Export older rows month by month to compressed JSONL/Parquet in object storage, verify the export, and only then delete them (batched, on the `received_at` index) | **Manual. No job exists yet.** Capture started 2026-09-24, so the first export is due by **2026-12-23** |
 | `live_market_ticks` | No expiry during Milestone 5 (training and label corpus) | - |
 
-`feed_events` grows by about 20 to 125 MB per day. Check it with
+`feed_events` grows by about 20 to 125 MB per day from Skinport, plus an estimated 50 to 120 MB from Waxpeer
+([`waxpeer_feed.md`](waxpeer_feed.md#volume)). Check it with
 `SELECT pg_size_pretty(pg_total_relation_size('feed_events'));`. Never delete raw events without a verified
 export: they are the only way to re-parse fields the listener does not extract today. Sizing and rationale are
 in [`skinport_feed.md`](skinport_feed.md#retention-policy).

@@ -27,7 +27,14 @@ from listener_telemetry import (
 from models import MarketTick
 from redis.asyncio import Redis
 from rules_engine import APPROVAL_REASONS, dre_approval_reason
-from shared_utils import PROFIT_ESTIMATE_BASIS_NET, edge_baselines_key, fees_for, get_logger, net_resale_margin_cents
+from shared_utils import (
+    PROFIT_ESTIMATE_BASIS_NET,
+    edge_baselines_key,
+    fees_for,
+    get_logger,
+    net_resale_margin_cents,
+    resale_venue_for,
+)
 from task_supervisor import BoundedTaskPool
 from zscore import ZSCORE_SOURCES, calculate_z_score, should_trigger_anomaly
 
@@ -215,9 +222,10 @@ async def score_window(tick: MarketTick, cache: Redis) -> WindowScore | None:
     redis_operation_latency_seconds.observe(time.monotonic() - _t3)
     prices = [int(_decode_zset_element(element).split(":")[1]) for element in raw_elements if isinstance(element, (str, bytes))]
 
-    # Fetch the venue's baseline for the volatility-aware Z-score (Layers 1-2)
+    # Fetch the baseline for the volatility-aware Z-score (Layers 1-2). It is the resale venue's: a venue
+    # without sales data (Waxpeer) is judged against the venue it resells on, while its window holds its own prices.
     _t4 = time.monotonic()
-    baseline_raw = await cache.hget(edge_baselines_key(tick.venue), tick.market_hash_name)
+    baseline_raw = await cache.hget(edge_baselines_key(resale_venue_for(tick.venue)), tick.market_hash_name)
     redis_operation_latency_seconds.observe(time.monotonic() - _t4)
     baseline_data: dict[str, Any] | None = json.loads(baseline_raw) if baseline_raw else None
 
@@ -233,9 +241,10 @@ async def score_window(tick: MarketTick, cache: Redis) -> WindowScore | None:
 
 
 def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int | None:
-    """Fee-aware estimate: buy on the tick's venue and resell there at its baseline price.
+    """Fee-aware estimate: buy on the tick's venue and resell on its resale venue at the baseline price.
 
-    Without a baseline price there is nothing to resell against, so there is no estimate.
+    The resale venue is the tick's own venue, except for a venue judged against another one (Waxpeer
+    resells on Skinport). Without a baseline price there is nothing to resell against, so there is no estimate.
     """
     resale_price_cents = baseline.get("latest_price_cents")
     if resale_price_cents is None:
@@ -244,7 +253,7 @@ def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int
         buy_price_cents=tick.price_cents,
         resale_price_cents=resale_price_cents,
         buy_fees=fees_for(tick.venue),
-        sell_fees=fees_for(tick.venue),
+        sell_fees=fees_for(resale_venue_for(tick.venue)),
     )
 
 
@@ -274,10 +283,11 @@ async def evaluate_and_execute(
         )
 
         if baseline is None:
-            baseline_raw = await cache.hget(edge_baselines_key(tick.venue), tick.market_hash_name)
+            baseline_raw = await cache.hget(edge_baselines_key(resale_venue_for(tick.venue)), tick.market_hash_name)
             baseline = json.loads(baseline_raw) if baseline_raw else {}
 
         await executor.execute(
+            venue=tick.venue,
             market_hash_name=tick.market_hash_name,
             purchase_price_cents=tick.price_cents,
             estimated_profit_cents=estimate_net_profit_cents(tick, baseline),

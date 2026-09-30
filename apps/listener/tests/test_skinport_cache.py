@@ -66,7 +66,7 @@ async def test_skinport_cache_initialization_fallback():
         "REDIS_PASSWORD": "fallback-secret-password",
     }
 
-    with patch("scrapers.skinport.Redis", return_value=mock_redis) as mock_redis_class, patch.dict(os.environ, env_overrides):
+    with patch("scrapers.base.Redis", return_value=mock_redis) as mock_redis_class, patch.dict(os.environ, env_overrides):
         async for _ in scraper.listen_websocket_stream():
             break
 

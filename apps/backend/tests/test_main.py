@@ -92,6 +92,7 @@ def test_backend_fails_startup_without_api_key(monkeypatch):
 
 def test_ingest_simulated_trade_success(client):
     payload = {
+        "venue": "skinport",
         "market_hash_name": "Test Item (Factory New)",
         "purchase_price_cents": 1000,
         "estimated_profit_cents": 500,
@@ -109,6 +110,7 @@ def test_ingest_simulated_trade_records_the_bought_listing(client):
     from sqlmodel import select
 
     payload = {
+        "venue": "waxpeer",
         "market_hash_name": "Listing Trade Item (Field-Tested)",
         "purchase_price_cents": 1000,
         "estimated_profit_cents": 500,
@@ -123,6 +125,7 @@ def test_ingest_simulated_trade_records_the_bought_listing(client):
     trades = asyncio.run(_fetch_all(select(SimulatedTrade).where(SimulatedTrade.listing_id == "58903454")))
     assert len(trades) == 1
     assert trades[0].float_value == pytest.approx(0.36)
+    assert trades[0].venue == "waxpeer"
 
 
 def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(client):
@@ -131,6 +134,7 @@ def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(clien
 
     profit_before = backend_main.paper_trading_estimated_profit_total._value.get()
     payload = {
+        "venue": "skinport",
         "market_hash_name": "No Baseline Item (Field-Tested)",
         "purchase_price_cents": 1000,
         "estimated_profit_cents": None,
@@ -154,11 +158,21 @@ def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(clien
     [
         pytest.param({"market_hash_name": "Test Item"}, id="missing_field"),
         pytest.param(
-            {"market_hash_name": "Test Item", "purchase_price_cents": 1000, "trigger_z_score": -3.5},
+            {
+                "market_hash_name": "Test Item",
+                "purchase_price_cents": 1000,
+                "estimated_profit_cents": 500,
+                "trigger_z_score": -3.5,
+            },
+            id="venue_is_required",
+        ),
+        pytest.param(
+            {"venue": "skinport", "market_hash_name": "Test Item", "purchase_price_cents": 1000, "trigger_z_score": -3.5},
             id="estimate_must_be_sent_even_when_null",
         ),
         pytest.param(
             {
+                "venue": "skinport",
                 "market_hash_name": "Test Item",
                 "purchase_price_cents": 1000,
                 "estimated_profit_cents": 500,
@@ -169,6 +183,7 @@ def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(clien
         ),
         pytest.param(
             {
+                "venue": "skinport",
                 "market_hash_name": "Test Item",
                 "purchase_price_cents": 1000,
                 "estimated_profit_cents": 500,
@@ -179,6 +194,7 @@ def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(clien
         ),
         pytest.param(
             {
+                "venue": "skinport",
                 "market_hash_name": "Test Item",
                 "purchase_price_cents": 1000,
                 "estimated_profit_cents": 500,
@@ -501,6 +517,7 @@ def test_item_cache_is_not_updated_when_commit_fails(client, monkeypatch):
     response = client.post(
         "/api/v1/ingest/trade",
         json={
+            "venue": "skinport",
             "market_hash_name": market_hash_name,
             "purchase_price_cents": 1000,
             "estimated_profit_cents": 500,

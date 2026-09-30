@@ -24,6 +24,19 @@ Current Skinport parameters (checked 2026-09-25):
 - Buyer fee: none on the listing price.
 - Trade hold: CS2 items carry Steam's 7-day trade protection after a trade, so a bought item cannot
   be resold for 7 days (up to 8 in the worst case).
+
+Current Waxpeer parameters (checked 2026-09-30):
+- Seller fee: 6% (https://waxpeer.com/faq/fees-sell). `GET /v1/user` returned `sell_fees` 0.94 for
+  our account, the same rate.
+- Buyer fee: none on the listing price. Deposit and withdrawal fees depend on the payment method and
+  are not modeled.
+- Trade hold: 7 days. Waxpeer lets a trade locked item be listed at once, but the buyer receives it only
+  when Steam's trade protection ends, and sale proceeds stay on the hold balance for 7 days
+  (https://waxpeer.com/faq/trade-lock, https://waxpeer.com/faq/hold-balance).
+
+A venue with no sales data of its own is judged against another venue: `resale_venue_for` names the
+venue whose baselines score its listings, whose sales label them, and whose seller fee applies on
+resale. Waxpeer publishes no sales, so its listings are judged against Skinport (docs/waxpeer_feed.md).
 """
 
 from dataclasses import dataclass
@@ -94,9 +107,24 @@ SKINPORT_FEES = VenueFees(
     min_margin_cents=0,
 )
 
+WAXPEER_FEES = VenueFees(
+    venue="waxpeer",
+    fee_tiers=(FeeTier(min_price_cents=0, fee_bps=600),),
+    buyer_fee_bps=0,
+    hold_seconds=7 * SECONDS_PER_DAY,
+    min_margin_cents=0,
+)
+
 # Every venue the system can price. A venue missing here cannot be traded or labeled.
 VENUE_FEES: dict[str, VenueFees] = {
     SKINPORT_FEES.venue: SKINPORT_FEES,
+    WAXPEER_FEES.venue: WAXPEER_FEES,
+}
+
+# Venues whose listings are judged against, and resold on, another venue. Any other venue resells
+# where it buys.
+RESALE_VENUES: dict[str, str] = {
+    WAXPEER_FEES.venue: SKINPORT_FEES.venue,
 }
 
 
@@ -107,6 +135,12 @@ def fees_for(venue: str) -> VenueFees:
         registered = ", ".join(sorted(VENUE_FEES))
         raise UnknownVenueError(f"No fee schedule registered for venue '{venue}' (registered: {registered})")
     return fees
+
+
+def resale_venue_for(venue: str) -> str:
+    """The venue a listing bought on `venue` is scored against and resold on (lowercase)."""
+    buy_venue = venue.lower()
+    return RESALE_VENUES.get(buy_venue, buy_venue)
 
 
 def seller_fee_cents(resale_price_cents: int, fees: VenueFees) -> int:

@@ -2,7 +2,7 @@ import json
 
 from models import MarketTick
 from redis.asyncio import Redis
-from shared_utils import edge_baselines_key, edge_sticker_prices_key
+from shared_utils import edge_baselines_key, edge_sticker_prices_key, resale_venue_for
 
 # Why the DRE approved an opportunity (see dre_approval_reason).
 REASON_SUPPORT_FLOOR = "support_floor"
@@ -10,6 +10,11 @@ REASON_MACRO_SIGMA = "macro_sigma"
 REASON_STICKERS_BELOW_BASE = "stickers_below_base"
 REASON_STICKER_PREMIUM = "sticker_premium"
 APPROVAL_REASONS = (REASON_SUPPORT_FLOOR, REASON_MACRO_SIGMA, REASON_STICKERS_BELOW_BASE, REASON_STICKER_PREMIUM)
+
+# The sticker rules apply only above this total sticker value, and approve a premium over the base price of
+# at most this share of the sticker value.
+STICKER_VALUE_MIN_CENTS = 10_000
+STICKER_PREMIUM_MAX_PERCENT = 3.0
 
 
 async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> str | None:
@@ -22,9 +27,12 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
       2.  Volatility-aware macro floor  (price is 2+ sigma below 30d avg)  [Layer 3, #31]
       3.  Sticker Premium Percentage (SP%) logic
     """
-    # 1. Fetch the venue's baseline from Redis (or use pre-fetched copy)
+    # Baselines and sticker prices are the resale venue's (Skinport for a Waxpeer listing).
+    reference_venue = resale_venue_for(tick.venue)
+
+    # 1. Fetch the baseline from Redis (or use pre-fetched copy)
     if baseline is None:
-        baseline_raw = await redis_client.hget(edge_baselines_key(tick.venue), tick.market_hash_name)
+        baseline_raw = await redis_client.hget(edge_baselines_key(reference_venue), tick.market_hash_name)
         if not baseline_raw:
             return None
         baseline = json.loads(baseline_raw)
@@ -53,8 +61,8 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
         for sticker in tick.stickers:
             name = sticker.get("name")
             if name:
-                # Fetch the sticker's price on this venue from the Redis hash
-                price_str = await redis_client.hget(edge_sticker_prices_key(tick.venue), name)
+                # Fetch the sticker's price on the resale venue from the Redis hash
+                price_str = await redis_client.hget(edge_sticker_prices_key(reference_venue), name)
                 if price_str:
                     try:
                         total_sticker_value_cents += int(price_str)
@@ -62,7 +70,7 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
                         pass
 
     # 5. Sticker Premium Percentage (SP%) Logic
-    if total_sticker_value_cents > 10000:  # Minimum $100 sticker value required to care
+    if total_sticker_value_cents > STICKER_VALUE_MIN_CENTS:  # Minimum $100 sticker value required to care
         premium_cents = tick.price_cents - latest_price_cents
 
         # If the premium is negative, we are getting stickers for free below base price
@@ -71,7 +79,7 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
 
         sp_percentage = (premium_cents / total_sticker_value_cents) * 100
 
-        if sp_percentage <= 3.0:
+        if sp_percentage <= STICKER_PREMIUM_MAX_PERCENT:
             return REASON_STICKER_PREMIUM
 
     return None

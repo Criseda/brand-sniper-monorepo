@@ -38,15 +38,16 @@ services:
   # Set COMPUTE_NODE_IP in your .env or environment to point to the central
   # backend server (e.g. your Windows machine IP or cloud hostname).
   # ---------------------------------------------------------------------------
-  listener:
+  listener-skinport:
     build:
       context: ../../
       dockerfile: apps/listener/Dockerfile
-    container_name: sniper_listener
+    container_name: sniper_listener_skinport
     env_file:
       - ../../.env
       - ../../apps/listener/.env
     environment:
+      - LISTENER_VENUE=skinport
       - EDGE_REDIS_URL=redis://redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -56,6 +57,39 @@ services:
     # Shutdown drains the tick queue, then the batch-flush and anomaly pools, each bounded by
     # LISTENER_SHUTDOWN_GRACE_SECONDS (default 30 s), so the worst case is about 3x that value.
     # Docker's 10 s default would SIGKILL a drain in progress and drop the buffered feed events.
+    stop_grace_period: 120s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  # Waxpeer listings (#261). Same image, one process per venue (docs/waxpeer_feed.md).
+  listener-waxpeer:
+    build:
+      context: ../../
+      dockerfile: apps/listener/Dockerfile
+    container_name: sniper_listener_waxpeer
+    env_file:
+      - ../../.env
+      - ../../apps/listener/.env
+    environment:
+      - LISTENER_VENUE=waxpeer
+      - EDGE_REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - sniper_edge_network
+    restart: unless-stopped
     stop_grace_period: 120s
     logging: *default-logging
     deploy:

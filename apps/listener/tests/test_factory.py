@@ -16,7 +16,7 @@ def test_get_scraper_returns_singleton_instance():
 
     assert first is second
     assert isinstance(first, SkinportScraper)
-    assert first.platform_name == "skinport"
+    assert first.venue == "skinport"
 
 
 def test_get_scraper_is_case_insensitive():
@@ -26,6 +26,6 @@ def test_get_scraper_is_case_insensitive():
     assert first is second
 
 
-def test_get_scraper_unknown_platform_raises():
-    with pytest.raises(ValueError, match="Unsupported trading platform driver requested: 'dmarket'"):
+def test_get_scraper_unknown_venue_raises():
+    with pytest.raises(ValueError, match="Unsupported venue requested: 'dmarket'"):
         ScraperFactory.get_scraper("dmarket")
