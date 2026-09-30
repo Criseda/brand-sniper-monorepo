@@ -271,7 +271,8 @@ edge `.env` files together and recreating their containers.
 ### Bulk-ingestion recovery
 
 The listener writes each outbound batch to the Edge Redis pending stream before
-clearing its in-memory buffer. Successful requests are removed from the stream;
+clearing its in-memory buffer. Each venue's listener has its own streams:
+`listener:ingest:<venue>:pending`, `:dead-letter` and `:malformed`. Successful requests are removed from the stream;
 permanent errors and exhausted retries are moved to a dead-letter stream. Pending
 batches are rescheduled automatically when the listener starts.
 
@@ -279,18 +280,22 @@ To replay up to 100 dead-letter batches after correcting the underlying error:
 
 ```bash
 cd apps/listener
-uv run python replay_batches.py --limit 100
+uv run python replay_batches.py --limit 100 --venue skinport
 ```
 
 The limit applies to attempted batches. The command exits non-zero if any
 attempt fails, making it safe to use from operational automation. Malformed
-stream records are isolated in `listener:ingest:malformed` so that one poison
+stream records are isolated in the venue's `:malformed` stream so that one poison
 record cannot block recovery of valid pending or dead-letter batches.
 
 Each venue's listener has its own streams, because each recovers every pending
-batch of its streams when it starts. Skinport keeps the names above. The Waxpeer
-listener uses `listener:ingest:waxpeer:pending`, `:dead-letter` and `:malformed`;
-replay its dead letters with `uv run python replay_batches.py --venue waxpeer`.
+batch of its streams when it starts. Before #261 the Skinport listener used
+`listener:ingest:pending`, `listener:ingest:dead-letter` and `listener:ingest:malformed`.
+When it starts, and before it recovers anything, it moves whatever is left there to
+its `listener:ingest:skinport:*` streams: renamed as is when the new stream does not
+exist yet, otherwise entry by entry in transactions, so nothing is lost. It logs
+`[BATCH FLUSH] Moved N batch stream entries` when it found any. The replay command
+does the same before it reads Skinport dead letters.
 
 Batch IDs make replays idempotent at the backend. Reusing an ID with different
 content returns HTTP 409. The stream uses the existing volatile Edge Redis

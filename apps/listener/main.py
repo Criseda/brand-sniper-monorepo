@@ -13,7 +13,7 @@ from shared_utils import setup_service_environment
 setup_service_environment(__file__)
 
 from baseline_loader import BaselineState, baselines_url, keep_baselines_loaded
-from batch_delivery import RedisBatchStore, StoredBatch, deliver_stored_batch
+from batch_delivery import LEGACY_STREAM_VENUE, RedisBatchStore, StoredBatch, deliver_stored_batch
 from detection import (
     DedupCache,
     initialise_anomaly_counters,
@@ -409,6 +409,9 @@ async def process_live_telemetry_stream(venue: str) -> None:
                 shutdown_timeout=SHUTDOWN_GRACE_SECONDS,
             ) as batch_pool,
         ):
+            if scraper.venue == LEGACY_STREAM_VENUE:
+                # Before recovery, so batches still pending under the pre-#261 stream names are delivered too.
+                await batch_store.adopt_legacy_streams()
             await recover_pending_batches(batch_store, batch_pool)
             # Before any tick is windowed, so no window is written under both key schemes.
             migrated_windows = await migrate_legacy_price_windows(baseline_cache)

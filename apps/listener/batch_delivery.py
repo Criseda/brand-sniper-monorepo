@@ -3,7 +3,7 @@ import json
 import random
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import aiohttp
@@ -19,8 +19,14 @@ from shared_utils import get_logger
 
 logger = get_logger("listener.batch_delivery")
 
-# The venue whose listener uses the original, unprefixed batch stream names (see RedisBatchStore.for_venue).
+# Before #261 there was one listener, Skinport's, and its batch streams had no venue in their names. Its
+# listener moves them to its venue streams when it starts (RedisBatchStore.adopt_legacy_streams).
 LEGACY_STREAM_VENUE = "skinport"
+LEGACY_PENDING_KEY = "listener:ingest:pending"
+LEGACY_DEAD_LETTER_KEY = "listener:ingest:dead-letter"
+LEGACY_MALFORMED_KEY = "listener:ingest:malformed"
+# Entries moved per XRANGE page when a legacy stream has to be merged into an existing venue stream.
+LEGACY_MOVE_PAGE_SIZE = 100
 
 SessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
 
@@ -91,7 +97,7 @@ class RedisBatchStore:
         *,
         pending_key: str,
         dead_letter_key: str,
-        malformed_key: str = "listener:ingest:malformed",
+        malformed_key: str = LEGACY_MALFORMED_KEY,
     ):
         self.redis = redis
         self.pending_key = pending_key
@@ -104,9 +110,9 @@ class RedisBatchStore:
         redis_url: str,
         *,
         password: str | None,
-        pending_key: str = "listener:ingest:pending",
-        dead_letter_key: str = "listener:ingest:dead-letter",
-        malformed_key: str = "listener:ingest:malformed",
+        pending_key: str = LEGACY_PENDING_KEY,
+        dead_letter_key: str = LEGACY_DEAD_LETTER_KEY,
+        malformed_key: str = LEGACY_MALFORMED_KEY,
     ) -> "RedisBatchStore":
         redis = Redis.from_url(redis_url, username="default", password=password, decode_responses=True)
         return cls(
@@ -119,14 +125,12 @@ class RedisBatchStore:
     @classmethod
     def for_venue(cls, redis_url: str, *, password: str | None, venue: str) -> "RedisBatchStore":
         """
-        The batch streams of one venue's listener.
+        The batch streams of one venue's listener: `listener:ingest:<venue>:pending`, `:dead-letter` and
+        `:malformed`.
 
         Each venue's listener runs as its own process on the shared edge Redis, and recovers every pending
-        batch of its streams when it starts, so each venue needs its own streams. Skinport keeps the stream
-        names from before there was a second venue, so batches pending across the upgrade are not stranded.
+        batch of its streams when it starts, so each venue needs its own streams.
         """
-        if venue == LEGACY_STREAM_VENUE:
-            return cls.from_url(redis_url, password=password)
         prefix = f"listener:ingest:{venue}"
         return cls.from_url(
             redis_url,
@@ -135,6 +139,46 @@ class RedisBatchStore:
             dead_letter_key=f"{prefix}:dead-letter",
             malformed_key=f"{prefix}:malformed",
         )
+
+    async def adopt_legacy_streams(self) -> int:
+        """
+        Moves every entry of the pre-#261 streams (`listener:ingest:pending`, ...) into this store's streams.
+        Only the Skinport listener calls it; those streams were Skinport's. Returns how many entries moved.
+
+        When this store's stream does not exist yet, the legacy stream is renamed onto it, which keeps every
+        entry and its ID in one atomic step. When both exist, each legacy entry is appended to this store's
+        stream and deleted from the legacy one in a single transaction, so no entry is ever lost; its stream
+        ID changes, its batch ID does not, and the backend treats a redelivered batch ID as already recorded.
+        """
+        moved = 0
+        pairs = (
+            (LEGACY_PENDING_KEY, self.pending_key),
+            (LEGACY_DEAD_LETTER_KEY, self.dead_letter_key),
+            (LEGACY_MALFORMED_KEY, self.malformed_key),
+        )
+        for legacy_key, key in pairs:
+            if legacy_key == key or not await self.redis.exists(legacy_key):
+                continue
+            legacy_length = await self.redis.xlen(legacy_key)
+            if await self.redis.renamenx(legacy_key, key):
+                moved += legacy_length
+                continue
+            while entries := await self.redis.xrange(legacy_key, min="-", max="+", count=LEGACY_MOVE_PAGE_SIZE):
+                for record_id, fields in entries:
+                    # redis-py types entries as optional; an XRANGE reply always has both.
+                    async with self.redis.pipeline(transaction=True) as pipeline:
+                        pipeline.xadd(key, cast(dict[Any, Any], fields))
+                        pipeline.xdel(legacy_key, cast(str, record_id))
+                        await pipeline.execute()
+                    moved += 1
+            # XDEL leaves an empty stream behind; remove it so the next start finds nothing to move.
+            await self.redis.delete(legacy_key)
+        if moved:
+            logger.warning(
+                "[BATCH FLUSH] Moved %d batch stream entries from the pre-#261 streams to %s.", moved, self.pending_key
+            )
+        await self._refresh_pending_metric()
+        return moved
 
     async def __aenter__(self) -> "RedisBatchStore":
         await self.redis.ping()

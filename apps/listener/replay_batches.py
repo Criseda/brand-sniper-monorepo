@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 
 import aiohttp
-from batch_delivery import RedisBatchStore, send_batch_with_retry
+from batch_delivery import LEGACY_STREAM_VENUE, RedisBatchStore, send_batch_with_retry
 from shared_utils import backend_api_headers, get_logger, setup_service_environment
 
 # Load root .env (shared) first, then listener-specific overrides.
@@ -54,6 +54,10 @@ async def replay(limit: int, venue: str = "skinport") -> ReplayResult:
 
         async def get_session() -> aiohttp.ClientSession:
             return session
+
+        if venue == LEGACY_STREAM_VENUE:
+            # Dead letters written before #261 are still under the old stream names until the listener starts.
+            await store.adopt_legacy_streams()
 
         async for batch in store.iter_dead_letters():
             attempted += 1

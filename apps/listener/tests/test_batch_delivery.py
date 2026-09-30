@@ -53,6 +53,18 @@ class FakeRedis:
             raise self.xlen_error
         return len(self.streams.get(key, []))
 
+    async def exists(self, key):
+        return 1 if key in self.streams else 0
+
+    async def renamenx(self, source, destination):
+        if destination in self.streams:
+            return False
+        self.streams[destination] = self.streams.pop(source)
+        return True
+
+    async def delete(self, key):
+        return 1 if self.streams.pop(key, None) is not None else 0
+
     def pipeline(self, *, transaction):
         return FakePipeline(self)
 
@@ -507,14 +519,76 @@ def test_each_venue_has_its_own_batch_streams():
     skinport = RedisBatchStore.for_venue("redis://edge:6380", password="secret", venue="skinport")
     waxpeer = RedisBatchStore.for_venue("redis://edge:6380", password="secret", venue="waxpeer")
 
-    # Skinport keeps the stream names from before a second venue existed.
     assert (skinport.pending_key, skinport.dead_letter_key, skinport.malformed_key) == (
-        "listener:ingest:pending",
-        "listener:ingest:dead-letter",
-        "listener:ingest:malformed",
+        "listener:ingest:skinport:pending",
+        "listener:ingest:skinport:dead-letter",
+        "listener:ingest:skinport:malformed",
     )
     assert (waxpeer.pending_key, waxpeer.dead_letter_key, waxpeer.malformed_key) == (
         "listener:ingest:waxpeer:pending",
         "listener:ingest:waxpeer:dead-letter",
         "listener:ingest:waxpeer:malformed",
     )
+
+
+def _distinct_batch(number: int) -> StoredBatch:
+    return StoredBatch(
+        record_id="1-0",
+        batch_id=f"a3634aa6-364e-4090-958b-{number:012d}",
+        source="skinport",
+        ticks=[{"market_hash_name": "Test Item", "price_cents": 1000 + number, "timestamp": 1700000000}],
+    )
+
+
+def _skinport_store(redis: FakeRedis) -> RedisBatchStore:
+    return RedisBatchStore(
+        redis,
+        pending_key="listener:ingest:skinport:pending",
+        dead_letter_key="listener:ingest:skinport:dead-letter",
+        malformed_key="listener:ingest:skinport:malformed",
+    )
+
+
+@pytest.mark.asyncio
+async def test_legacy_streams_are_renamed_when_the_venue_streams_are_new():
+    redis = FakeRedis()
+    await redis.xadd("listener:ingest:pending", {"payload": _distinct_batch(1).serialize()})
+    await redis.xadd("listener:ingest:dead-letter", {"payload": _distinct_batch(2).serialize(), "last_error": "x"})
+    legacy_pending = list(redis.streams["listener:ingest:pending"])
+
+    assert await _skinport_store(redis).adopt_legacy_streams() == 2
+
+    assert "listener:ingest:pending" not in redis.streams
+    assert "listener:ingest:dead-letter" not in redis.streams
+    # Renamed as is: same entries, same stream IDs.
+    assert redis.streams["listener:ingest:skinport:pending"] == legacy_pending
+    assert len(redis.streams["listener:ingest:skinport:dead-letter"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_entries_are_merged_into_existing_venue_streams():
+    redis = FakeRedis()
+    newer = _distinct_batch(0)
+    await redis.xadd("listener:ingest:skinport:pending", {"payload": newer.serialize()})
+    legacy_payloads = []
+    for number in range(1, 4):
+        payload = _distinct_batch(number).serialize()
+        legacy_payloads.append(payload)
+        await redis.xadd("listener:ingest:pending", {"payload": payload})
+
+    assert await _skinport_store(redis).adopt_legacy_streams() == 3
+
+    assert "listener:ingest:pending" not in redis.streams
+    payloads = [fields["payload"] for _, fields in redis.streams["listener:ingest:skinport:pending"]]
+    assert payloads == [newer.serialize(), *legacy_payloads]
+
+
+@pytest.mark.asyncio
+async def test_nothing_to_adopt_on_later_starts():
+    redis = FakeRedis()
+    await redis.xadd("listener:ingest:pending", {"payload": _distinct_batch(1).serialize()})
+    store = _skinport_store(redis)
+
+    assert await store.adopt_legacy_streams() == 1
+    assert await store.adopt_legacy_streams() == 0
+    assert list(redis.streams) == ["listener:ingest:skinport:pending"]
