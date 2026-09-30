@@ -204,9 +204,10 @@ async def get_or_create_item_id(session: AsyncSession, name: str, pending_items:
 
 def _bulk_payload_digest(payload: BulkIngestionPayload) -> str:
     # Defaults are excluded so a batch recorded before the listing-level fields (#232) existed
-    # still hashes identically on replay.
+    # still hashes identically on replay. The venue is hashed under its original key, "source", so a batch
+    # recorded before the rename to `venue` still matches its ledger entry when it is delivered again.
     canonical_payload: dict = {
-        "source": payload.source,
+        "source": payload.venue,
         "ticks": [tick.model_dump(mode="json", exclude_defaults=True) for tick in payload.ticks],
     }
     if payload.feed_events:
@@ -224,7 +225,7 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
     digest = _bulk_payload_digest(payload)
     values = {
         "batch_id": batch_id,
-        "source": payload.source,
+        "venue": payload.venue,
         "record_count": len(payload.ticks) + len(payload.feed_events),
         "payload_sha256": digest,
         "received_at": utc_now_naive(),
@@ -310,7 +311,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
         "Bulk Ingestion Intercepted: %d elements and %d feed events from '%s'",
         total_ticks,
         total_feed_events,
-        payload.source,
+        payload.venue,
     )
 
     if total_ticks == 0 and total_feed_events == 0:
@@ -335,7 +336,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
                 {
                     "item_id": item_id,
                     "price_cents": tick.price_cents,
-                    "marketplace_source": payload.source,
+                    "venue": payload.venue,
                     "inserted_at": utc_fromtimestamp_naive(tick.timestamp),
                     "event_type": tick.event_type,
                     "listing_id": tick.listing_id,
@@ -351,7 +352,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
 
         feed_event_rows = [
             {
-                "source": payload.source,
+                "venue": payload.venue,
                 "event_type": event.event_type,
                 "received_at": utc_fromtimestamp_naive(event.received_at_ms / 1000),
                 "payload": event.payload,

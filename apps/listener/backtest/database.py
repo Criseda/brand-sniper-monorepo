@@ -31,7 +31,7 @@ _FEED_EVENTS_QUERY = text(
     FROM (
         SELECT DISTINCT ON (event_type, received_at, md5(payload::text)) id, received_at, payload
         FROM feed_events
-        WHERE source = :source AND received_at >= :start AND received_at < :end
+        WHERE venue = :venue AND received_at >= :start AND received_at < :end
         ORDER BY event_type, received_at, md5(payload::text), id
     ) AS unique_events
     ORDER BY received_at, id
@@ -44,7 +44,7 @@ _SNAPSHOTS_QUERY = text(
     SELECT tick.inserted_at, item.market_hash_name, tick.price_cents
     FROM live_market_ticks AS tick
     JOIN market_items AS item ON item.id = tick.item_id
-    WHERE tick.marketplace_source = :source
+    WHERE tick.venue = :venue
       AND tick.event_type IS NULL
       AND tick.inserted_at >= :start
       AND tick.inserted_at < :end
@@ -95,21 +95,21 @@ def _default_engine() -> AsyncEngine:
     return async_engine
 
 
-async def stream_feed_events(start: datetime, end: datetime, source: str, engine: AsyncEngine) -> AsyncIterator[RecordedEvent]:
+async def stream_feed_events(start: datetime, end: datetime, venue: str, engine: AsyncEngine) -> AsyncIterator[RecordedEvent]:
     async with engine.connect() as connection:
         result = await connection.stream(
             _FEED_EVENTS_QUERY.execution_options(yield_per=STREAM_CHUNK_ROWS),
-            {"source": source, "start": start, "end": end},
+            {"venue": venue, "start": start, "end": end},
         )
         async for received_at, payload in result:
             yield RecordedFeedEvent(received_at_ms=_epoch_ms(received_at), payload=payload)
 
 
-async def stream_snapshots(start: datetime, end: datetime, source: str, engine: AsyncEngine) -> AsyncIterator[RecordedEvent]:
+async def stream_snapshots(start: datetime, end: datetime, venue: str, engine: AsyncEngine) -> AsyncIterator[RecordedEvent]:
     async with engine.connect() as connection:
         result = await connection.stream(
             _SNAPSHOTS_QUERY.execution_options(yield_per=STREAM_CHUNK_ROWS),
-            {"source": source, "start": start, "end": end},
+            {"venue": venue, "start": start, "end": end},
         )
         clock = PollClock()
         async for inserted_at, market_hash_name, price_cents in result:
@@ -124,14 +124,14 @@ async def stream_recorded_events(
     start: datetime,
     end: datetime,
     *,
-    source: str = "skinport",
+    venue: str = "skinport",
     engine: AsyncEngine | None = None,
 ) -> AsyncIterator[RecordedEvent]:
     """Feed events and REST snapshots in [start, end) (naive UTC), merged into replay order."""
     engine = engine or _default_engine()
     async for event in merge_ordered(
-        stream_feed_events(start, end, source, engine),
-        stream_snapshots(start, end, source, engine),
+        stream_feed_events(start, end, venue, engine),
+        stream_snapshots(start, end, venue, engine),
     ):
         yield event
 

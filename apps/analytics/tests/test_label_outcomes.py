@@ -287,7 +287,7 @@ async def test_fetch_feed_sales_filters_by_names_and_parses(monkeypatch):
     assert sales == [FeedSale("1", NAME, NAME, 500, T0)]
     stmt, params = engine.conn.executed[0]
     assert "ANY(:names)" in str(stmt)
-    assert params == {"source": "skinport", "event_type": "sold", "start": T0, "end": T0 + DAY, "names": [NAME]}
+    assert params == {"venue": "skinport", "event_type": "sold", "start": T0, "end": T0 + DAY, "names": [NAME]}
 
 
 @pytest.mark.asyncio
@@ -311,7 +311,7 @@ async def test_save_outcomes_upserts_keeping_the_earliest_sighting(monkeypatch):
 
     stmt, _ = engine.conn.executed[0]
     sql = str(stmt.compile(dialect=postgresql.dialect()))
-    assert "ON CONFLICT (source, listing_id, label_version) DO UPDATE" in sql
+    assert "ON CONFLICT (venue, listing_id, label_version) DO UPDATE" in sql
     assert "WHERE listing_outcomes.listed_at >= excluded.listed_at" in sql
     assert "resale_net_margin_cents = excluded.resale_net_margin_cents" in sql
 
@@ -342,7 +342,7 @@ async def test_flow_labels_only_matured_listings_and_is_rerunnable(monkeypatch):
 
     async def fake_save(rows):
         for row in rows:
-            store[(row["source"], row["listing_id"], row["label_version"])] = row
+            store[(row["venue"], row["listing_id"], row["label_version"])] = row
 
     monkeypatch.setattr(label_outcomes, "fetch_feed_sales", fake_fetch)
     monkeypatch.setattr(label_outcomes, "save_outcomes", fake_save)

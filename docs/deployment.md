@@ -365,6 +365,13 @@ The same goes for new columns. `create_all` never adds a column to an existing t
 writes `simulated_trades.venue` (#261) fails every paper trade until migration `a7d3e5c19b62` has run. That
 migration marks every earlier trade as bought on Skinport.
 
+Migration `b1e6f0a8c4d3` renames every venue column to `venue`: `live_market_ticks.marketplace_source` and
+the `source` columns of `feed_events`, `listing_outcomes` and `ingestion_batches`. It is a rename only, instant
+even on the tick table. Old and new code cannot share the database across it, so deploy it in this order: stop
+both listeners with their full grace time (their batches wait in Redis), stop the backend, run the migration,
+then start the new images. The new backend still accepts batches that name the venue `source`, so batches a
+listener stored before the upgrade are delivered as before.
+
 ## Data Retention
 
 | Table | Policy | Status |

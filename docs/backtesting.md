@@ -125,7 +125,7 @@ JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits. Fo
 A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `baseline_sha256` and
 `baseline_as_of` in the header instead, and no `baseline` rows.
 
-Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`venue` = `source`,
+Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`venue`,
 `listing_id`). REST snapshots are logged only when approved; live can trade on them too.
 
 `zscore_dre` reasons: `insufficient_history`, `below_threshold`, `dre_rejected`, and on approval the DRE

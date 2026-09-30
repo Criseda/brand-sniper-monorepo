@@ -86,9 +86,9 @@ async def _seed_knife(maker) -> None:
                 median_price_cents=100000,
                 volume_sold=12,
             ),
-            LiveMarketTick(item_id=2, price_cents=70000, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
-            LiveMarketTick(item_id=2, price_cents=70000, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
-            LiveMarketTick(item_id=2, price_cents=50000, marketplace_source="steam", inserted_at=datetime(2025, 1, 1)),
+            LiveMarketTick(item_id=2, price_cents=70000, venue="skinport", inserted_at=datetime(2025, 1, 1)),
+            LiveMarketTick(item_id=2, price_cents=70000, venue="skinport", inserted_at=datetime(2025, 1, 1)),
+            LiveMarketTick(item_id=2, price_cents=50000, venue="steam", inserted_at=datetime(2025, 1, 1)),
             _macro_baseline(item_id=2, latest_price_cents=70000, avg_volume_30d=2.5),
         ],
     )
@@ -300,8 +300,8 @@ class TestGetItemMarketContext:
             maker,
             [
                 MarketItem(id=3, market_hash_name="AK-47 | Redline (Field-Tested)", item_type="Rifle"),
-                LiveMarketTick(item_id=3, price_cents=6500, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
-                LiveMarketTick(item_id=3, price_cents=6500, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=3, price_cents=6500, venue="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=3, price_cents=6500, venue="skinport", inserted_at=datetime(2025, 1, 1)),
             ],
         )
         mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
@@ -490,8 +490,8 @@ class TestGetStickerPriceCents:
             maker,
             [
                 MarketItem(id=11, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
-                LiveMarketTick(item_id=11, price_cents=9999, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
-                LiveMarketTick(item_id=11, price_cents=9999, marketplace_source="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=11, price_cents=9999, venue="skinport", inserted_at=datetime(2025, 1, 1)),
+                LiveMarketTick(item_id=11, price_cents=9999, venue="skinport", inserted_at=datetime(2025, 1, 1)),
             ],
         )
         mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})

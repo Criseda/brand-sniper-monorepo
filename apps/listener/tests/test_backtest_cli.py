@@ -72,8 +72,8 @@ def test_parse_utc_converts_offsets_to_naive_utc():
 def test_database_run_warms_up_before_the_start_and_warns_on_newer_baselines(monkeypatch, tmp_path, caplog):
     requested: dict = {}
 
-    async def fake_stream(start, end, *, source):
-        requested.update(start=start, end=end, source=source)
+    async def fake_stream(start, end, *, venue):
+        requested.update(start=start, end=end, venue=venue)
         for event in load_fixture(FIXTURE_DIR / "events.jsonl"):
             yield event
 
@@ -89,7 +89,7 @@ def test_database_run_warms_up_before_the_start_and_warns_on_newer_baselines(mon
     assert requested == {
         "start": datetime(2026, 9, 24, 22, 0),
         "end": datetime(2026, 9, 24, 23, 40),
-        "source": "skinport",
+        "venue": "skinport",
         "schedule": (datetime(2026, 9, 24, 22, 0), datetime(2026, 9, 24, 23, 40), "skinport"),
     }
     header = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
@@ -110,7 +110,7 @@ def test_database_run_without_any_build_stops_with_a_hint(monkeypatch, tmp_path)
 
 
 def test_database_run_can_use_a_fixed_baseline_file(monkeypatch, tmp_path):
-    async def fake_stream(start, end, *, source):
+    async def fake_stream(start, end, *, venue):
         for event in load_fixture(FIXTURE_DIR / "events.jsonl"):
             yield event
 
@@ -200,7 +200,7 @@ def test_build_fixture_keeps_chosen_items_and_their_sticker_prices():
 def test_export_writes_a_fixture_that_replays(monkeypatch, tmp_path):
     source_events = load_fixture(FIXTURE_DIR / "events.jsonl")
 
-    async def fake_stream(start, end, *, source):
+    async def fake_stream(start, end, *, venue):
         for event in source_events:
             yield event
 

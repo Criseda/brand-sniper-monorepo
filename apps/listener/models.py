@@ -101,7 +101,7 @@ class MarketTick(BaseModel):
     def to_batch_record(self) -> dict[str, Any]:
         """Serialize for the durable bulk-ingest batch; listing fields are omitted when absent.
 
-        The venue is not repeated per record: the batch carries it once as its `source`."""
+        The venue is not repeated per record: the batch carries it once as its `venue`."""
         record: dict[str, Any] = {
             "market_hash_name": self.market_hash_name,
             "price_cents": self.price_cents,

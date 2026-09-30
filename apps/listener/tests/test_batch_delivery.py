@@ -126,7 +126,7 @@ def stored_batch() -> StoredBatch:
     return StoredBatch(
         record_id="1-0",
         batch_id="a3634aa6-364e-4090-958b-1b94932429d5",
-        source="skinport",
+        venue="skinport",
         ticks=[{"market_hash_name": "Test Item", "price_cents": 1000, "timestamp": 1700000000}],
     )
 
@@ -375,7 +375,11 @@ def test_pre_feed_event_batches_keep_their_wire_format(stored_batch):
 
     assert batch.feed_events == []
     assert "feed_events" not in batch.payload
-    assert json.loads(batch.serialize()) == json.loads(legacy)
+    # Batches stored before #261 name the venue `source`; they are read, and sent on as `venue`. The backend
+    # hashes both the same way, so a redelivery still matches its ledger entry.
+    assert batch.venue == "skinport"
+    expected = {"batch_id": stored_batch.batch_id, "venue": "skinport", "ticks": stored_batch.ticks}
+    assert json.loads(batch.serialize()) == expected
 
 
 @pytest.mark.asyncio
@@ -428,7 +432,7 @@ async def test_buffer_ownership_transfers_before_scheduling_can_be_cancelled(mon
 
     flush_task = asyncio.create_task(
         listener_main.flush_batch_buffer(
-            stored_batch.source,
+            stored_batch.venue,
             buffer,
             batch_id=stored_batch.batch_id,
             store=store,
@@ -441,7 +445,7 @@ async def test_buffer_ownership_transfers_before_scheduling_can_be_cancelled(mon
     assert buffer == []
     assert feed_event_buffer == []
     store.add.assert_awaited_once_with(
-        stored_batch.source,
+        stored_batch.venue,
         stored_batch.ticks,
         batch_id=stored_batch.batch_id,
         feed_events=feed_events,
@@ -470,7 +474,7 @@ async def test_stream_iteration_skips_malformed_entries_and_paginates(stored_bat
         StoredBatch(
             record_id="2-0",
             batch_id=stored_batch.batch_id,
-            source=stored_batch.source,
+            venue=stored_batch.venue,
             ticks=stored_batch.ticks,
         )
     ]
@@ -505,7 +509,7 @@ async def test_stream_iteration_quarantines_poison_record_and_continues(stored_b
         StoredBatch(
             record_id="3-0",
             batch_id=stored_batch.batch_id,
-            source=stored_batch.source,
+            venue=stored_batch.venue,
             ticks=stored_batch.ticks,
         )
     ]

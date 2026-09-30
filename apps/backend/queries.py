@@ -233,7 +233,7 @@ async def _fetch_skinport_baseline(session: AsyncSession, market_hash_name: str,
     try:
         stmt = select(func.avg(LiveMarketTick.price_cents)).where(
             cast(LiveMarketTick.item_id, Integer) == item_id,
-            cast(LiveMarketTick.marketplace_source, String) == "skinport",
+            cast(LiveMarketTick.venue, String) == "skinport",
         )
         res = await _exec_result(session, stmt)
         raw = res.scalar()

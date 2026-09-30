@@ -211,7 +211,7 @@ def test_ingest_trade_invalid_payload_returns_422(client, payload):
 
 def test_ingest_bulk_success(client):
     payload = {
-        "source": "test_source",
+        "venue": "test_source",
         "ticks": [
             {"market_hash_name": "Item One (Factory New)", "price_cents": 1500, "timestamp": 1700000000},
             {"market_hash_name": "Item Two (Minimal Wear)", "price_cents": 2500, "timestamp": 1700000001},
@@ -228,7 +228,7 @@ def test_ingest_bulk_replay_is_idempotent(client):
     batch_id = str(uuid4())
     payload = {
         "batch_id": batch_id,
-        "source": "test_source",
+        "venue": "test_source",
         "ticks": [{"market_hash_name": "Replay Item", "price_cents": 1500, "timestamp": 1700000000}],
     }
 
@@ -245,7 +245,7 @@ def test_ingest_bulk_rejects_reused_batch_id_with_different_payload(client):
     batch_id = str(uuid4())
     payload = {
         "batch_id": batch_id,
-        "source": "test_source",
+        "venue": "test_source",
         "ticks": [{"market_hash_name": "Conflict Item", "price_cents": 1500, "timestamp": 1700000000}],
     }
     changed_payload = {
@@ -263,7 +263,7 @@ def test_ingest_bulk_rejects_reused_batch_id_with_different_payload(client):
 def _listing_payload(batch_id: str) -> dict:
     return {
         "batch_id": batch_id,
-        "source": "skinport",
+        "venue": "skinport",
         "ticks": [
             {
                 "market_hash_name": "Listing Level Item (Field-Tested)",
@@ -309,7 +309,7 @@ def test_ingest_bulk_persists_listing_fields_and_raw_feed_events(client):
     assert sold.listing_url == "https://skinport.com/item/listing-level-item-field-tested"
     assert (snapshot.event_type, snapshot.listing_id, snapshot.stickers) == (None, None, None)
 
-    events = asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.source == "skinport")))
+    events = asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.venue == "skinport")))
     assert len(events) == 1
     assert events[0].event_type == "sold"
     assert events[0].payload == {"eventType": "sold", "sales": [{"id": 0}]}
@@ -317,13 +317,13 @@ def test_ingest_bulk_persists_listing_fields_and_raw_feed_events(client):
 
     replay = client.post("/api/v1/ingest/bulk", json=_listing_payload(batch_id))
     assert replay.json() == {"status": "DUPLICATE", "records_processed": 0}
-    assert len(asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.source == "skinport")))) == 1
+    assert len(asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.venue == "skinport")))) == 1
 
 
 def test_ingest_bulk_accepts_feed_event_only_batch(client):
     payload = {
         "batch_id": str(uuid4()),
-        "source": "feed-only",
+        "venue": "feed-only",
         "ticks": [],
         "feed_events": [{"event_type": "unknown", "received_at_ms": 1790000000000, "payload": {}}],
     }
@@ -345,7 +345,7 @@ def test_ingest_bulk_accepts_feed_event_only_batch(client):
 def test_ingest_bulk_rejects_invalid_listing_fields(client, tick_override):
     tick = {"market_hash_name": "Item", "price_cents": 100, "timestamp": 1700000000, **tick_override}
 
-    response = client.post("/api/v1/ingest/bulk", json={"source": "skinport", "ticks": [tick]})
+    response = client.post("/api/v1/ingest/bulk", json={"venue": "skinport", "ticks": [tick]})
 
     assert response.status_code == 422
 
@@ -363,8 +363,11 @@ def test_bulk_digest_is_unchanged_for_pre_listing_batches():
     ).hexdigest()
 
     payload = BulkIngestionPayload.model_validate({"source": "skinport", "ticks": ticks})
+    renamed = BulkIngestionPayload.model_validate({"venue": "skinport", "ticks": ticks})
 
     assert backend_main._bulk_payload_digest(payload) == legacy_digest
+    # Renaming the field to `venue` did not change the digest of the same batch.
+    assert backend_main._bulk_payload_digest(renamed) == legacy_digest
 
 
 @pytest.mark.asyncio
@@ -403,7 +406,7 @@ async def test_concurrent_bulk_requests_keep_new_item_ids_local_until_commit(mon
         BulkIngestionPayload.model_validate(
             {
                 "batch_id": str(uuid4()),
-                "source": "skinport",
+                "venue": "skinport",
                 "ticks": [{"market_hash_name": market_hash_name, "price_cents": price, "timestamp": 1700000000}],
             }
         )
@@ -428,7 +431,7 @@ async def test_concurrent_bulk_requests_keep_new_item_ids_local_until_commit(mon
 
 
 def test_ingest_bulk_empty_ticks(client):
-    payload = {"source": "test_source", "ticks": []}
+    payload = {"venue": "test_source", "ticks": []}
     response = client.post("/api/v1/ingest/bulk", json=payload)
     assert response.status_code == 201
     assert response.json()["status"] == "SKIPPED"
@@ -485,7 +488,7 @@ def test_bulk_ingestion_database_failure_returns_503(client, monkeypatch):
     response = client.post(
         "/api/v1/ingest/bulk",
         json={
-            "source": "skinport",
+            "venue": "skinport",
             "ticks": [{"market_hash_name": "Item", "price_cents": 100, "timestamp": 1700000000}],
         },
     )
@@ -546,7 +549,7 @@ def test_search_trends_unexpected_failure_returns_safe_500(client, monkeypatch):
     ("path", "payload"),
     [
         pytest.param("/api/v1/market/search-trends", {"query": "   "}, id="blank_query"),
-        pytest.param("/api/v1/ingest/bulk", {"source": "  ", "ticks": []}, id="blank_source"),
+        pytest.param("/api/v1/ingest/bulk", {"venue": "  ", "ticks": []}, id="blank_venue"),
     ],
 )
 def test_blank_text_fields_return_problem_422(client, path, payload):
@@ -680,3 +683,21 @@ def test_latest_baselines_requires_the_api_key(client):
     response = client.get("/api/v1/baselines/skinport/latest", headers={BACKEND_API_KEY_HEADER: "wrong-key"})
 
     assert response.status_code == 401
+
+
+def test_bulk_ingest_still_accepts_the_pre_rename_source_field(client):
+    """A listener that is not upgraded yet, or a batch it left in Redis, still sends `source`."""
+    from shared_utils.models import FeedEvent
+    from sqlmodel import select
+
+    response = client.post(
+        "/api/v1/ingest/bulk",
+        json={
+            "source": "legacy-venue",
+            "ticks": [],
+            "feed_events": [{"event_type": "sold", "received_at_ms": 1_790_000_000_000, "payload": {"a": 1}}],
+        },
+    )
+
+    assert response.status_code == 201
+    assert len(asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.venue == "legacy-venue")))) == 1

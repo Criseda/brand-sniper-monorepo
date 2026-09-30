@@ -43,7 +43,7 @@ from shared_utils.db_connection import async_engine
 from shared_utils.models import ListingOutcome
 from sqlalchemy.dialects.postgresql import insert
 
-SOURCE = "skinport"
+VENUE = "skinport"
 LABEL_VERSION = "v1"
 _UPSERT_CHUNK_SIZE = 1000
 
@@ -55,7 +55,7 @@ class LabelConfig:
     version: str = LABEL_VERSION
     # Fees of the source venue, used for both sides: a label resells the listing on the venue it
     # was listed on, against that venue's comparable sales.
-    fees: VenueFees = field(default_factory=lambda: fees_for(SOURCE))
+    fees: VenueFees = field(default_factory=lambda: fees_for(VENUE))
     # Resale window is [listed_at + fees.hold_seconds, listed_at + horizon_seconds].
     horizon_seconds: int = 14 * 86_400
     # Fewer comparable sales than this in the resale window: neutral (insufficient evidence).
@@ -148,7 +148,7 @@ def label_listing(listing: FeedSale, sold: SoldIndex, config: LabelConfig) -> di
         listing_sold_within_s = int((own_sale.seen_at - listed_at).total_seconds())
 
     return {
-        "source": SOURCE,
+        "venue": VENUE,
         "listing_id": listing.listing_id,
         "label_version": config.version,
         "market_hash_name": listing.market_hash_name,
@@ -208,7 +208,7 @@ FROM feed_events AS fe
 CROSS JOIN LATERAL jsonb_array_elements(
     CASE WHEN jsonb_typeof(fe.payload->'sales') = 'array' THEN fe.payload->'sales' ELSE '[]'::jsonb END
 ) AS sale
-WHERE fe.source = :source
+WHERE fe.venue = :venue
   AND fe.event_type = :event_type
   AND fe.received_at >= :start
   AND fe.received_at < :end
@@ -220,7 +220,7 @@ _NAME_FILTER = "  AND sale->>'marketHashName' = ANY(:names)\n"
 async def fetch_feed_sales(event_type: str, start: datetime, end: datetime, names: list[str] | None = None) -> list[FeedSale]:
     """Sales of one feed event type received in [start, end), optionally limited to raw item names."""
     query = _SALES_QUERY + (_NAME_FILTER if names is not None else "") + "ORDER BY fe.received_at, fe.id"
-    params: dict[str, Any] = {"source": SOURCE, "event_type": event_type, "start": start, "end": end}
+    params: dict[str, Any] = {"venue": VENUE, "event_type": event_type, "start": start, "end": end}
     if names is not None:
         params["names"] = names
     async with async_engine.connect() as conn:
@@ -234,7 +234,7 @@ async def save_outcomes(rows: list[dict[str, Any]]) -> None:
     """Upserts labels. On conflict the earliest sighting of a listing wins, so runs over overlapping
     or out-of-order date ranges converge on the same row."""
     table = ListingOutcome.__table__  # type: ignore[attr-defined]
-    updatable = [name for name in rows[0] if name not in ("source", "listing_id", "label_version")] if rows else []
+    updatable = [name for name in rows[0] if name not in ("venue", "listing_id", "label_version")] if rows else []
     async with async_engine.begin() as conn:
         for chunk_start in range(0, len(rows), _UPSERT_CHUNK_SIZE):
             chunk = rows[chunk_start : chunk_start + _UPSERT_CHUNK_SIZE]
@@ -242,7 +242,7 @@ async def save_outcomes(rows: list[dict[str, Any]]) -> None:
             set_: dict[str, Any] = {name: stmt.excluded[name] for name in updatable}
             set_["labeled_at"] = utc_now_naive()
             stmt = stmt.on_conflict_do_update(
-                index_elements=["source", "listing_id", "label_version"],
+                index_elements=["venue", "listing_id", "label_version"],
                 set_=set_,
                 where=table.c.listed_at >= stmt.excluded.listed_at,
             )

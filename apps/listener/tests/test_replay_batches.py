@@ -50,7 +50,7 @@ def make_batch(record_id: str) -> StoredBatch:
     return StoredBatch(
         record_id=record_id,
         batch_id=f"00000000-0000-0000-0000-{int(record_id):012d}",
-        source="skinport",
+        venue="skinport",
         ticks=[{"market_hash_name": "Test Item", "price_cents": 1000, "timestamp": 1700000000}],
     )
 

@@ -142,10 +142,10 @@ Every event is counted in `listener_feed_events_filtered_total{event, outcome}`,
 
 - Recorded listings are `MarketTick`s with `venue = waxpeer`, kind `listed` and event type `listed`. They go
   through the same dedup, price window, Z-score and DRE path as Skinport listings, and into
-  `live_market_ticks` with `marketplace_source = waxpeer`.
+  `live_market_ticks` with `venue = waxpeer`.
 - Recorded removals are ticks with event type `removed`. They are stored but never touch the price window
   or the DRE.
-- The raw payloads of recorded events go into `feed_events` with `source = waxpeer` and
+- The raw payloads of recorded events go into `feed_events` with `venue = waxpeer` and
   `event_type = batch`, one row per 500 events or 10 seconds, whichever comes first. The payload is
   `{"venue": "waxpeer", "channel": "csgo", "events": [{"event", "received_at_ms", "data"}, ...]}`, where
   `data` is the payload exactly as received. Grouping them lets PostgreSQL compress the row. A listener that
