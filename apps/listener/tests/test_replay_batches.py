@@ -19,6 +19,10 @@ class FakeBatchStore:
     async def __aexit__(self, exc_type, exc, traceback):
         return None
 
+    async def adopt_legacy_streams(self):
+        self.adopted = True
+        return 0
+
     async def iter_dead_letters(self):
         for batch in self.batches:
             yield batch
@@ -64,6 +68,7 @@ async def test_replay_acknowledges_success_and_honors_limit(monkeypatch):
     monkeypatch.setattr(replay_batches, "send_batch_with_retry", send)
 
     result = await replay_batches.replay(limit=1)
+    assert store.adopted  # Skinport dead letters from before #261 are moved first
 
     assert result == ReplayResult(attempted=1, succeeded=1, failed=0)
     assert store.acknowledged == ["1"]
