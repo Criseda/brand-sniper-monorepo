@@ -1,7 +1,6 @@
 import asyncio
 import json
 import math
-import os
 import time
 from collections.abc import AsyncGenerator
 from datetime import UTC
@@ -13,7 +12,7 @@ from models import MAX_EVENT_TYPE_LENGTH, MAX_LISTING_URL_LENGTH, FeedEvent, Mar
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from scrapers.base import BaseScraper
+from scrapers.base import BaseScraper, edge_redis_from_env, optional_non_negative_int, optional_wear
 from shared_utils import build_versioned_name, get_logger
 
 logger = get_logger("listener.skinport")
@@ -48,16 +47,6 @@ async def _sleep(seconds: float) -> None:
 def _now() -> float:
     """Testable seam over the wall clock; the next request time is shared across listener processes."""
     return time.time()
-
-
-def _edge_redis_from_env() -> Redis:
-    edge_redis_url = os.getenv("EDGE_REDIS_URL")
-    redis_password = os.getenv("REDIS_PASSWORD")
-    if edge_redis_url:
-        return Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
-    redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port = int(os.getenv("REDIS_PORT", 6380))
-    return Redis(host=redis_host, port=redis_port, username="default", password=redis_password, decode_responses=True)
 
 
 def parse_retry_after(value: str | None, now: float) -> float | None:
@@ -112,25 +101,6 @@ class NextRequestStore:
         await self._cache.aclose()
 
 
-def _as_number(value: object) -> float | None:
-    """The value as a float when it is a real JSON number (bools excluded), else None."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value)
-
-
-def _optional_non_negative_int(value: object) -> int | None:
-    """Pattern/finish as an int, or None when missing or out of range (the price is still kept)."""
-    number = _as_number(value)
-    return int(number) if number is not None and number >= 0 else None
-
-
-def _optional_wear(value: object) -> float | None:
-    """Float value in [0, 1], or None when missing or out of range (the price is still kept)."""
-    number = _as_number(value)
-    return number if number is not None and 0 <= number <= 1 else None
-
-
 def _listing_url(sale: dict) -> str | None:
     """Deep link to the listing when the feed carries a sale ID, else to the item page.
 
@@ -162,15 +132,15 @@ def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTic
             # salePrice is in USD cents when currency is USD
             price_usd=float(sale_price) / 100.0,
             timestamp=received_at_ms // 1000,
-            float_value=_optional_wear(sale.get("wear")),
+            float_value=optional_wear(sale.get("wear")),
             stickers=sale.get("stickers") or [],
             event_type=event_type,
             # productId is the only identifier populated on both listed and sold events, so it is the key
             # that joins a listing to its outcome. saleId is documented as set on sold events
             # (https://docs.skinport.com/websocket/sale-feed) but is null on both in practice.
             listing_id=str(product_id) if product_id is not None else None,
-            pattern=_optional_non_negative_int(sale.get("pattern")),
-            paint_index=_optional_non_negative_int(sale.get("finish")),
+            pattern=optional_non_negative_int(sale.get("pattern")),
+            paint_index=optional_non_negative_int(sale.get("finish")),
             listing_url=_listing_url(sale),
         )
     except (ValidationError, ValueError, TypeError) as err:
@@ -248,7 +218,7 @@ class SkinportScraper(BaseScraper):
             self._next_request_store = None
 
     def _open_next_request_store(self) -> NextRequestStore:
-        return NextRequestStore(_edge_redis_from_env())
+        return NextRequestStore(edge_redis_from_env())
 
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
         """
@@ -326,7 +296,7 @@ class SkinportScraper(BaseScraper):
         Subscribes to the local Redis Pub/Sub channel relayed by the Node.js WebSocket sidecar.
         For every saleFeed event it yields the raw FeedEvent first, then one MarketTick per sale.
         """
-        cache = _edge_redis_from_env()
+        cache = edge_redis_from_env()
         pubsub = cache.pubsub()
         await pubsub.subscribe(SALE_FEED_CHANNEL)
         logger.info("Subscribed to Redis channel '%s'", SALE_FEED_CHANNEL)

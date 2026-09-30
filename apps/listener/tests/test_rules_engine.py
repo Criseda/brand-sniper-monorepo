@@ -218,3 +218,20 @@ async def test_dre_approval_reason_names_the_approving_rule(mock_redis, price_ce
 
     assert await dre_approval_reason(tick, mock_redis, baseline) == expected
     assert await evaluate_opportunity(tick, mock_redis, baseline) is (expected is not None)
+
+
+@pytest.mark.asyncio
+async def test_waxpeer_listing_uses_skinport_baselines_and_sticker_prices(mock_redis):
+    """mock_redis holds only Skinport hashes; a Waxpeer listing is judged against its resale venue."""
+    below_floor = MockMarketTick(
+        market_hash_name="AK-47 | Redline (Field-Tested)", price_cents=1400, stickers=[], venue="waxpeer"
+    )
+    assert await dre_approval_reason(below_floor, mock_redis) == REASON_SUPPORT_FLOOR
+
+    with_stickers = MockMarketTick(
+        market_hash_name="AK-47 | Redline (Field-Tested)",
+        price_cents=1700,
+        stickers=[{"name": "iBUYPOWER | Cologne 2014"}],
+        venue="waxpeer",
+    )
+    assert await dre_approval_reason(with_stickers, mock_redis) == REASON_STICKER_PREMIUM

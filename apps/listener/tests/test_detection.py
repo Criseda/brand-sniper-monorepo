@@ -212,6 +212,26 @@ def test_two_venues_keep_separate_dedup_state():
 
 
 @pytest.mark.asyncio
+async def test_waxpeer_tick_is_scored_against_skinport_baselines_in_its_own_window():
+    # Only Skinport baselines are loaded: a Waxpeer listing is judged against the venue it resells on.
+    store = _store_with_baseline(rolling_30d_avg_cents=2000, volatility_cents=100, coefficient_of_variation=0.05)
+    await detection.push_to_window(_tick(15.00, venue="waxpeer", event_type="listed", listing_id="1"), store)
+
+    score = await detection.score_window(_tick(15.00, venue="waxpeer", event_type="listed", listing_id="1"), store)
+
+    assert score is not None
+    assert (score.z_score, score.source, score.window_size) == (-5.0, "macro", 1)
+    assert await store.zcard(detection.price_window_key("waxpeer", ITEM)) == 1
+    assert await store.zcard(detection.price_window_key("skinport", ITEM)) == 0
+
+
+def test_waxpeer_estimate_is_net_of_the_skinport_seller_fee():
+    tick = _tick(10.00, venue="waxpeer", event_type="listed", listing_id="1")
+    # Bought on Waxpeer for $10.00 (no buyer fee), resold on Skinport at $15.00 less its 8% seller fee.
+    assert detection.estimate_net_profit_cents(tick, {"latest_price_cents": 1500}) == 1500 - 120 - 1000
+
+
+@pytest.mark.asyncio
 async def test_two_venues_keep_separate_price_windows():
     store = InMemoryEdgeStore()
     await _fill_window(store, [1000, 1010, 990, 1005, 995])
@@ -282,6 +302,7 @@ async def test_approved_trade_records_the_bought_listing(monkeypatch):
     await detection.evaluate_and_execute(tick, -3.0, MagicMock(), executor, {"latest_price_cents": 1500})
 
     executor.execute.assert_awaited_once_with(
+        venue="skinport",
         market_hash_name="Item",
         purchase_price_cents=1000,
         # Resale at 1500 less the 8% Skinport seller fee (120), less the 1000 buy price.

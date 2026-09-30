@@ -34,8 +34,10 @@ from .models import (
 from .pnl import (
     PROFIT_ESTIMATE_BASIS_GROSS,
     PROFIT_ESTIMATE_BASIS_NET,
+    RESALE_VENUES,
     SKINPORT_FEES,
     VENUE_FEES,
+    WAXPEER_FEES,
     FeeTier,
     UnknownVenueError,
     VenueFees,
@@ -44,6 +46,7 @@ from .pnl import (
     holding_seconds,
     is_profitable_margin,
     net_resale_margin_cents,
+    resale_venue_for,
     seller_fee_cents,
 )
 from .pricing_utils import detect_downtrend, edge_baseline_payload, resolve_recent_median, to_cents
@@ -77,7 +80,10 @@ __all__ = [
     "edge_baselines_key",
     "edge_sticker_prices_key",
     "SKINPORT_FEES",
+    "WAXPEER_FEES",
     "VENUE_FEES",
+    "RESALE_VENUES",
+    "resale_venue_for",
     "PROFIT_ESTIMATE_BASIS_GROSS",
     "PROFIT_ESTIMATE_BASIS_NET",
     "UnknownVenueError",

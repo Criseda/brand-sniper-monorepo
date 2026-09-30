@@ -10,6 +10,7 @@ class SimulatedTradePayload(BaseModel):
     """Schema for a simulated trade executed by an edge node."""
 
     market_hash_name: str
+    venue: NonEmptyText = Field(..., max_length=32, description="Venue the listing was bought on, e.g. 'skinport' or 'waxpeer'")
     purchase_price_cents: int
     estimated_profit_cents: int | None = Field(
         ..., description="Estimated resale profit in cents; null when there was no baseline price to estimate from"

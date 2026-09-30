@@ -255,6 +255,45 @@ services:
       start_period: 30s
       retries: 3
 
+  # Waxpeer listings (#261). Same image, one process per venue. It judges listings against the Skinport
+  # baselines it loads into the shared Redis, and keeps its own batch streams there (docs/waxpeer_feed.md).
+  listener-waxpeer:
+    build:
+      context: ../../
+      dockerfile: apps/listener/Dockerfile
+    container_name: sniper_listener_waxpeer
+    env_file:
+      - ../../.env
+      - ../../apps/listener/.env
+    environment:
+      - LISTENER_PLATFORM=waxpeer
+      - COMPUTE_NODE_IP=backend
+      - EDGE_REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - application
+      - data
+      - observability
+    restart: unless-stopped
+    stop_grace_period: 120s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Baseline Builder (Skinport sales history -> dated baseline builds)
   # Checks on start and every hour, and builds when the newest build is over 20 hours old,

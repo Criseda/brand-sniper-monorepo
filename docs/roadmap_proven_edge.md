@@ -73,7 +73,7 @@ flowchart LR
 | **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260 | CSFloat listing ticks, `VenueFees`, baselines |
 | **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 | Baselines from Skinport sales history, stored with their build date, loaded at startup, with a health metric |
 | **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 | Separate buy and sell venue fees in `shared_utils.pnl` |
-| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 | Waxpeer listing ticks, `VenueFees`, baselines |
+| **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 | Waxpeer listing ticks, `VenueFees`, scored against Skinport baselines |
 
 **Parallelism:** after #232, the tracks #233, #248, #259 and #18 can run at the same time. In practice #259 goes first. The live baselines are Kaggle Steam prices from before the knife crash, and the edge has had none loaded since July 2026 (see [`data_sources.md`](data_sources.md)), so without it #249 would mostly measure broken baselines. New venues (#33, #261) wait for #259 and #260. #250 can run alongside #234 and #236.
 
@@ -111,6 +111,11 @@ margin is never overstated. Parameters live in a `VenueFees` value (`SKINPORT_FE
 | Minimum margin | 0 cents | Project default; raise it to demand a cushion |
 
 Private sales (2% fee) are not modeled. Re-check these values when Skinport changes its fee page.
+
+Waxpeer (`WAXPEER_FEES`, #261) charges a 6% seller fee, no buyer fee, and holds sale proceeds for 7 days
+([`waxpeer_feed.md`](waxpeer_feed.md#fees)). Waxpeer publishes no sales, so `resale_venue_for("waxpeer")` is
+Skinport: a Waxpeer listing is scored against the Skinport baselines and priced as bought on Waxpeer and
+resold on Skinport. Paper trades record the venue they bought on in `simulated_trades.venue`.
 
 The function takes the fees of the venue I buy on (`buy_fees`) and of the venue I resell on (`sell_fees`).
 The buy venue charges its buyer fee on the buy price and the sell venue charges its seller fee, with its own

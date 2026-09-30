@@ -72,6 +72,39 @@ services:
       start_period: 30s
       retries: 3
 
+  # Waxpeer listings (#261). Same image, one process per venue (docs/waxpeer_feed.md).
+  listener-waxpeer:
+    build:
+      context: ../../
+      dockerfile: apps/listener/Dockerfile
+    container_name: sniper_listener_waxpeer
+    env_file:
+      - ../../.env
+      - ../../apps/listener/.env
+    environment:
+      - LISTENER_PLATFORM=waxpeer
+      - EDGE_REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - sniper_edge_network
+    restart: unless-stopped
+    stop_grace_period: 120s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
 networks:
   sniper_edge_network:
     driver: bridge

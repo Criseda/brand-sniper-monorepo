@@ -38,7 +38,7 @@ from models import FeedEvent, MarketTick
 from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from scrapers.factory import ScraperFactory
-from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger, utc_now_naive
+from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger, resale_venue_for, utc_now_naive
 from task_supervisor import BoundedTaskPool
 
 logger = get_logger("listener.main")
@@ -369,12 +369,15 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     queue: asyncio.Queue[StreamItem | None] = asyncio.Queue(maxsize=TICK_QUEUE_SIZE)
     scraper = ScraperFactory.get_scraper(platform_target)
-    # Fail at startup, not on the first approved trade, when the venue has no fee schedule.
+    # A venue without sales data of its own (Waxpeer) is scored against, and resold on, its resale venue.
+    resale_venue = resale_venue_for(scraper.platform_name)
+    # Fail at startup, not on the first approved trade, when either venue has no fee schedule.
     fees_for(scraper.platform_name)
+    fees_for(resale_venue)
     executor = PaperExecutor(BACKEND_BASE_URL)
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
-    baseline_state = BaselineState(scraper.platform_name)
+    baseline_state = BaselineState(resale_venue)
     baseline_cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
     # Register graceful shutdown on SIGINT/SIGTERM
@@ -392,7 +395,7 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
 
     try:
         async with (
-            RedisBatchStore.from_url(edge_redis_url, password=redis_password) as batch_store,
+            RedisBatchStore.for_venue(edge_redis_url, password=redis_password, venue=scraper.platform_name) as batch_store,
             BoundedTaskPool(
                 "anomaly",
                 workers=ANOMALY_WORKERS,
@@ -417,9 +420,12 @@ async def process_live_telemetry_stream(platform_target: str) -> None:
                     name="tick-consumer",
                 )
                 producer_tasks = [
-                    task_group.create_task(rest_poll_producer(scraper, queue), name="rest-poll-producer"),
                     task_group.create_task(websocket_subscriber_producer(scraper, queue), name="websocket-producer"),
                 ]
+                if scraper.polls_rest:
+                    producer_tasks.append(
+                        task_group.create_task(rest_poll_producer(scraper, queue), name="rest-poll-producer"),
+                    )
                 baseline_task = task_group.create_task(
                     keep_baselines_loaded(
                         baseline_state,

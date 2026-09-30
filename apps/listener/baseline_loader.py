@@ -17,6 +17,7 @@ prices. Both are logged as errors, exported as metrics, and reported by the heal
 import asyncio
 import json
 import os
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -91,7 +92,9 @@ async def _replace_hash(cache: Redis, key: str, mapping: Mapping[str, str]) -> N
     if not mapping:
         await cache.delete(key)
         return
-    staging_key = f"{key}:staging"
+    # One staging key per load: the Skinport and Waxpeer listeners share the edge Redis and both load
+    # Skinport baselines, so two loads may run at once. Each renames only a hash it filled completely.
+    staging_key = f"{key}:staging:{uuid.uuid4().hex}"
     await cache.delete(staging_key)
     # redis-py types hash field names invariantly, so a plain str mapping needs the cast.
     await cache.hset(staging_key, mapping=cast(Mapping[Any, Any], mapping))

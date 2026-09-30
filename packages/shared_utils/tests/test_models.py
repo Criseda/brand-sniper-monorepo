@@ -28,6 +28,7 @@ def test_create_simulated_trade(session: Session):
     # Create Simulated Trade
     trade = SimulatedTrade(
         item_id=item.id,
+        venue="skinport",
         purchase_price_cents=1050,
         estimated_profit_cents=250,
         trigger_z_score=-2.85,

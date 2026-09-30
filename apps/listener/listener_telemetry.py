@@ -137,3 +137,35 @@ baseline_build_age_seconds = Gauge(
     "Age of the baseline build loaded in the edge Redis, from its build time",
     labelnames=["venue"],
 )
+
+# Direct venue feeds (Waxpeer). `event` is the venue's event name (new, update, removed) and `outcome` is
+# what the recording filter did with it (see scrapers/waxpeer.py: FEED_OUTCOMES).
+venue_feed_events_total = Counter(
+    "listener_venue_feed_events_total",
+    "Venue feed events received, by what the recording filter did with them",
+    labelnames=["venue", "event", "outcome"],
+)
+
+venue_feed_connected = Gauge(
+    "listener_venue_feed_connected",
+    "1 while the venue's live feed is connected and subscribed, else 0",
+    labelnames=["venue"],
+)
+
+venue_feed_reconnects_total = Counter(
+    "listener_venue_feed_reconnects_total",
+    "Times the venue's live feed connection ended and had to be opened again",
+    labelnames=["venue"],
+)
+
+venue_feed_reference_prices = Gauge(
+    "listener_venue_feed_reference_prices",
+    "Resale venue prices the recording filter holds in memory (0 means it records nothing)",
+    labelnames=["venue"],
+)
+
+venue_feed_tracked_listings = Gauge(
+    "listener_venue_feed_tracked_listings",
+    "Recorded listings whose later price cuts and removal the filter follows",
+    labelnames=["venue"],
+)

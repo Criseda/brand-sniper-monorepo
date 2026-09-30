@@ -29,6 +29,10 @@ reported through `listener_trade_submissions_total` and
 
 The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO `saleFeed`. The sidecar forwards every event type (`listed`, `sold`, ...) untouched, wrapped with a receive timestamp, to the local Redis Pub/Sub channel `skinport:sale_feed`. The main Python process records each raw event (`feed_events`) and every sale as a listing-level tick; only `listed` sales (and REST snapshots) enter the anomaly detection pipeline. See [`docs/skinport_feed.md`](../../docs/skinport_feed.md) and the official [Sale Feed](https://docs.skinport.com/websocket/sale-feed) and [Items](https://docs.skinport.com/items) docs. (The subprocess stdout/stderr are captured solely for application logging).
 
+### Waxpeer Feed
+
+With `LISTENER_PLATFORM=waxpeer` the listener runs `WaxpeerScraper`, which reads Waxpeer's public Socket.IO feed directly over an aiohttp websocket (no sidecar) and has no REST poll. It records and scores only listings priced below the item's Skinport price, then follows them for price cuts and removal, and judges them against the Skinport baselines it loads. Set `WAXPEER_API_KEY` in `.env`. See [`docs/waxpeer_feed.md`](../../docs/waxpeer_feed.md).
+
 ## Replay & Backtests
 
 `python -m backtest` replays recorded feed events and REST snapshots through the same decision code

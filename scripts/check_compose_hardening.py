@@ -32,6 +32,7 @@ SERVER_NETWORKS = {
     "redis-exporter": {"data", "observability"},
     "backend": {"application", "data", "observability"},
     "listener": {"application", "data", "observability"},
+    "listener-waxpeer": {"application", "data", "observability"},
     "analytics": {"application", "data"},
     "baseline-builder": {"application", "data"},
 }
@@ -41,6 +42,7 @@ SERVER_DEPENDENCIES = {
     "redis-exporter": {"redis": "service_healthy"},
     "backend": {"redis": "service_healthy"},
     "listener": {"redis": "service_healthy", "backend": "service_healthy"},
+    "listener-waxpeer": {"redis": "service_healthy", "backend": "service_healthy"},
     "analytics": {
         "redis": "service_healthy",
         "backend": "service_healthy",
@@ -61,10 +63,12 @@ SERVER_PORTS = {
 EDGE_NETWORKS = {
     "redis": {"sniper_edge_network"},
     "listener": {"sniper_edge_network"},
+    "listener-waxpeer": {"sniper_edge_network"},
 }
 
 EDGE_DEPENDENCIES = {
     "listener": {"redis": "service_healthy"},
+    "listener-waxpeer": {"redis": "service_healthy"},
 }
 
 EDGE_PORTS = {

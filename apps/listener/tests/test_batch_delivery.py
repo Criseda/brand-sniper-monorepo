@@ -501,3 +501,20 @@ async def test_stream_iteration_quarantines_poison_record_and_continues(stored_b
     assert len(redis.streams["malformed"]) == 2
     assert redis.streams["malformed"][0][1]["source_record_id"] == "1-0"
     assert redis.streams["malformed"][1][1]["source_record_id"] == "2-0"
+
+
+def test_each_venue_has_its_own_batch_streams():
+    skinport = RedisBatchStore.for_venue("redis://edge:6380", password="secret", venue="skinport")
+    waxpeer = RedisBatchStore.for_venue("redis://edge:6380", password="secret", venue="waxpeer")
+
+    # Skinport keeps the stream names from before a second venue existed.
+    assert (skinport.pending_key, skinport.dead_letter_key, skinport.malformed_key) == (
+        "listener:ingest:pending",
+        "listener:ingest:dead-letter",
+        "listener:ingest:malformed",
+    )
+    assert (waxpeer.pending_key, waxpeer.dead_letter_key, waxpeer.malformed_key) == (
+        "listener:ingest:waxpeer:pending",
+        "listener:ingest:waxpeer:dead-letter",
+        "listener:ingest:waxpeer:malformed",
+    )

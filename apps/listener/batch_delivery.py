@@ -19,6 +19,9 @@ from shared_utils import get_logger
 
 logger = get_logger("listener.batch_delivery")
 
+# The venue whose listener uses the original, unprefixed batch stream names (see RedisBatchStore.for_venue).
+LEGACY_STREAM_VENUE = "skinport"
+
 SessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
 
 
@@ -111,6 +114,26 @@ class RedisBatchStore:
             pending_key=pending_key,
             dead_letter_key=dead_letter_key,
             malformed_key=malformed_key,
+        )
+
+    @classmethod
+    def for_venue(cls, redis_url: str, *, password: str | None, venue: str) -> "RedisBatchStore":
+        """
+        The batch streams of one venue's listener.
+
+        Each venue's listener runs as its own process on the shared edge Redis, and recovers every pending
+        batch of its streams when it starts, so each venue needs its own streams. Skinport keeps the stream
+        names from before there was a second venue, so batches pending across the upgrade are not stranded.
+        """
+        if venue == LEGACY_STREAM_VENUE:
+            return cls.from_url(redis_url, password=password)
+        prefix = f"listener:ingest:{venue}"
+        return cls.from_url(
+            redis_url,
+            password=password,
+            pending_key=f"{prefix}:pending",
+            dead_letter_key=f"{prefix}:dead-letter",
+            malformed_key=f"{prefix}:malformed",
         )
 
     async def __aenter__(self) -> "RedisBatchStore":

@@ -136,6 +136,14 @@ def test_parse_args_reads_limit(monkeypatch):
     assert replay_batches.parse_args().limit == 7
 
 
+def test_parse_args_reads_venue(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["replay_batches.py"])
+    assert replay_batches.parse_args().venue == "skinport"
+
+    monkeypatch.setattr("sys.argv", ["replay_batches.py", "--venue", "waxpeer"])
+    assert replay_batches.parse_args().venue == "waxpeer"
+
+
 def test_main_runs_replay_with_parsed_limit(monkeypatch):
     captured = []
 
@@ -144,7 +152,7 @@ def test_main_runs_replay_with_parsed_limit(monkeypatch):
         coroutine.close()
         return ReplayResult(attempted=3, succeeded=3, failed=0)
 
-    monkeypatch.setattr(replay_batches, "parse_args", lambda: SimpleNamespace(limit=3))
+    monkeypatch.setattr(replay_batches, "parse_args", lambda: SimpleNamespace(limit=3, venue="skinport"))
     monkeypatch.setattr(replay_batches.asyncio, "run", run)
 
     assert replay_batches.main() == 0
@@ -157,7 +165,7 @@ def test_main_returns_failure_when_any_replay_fails(monkeypatch):
         coroutine.close()
         return ReplayResult(attempted=1, succeeded=0, failed=1)
 
-    monkeypatch.setattr(replay_batches, "parse_args", lambda: SimpleNamespace(limit=1))
+    monkeypatch.setattr(replay_batches, "parse_args", lambda: SimpleNamespace(limit=1, venue="skinport"))
     monkeypatch.setattr(replay_batches.asyncio, "run", run)
 
     assert replay_batches.main() == 1

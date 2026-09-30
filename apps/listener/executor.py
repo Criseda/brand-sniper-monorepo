@@ -39,6 +39,8 @@ class ExecutionService(abc.ABC):
         listing_id: str | None = None,
         float_value: float | None = None,
         profit_estimate_basis: str | None = None,
+        *,
+        venue: str,
     ) -> None:
         pass
 
@@ -71,6 +73,8 @@ class PaperExecutor(ExecutionService):
         listing_id: str | None = None,
         float_value: float | None = None,
         profit_estimate_basis: str | None = None,
+        *,
+        venue: str,
     ) -> None:
         snapshot_key = snapshot_purchase_key(market_hash_name, purchase_price_cents)
         key = listing_purchase_key(market_hash_name, listing_id) if listing_id is not None else snapshot_key
@@ -85,6 +89,7 @@ class PaperExecutor(ExecutionService):
 
         payload = {
             "market_hash_name": market_hash_name,
+            "venue": venue,
             "purchase_price_cents": purchase_price_cents,
             # None when there was no baseline price to estimate a resale from.
             "estimated_profit_cents": estimated_profit_cents,
@@ -97,7 +102,8 @@ class PaperExecutor(ExecutionService):
 
         profit_text = f"${estimated_profit_cents / 100:.2f}" if estimated_profit_cents is not None else "n/a"
         logger.info(
-            "[PAPER TRADE] Simulated Buy | Item: %s | Price: $%.2f | Est. Profit: %s | Z-Score: %.2f",
+            "[PAPER TRADE] Simulated Buy | Venue: %s | Item: %s | Price: $%.2f | Est. Profit: %s | Z-Score: %.2f",
+            venue,
             market_hash_name,
             purchase_price_cents / 100,
             profit_text,
