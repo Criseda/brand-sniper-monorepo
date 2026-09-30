@@ -24,6 +24,7 @@ from typing import Any
 
 import aiohttp
 from listener_telemetry import (
+    export_feed_metrics,
     feed_connected,
     feed_events_filtered_total,
     feed_reconnects_total,
@@ -394,6 +395,7 @@ class WaxpeerScraper(BaseScraper):
 
     def __init__(self) -> None:
         super().__init__(venue=VENUE)
+        export_feed_metrics()
         self._api_key = os.getenv(API_KEY_ENV) or None
         self.resale_prices = ResalePrices(resale_venue_for(VENUE))
         self.recording_filter = RecordingFilter(self.resale_prices)

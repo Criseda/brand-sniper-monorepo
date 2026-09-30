@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histogram
 
 ticks_processed_total = Counter(
     "listener_ticks_processed_total",
@@ -141,28 +141,49 @@ baseline_build_age_seconds = Gauge(
 # Venue feeds the listener reads directly (Waxpeer). Each listener process reads one venue; Prometheus tells
 # the processes apart by the `listener` target label. `event` is the venue's event name (new, update, removed)
 # and `outcome` is what the recording filter did with it (see scrapers/waxpeer.py: FEED_OUTCOMES).
+#
+# These metrics live in their own registry, which only a listener that reads a feed directly adds to the ones it
+# exports (`export_feed_metrics`). Otherwise the Skinport listener would report a disconnected feed with no
+# resale prices, a feed it does not have.
+feed_registry = CollectorRegistry(auto_describe=True)
+
 feed_events_filtered_total = Counter(
     "listener_feed_events_filtered_total",
     "Live feed events received, by what the recording filter did with them",
     labelnames=["event", "outcome"],
+    registry=feed_registry,
 )
 
 feed_connected = Gauge(
     "listener_feed_connected",
     "1 while the live feed is connected and subscribed, else 0",
+    registry=feed_registry,
 )
 
 feed_reconnects_total = Counter(
     "listener_feed_reconnects_total",
     "Times the live feed connection ended and had to be opened again",
+    registry=feed_registry,
 )
 
 feed_resale_prices = Gauge(
     "listener_feed_resale_prices",
     "Resale venue prices the recording filter holds in memory (0 means it records nothing)",
+    registry=feed_registry,
 )
 
 feed_tracked_listings = Gauge(
     "listener_feed_tracked_listings",
     "Recorded listings whose later price cuts and removal the filter follows",
+    registry=feed_registry,
 )
+
+_registries_exporting_feed: set[int] = set()
+
+
+def export_feed_metrics(registry: CollectorRegistry = REGISTRY) -> None:
+    """Adds the feed metrics to what `registry` exports. Safe to call more than once."""
+    if id(registry) in _registries_exporting_feed:
+        return
+    registry.register(feed_registry)
+    _registries_exporting_feed.add(id(registry))
