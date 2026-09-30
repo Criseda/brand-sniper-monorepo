@@ -539,7 +539,7 @@ def _distinct_batch(number: int) -> StoredBatch:
     return StoredBatch(
         record_id="1-0",
         batch_id=f"a3634aa6-364e-4090-958b-{number:012d}",
-        source="skinport",
+        venue="skinport",
         ticks=[{"market_hash_name": "Test Item", "price_cents": 1000 + number, "timestamp": 1700000000}],
     )
 
