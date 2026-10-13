@@ -21,7 +21,7 @@ Copy the example environment file and insert your API keys:
 cp .env.example .env
 ```
 Ensure the `LLM_*` variables (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, optionally
-`LLM_FALLBACK_MODELS` and `LLM_REQUEST_TIMEOUT_SECONDS`) are populated in the root `.env`
+`LLM_FALLBACK_MODELS`, `LLM_REQUEST_TIMEOUT_SECONDS`, `LLM_MAX_TOKENS` and `LLM_REASONING_EFFORT`) are populated in the root `.env`
 or `apps/analytics/.env`. See the root `.env.example` for hosted and local examples.
 
 ### 2. Run the Evaluation & Macro flows

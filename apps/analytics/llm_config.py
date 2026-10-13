@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 60.0
+DEFAULT_MAX_TOKENS = 8192
 LEGACY_GROQ_ENV_VAR = "GROQ_API_KEY"
 
 _MIGRATION_MESSAGE = (
@@ -31,6 +32,8 @@ class LLMSettings:
     api_key: str | None = field(default=None, repr=False)
     fallback_models: tuple[str, ...] = field(default_factory=tuple)
     request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    max_tokens: int = DEFAULT_MAX_TOKENS
+    reasoning_effort: str | None = None
 
     @property
     def all_models(self) -> list[str]:
@@ -69,6 +72,18 @@ def _parse_timeout(raw: str | None) -> float:
     return timeout
 
 
+def _parse_max_tokens(raw: str | None) -> int:
+    if raw is None or not raw.strip():
+        return DEFAULT_MAX_TOKENS
+    try:
+        max_tokens = int(raw.strip())
+    except ValueError:
+        raise SystemExit("Invalid LLM_MAX_TOKENS: must be a positive integer. See .env.example.") from None
+    if max_tokens <= 0:
+        raise SystemExit("Invalid LLM_MAX_TOKENS: must be a positive integer. See .env.example.")
+    return max_tokens
+
+
 def load_llm_settings(env: Mapping[str, str] | None = None) -> LLMSettings:
     """Load and validate the LLM contract from the environment.
 
@@ -103,10 +118,15 @@ def load_llm_settings(env: Mapping[str, str] | None = None) -> LLMSettings:
 
     fallbacks = _parse_fallback_models(get("LLM_FALLBACK_MODELS"), model)
     timeout = _parse_timeout(get("LLM_REQUEST_TIMEOUT_SECONDS"))
+    max_tokens = _parse_max_tokens(get("LLM_MAX_TOKENS"))
+    # Passed through as-is: accepted values differ by provider and model (e.g. low/medium/high/max).
+    reasoning_effort = (get("LLM_REASONING_EFFORT") or "").strip() or None
     return LLMSettings(
         base_url=base_url,
         model=model,
         api_key=api_key,
         fallback_models=fallbacks,
         request_timeout_seconds=timeout,
+        max_tokens=max_tokens,
+        reasoning_effort=reasoning_effort,
     )

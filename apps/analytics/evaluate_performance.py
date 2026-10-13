@@ -272,12 +272,16 @@ def _msg_dict(msg) -> dict:
 
 
 async def _call(messages, temperature=0.5, **kwargs):
+    settings = _get_llm_settings()
+    if settings.reasoning_effort is not None:
+        # Sent in the request body so values beyond the SDK's own list (e.g. "max") reach the provider.
+        kwargs["extra_body"] = {"reasoning_effort": settings.reasoning_effort}
     return await asyncio.to_thread(
         _get_openai_client().chat.completions.create,
         model=_get_current_model(),
         messages=messages,
         temperature=temperature,
-        max_tokens=2048,
+        max_tokens=settings.max_tokens,
         **kwargs,
     )
 

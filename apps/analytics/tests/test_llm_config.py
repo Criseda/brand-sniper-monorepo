@@ -1,5 +1,5 @@
 import pytest
-from llm_config import DEFAULT_REQUEST_TIMEOUT_SECONDS, load_llm_settings
+from llm_config import DEFAULT_MAX_TOKENS, DEFAULT_REQUEST_TIMEOUT_SECONDS, load_llm_settings
 
 
 def _env(**overrides):
@@ -20,6 +20,8 @@ def test_loads_primary_with_defaults():
     assert settings.api_key == "secret"
     assert settings.fallback_models == ()
     assert settings.request_timeout_seconds == DEFAULT_REQUEST_TIMEOUT_SECONDS
+    assert settings.max_tokens == DEFAULT_MAX_TOKENS
+    assert settings.reasoning_effort is None
     assert settings.all_models == ["openai/gpt-oss-120b"]
 
 
@@ -114,3 +116,20 @@ def test_settings_repr_never_exposes_api_key():
     settings = load_llm_settings(_env())
 
     assert "secret" not in repr(settings)
+
+
+def test_parses_max_tokens_and_reasoning_effort():
+    settings = load_llm_settings(_env(LLM_MAX_TOKENS=" 4096 ", LLM_REASONING_EFFORT=" max "))
+
+    assert settings.max_tokens == 4096
+    assert settings.reasoning_effort == "max"
+
+
+def test_blank_reasoning_effort_is_unset():
+    assert load_llm_settings(_env(LLM_REASONING_EFFORT="  ")).reasoning_effort is None
+
+
+@pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", "1.5"])
+def test_invalid_max_tokens_fails(raw):
+    with pytest.raises(SystemExit, match="LLM_MAX_TOKENS"):
+        load_llm_settings(_env(LLM_MAX_TOKENS=raw))
