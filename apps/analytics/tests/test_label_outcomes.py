@@ -567,3 +567,9 @@ async def test_fetch_final_labels_can_include_revisable_labels_for_exploratory_r
     await fetch_final_labels("v1", AS_OF, include_revisable=True)
 
     assert engine.conn.executed[0][1]["final_before"] == AS_OF
+
+
+async def test_load_label_contract_returns_the_stored_config(monkeypatch):
+    monkeypatch.setattr(label_outcomes, "async_engine", ContractEngine(LabelConfig().contract()))
+
+    assert await load_label_contract("v1") == LabelConfig().contract()
