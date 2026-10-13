@@ -83,7 +83,8 @@ def synthetic_stream() -> tuple[list, BaselineSnapshot]:
     events += [_snapshot(index * 305, price, STICKER_ITEM) for index, price in enumerate([3000, 3020, 2980, 3010, 2990])]
     events += [
         _feed(1600, "listed", _sale(1, 1000)),  # below threshold
-        _feed(1601, "listed", _sale(2, 1000)),  # duplicate of the previous price
+        _feed(1601, "listed", _sale(2, 1000)),  # another listing at the same price: below threshold too
+        _feed(1601, "listed", _sale(1, 1000)),  # the first listing again: duplicate
         _feed(1602, "listed", _sale(4, 850)),  # outlier the DRE rejects
         _feed(1603, "listed", _sale(3, 400)),  # support floor
         _feed(1604, "sold", _sale(3, 400)),  # outcome only
@@ -255,19 +256,21 @@ async def test_synthetic_stream_reaches_every_decision_reason():
 
     log_text, _ = await _replay(events, baselines)
 
-    reasons = {row["listing_id"]: (row["reason"], row["approve"]) for row in _rows(log_text)}
-    assert reasons == {
-        "1": (REASON_BELOW_THRESHOLD, False),
-        "2": (REASON_DUPLICATE, False),
-        "3": (REASON_SUPPORT_FLOOR, True),
-        "4": (REASON_DRE_REJECTED, False),
-        "5": (REASON_STICKERS_BELOW_BASE, True),
-        "6": (REASON_STICKER_PREMIUM, True),
-        "7": (REASON_INSUFFICIENT_HISTORY, False),
-    }
+    reasons = [(row["listing_id"], row["reason"], row["approve"]) for row in _rows(log_text)]
+    assert reasons == [
+        ("1", REASON_BELOW_THRESHOLD, False),
+        ("2", REASON_BELOW_THRESHOLD, False),
+        ("1", REASON_DUPLICATE, False),
+        ("4", REASON_DRE_REJECTED, False),
+        ("3", REASON_SUPPORT_FLOOR, True),
+        ("6", REASON_STICKER_PREMIUM, True),
+        ("5", REASON_STICKERS_BELOW_BASE, True),
+        ("7", REASON_INSUFFICIENT_HISTORY, False),
+    ]
     [summary] = _rows(log_text, "summary")
     assert summary["outcome_ticks"] == 1
-    assert summary["feed_events"] == 8
+    assert summary["feed_events"] == 9
+    assert summary["duplicates"] == 1
 
 
 @pytest.mark.asyncio
@@ -375,7 +378,7 @@ async def test_warmup_events_fill_the_window_but_are_not_logged():
     log_text, decided = await _replay(events, baselines, log_from_ms=T0_MS + 1603 * 1000)
 
     assert [row["listing_id"] for row in _rows(log_text)] == ["3", "6", "5", "7"]
-    assert len(decided) == 16  # every non-duplicate listing and snapshot was still decided
+    assert len(decided) == 17  # every non-duplicate listing and snapshot was still decided
 
 
 @pytest.mark.asyncio
@@ -544,9 +547,9 @@ def _replay_run(decided) -> tuple[list[tuple], list[tuple]]:
 @pytest.mark.parametrize(
     ("stream", "macro_triggers", "expected_trades"),
     [
-        # Cold, the recorded fixture's approvals are all macro Z scores: none without them, 14 with them.
+        # Cold, the recorded fixture's approvals are all macro Z scores: none without them, 18 with them.
         ("recorded_fixture", False, 0),
-        ("recorded_fixture", True, 14),
+        ("recorded_fixture", True, 18),
         ("synthetic", False, 3),
         ("repeated_snapshots", False, 3),
         ("cold_start", False, 1),

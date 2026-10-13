@@ -115,14 +115,53 @@ def _listed(price_usd: float, timestamp: int = 1_790_000_000, listing_id: str = 
     return _tick(price_usd, timestamp=timestamp, event_type="listed", listing_id=listing_id)
 
 
-def test_duplicate_is_the_same_price_inside_the_dedup_window():
+def test_snapshot_duplicate_is_the_same_price_inside_the_dedup_window():
     cache = detection.DedupCache()
-    first = _listed(10.00)
+    first = _tick(10.00)
     detection.update_dedup_cache(first, cache)
 
-    assert detection.is_duplicate(_listed(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS - 1), cache)
-    assert not detection.is_duplicate(_listed(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS), cache)
-    assert not detection.is_duplicate(_listed(10.01, timestamp=first.timestamp + 1), cache)
+    assert detection.is_duplicate(_tick(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS - 1), cache)
+    assert not detection.is_duplicate(_tick(10.00, timestamp=first.timestamp + detection.DEDUP_WINDOW_SECONDS), cache)
+    assert not detection.is_duplicate(_tick(10.01, timestamp=first.timestamp + 1), cache)
+
+
+def test_snapshot_at_the_price_of_a_listing_just_seen_is_a_duplicate():
+    cache = detection.DedupCache()
+    detection.update_dedup_cache(_listed(10.00), cache)
+
+    assert detection.is_duplicate(_tick(10.00, timestamp=1_790_000_100), cache)
+
+
+def test_another_listing_at_the_same_price_is_not_a_duplicate():
+    cache = detection.DedupCache()
+    detection.update_dedup_cache(_tick(10.00), cache)
+    detection.update_dedup_cache(_listed(10.00, timestamp=1_790_000_001, listing_id="1"), cache)
+
+    # A separate offer at the price the item was just seen at, in the same second: it can be bought too.
+    assert not detection.is_duplicate(_listed(10.00, timestamp=1_790_000_001, listing_id="2"), cache)
+
+
+def test_listing_duplicate_is_the_same_listing_at_the_same_price():
+    cache = detection.DedupCache()
+    detection.update_dedup_cache(_listed(10.00, listing_id="1"), cache)
+    detection.update_dedup_cache(_listed(12.00, timestamp=1_790_000_050, listing_id="2"), cache)
+
+    # Seen again, however much later and whatever came in between.
+    assert detection.is_duplicate(_listed(10.00, timestamp=1_790_086_400, listing_id="1"), cache)
+    # Seen again at a new price: a new offer.
+    assert not detection.is_duplicate(_listed(9.00, timestamp=1_790_000_100, listing_id="1"), cache)
+
+
+def test_listing_prices_are_kept_per_venue_and_evicted_oldest_first(monkeypatch):
+    monkeypatch.setattr(detection, "DEDUP_CACHE_MAX_SIZE", 2)
+    cache = detection.DedupCache()
+    for listing_id in ("1", "2", "3"):
+        detection.update_dedup_cache(_listed(10.00, listing_id=listing_id), cache)
+
+    assert not detection.is_duplicate(_listed(10.00, listing_id="1"), cache)  # evicted
+    assert detection.is_duplicate(_listed(10.00, listing_id="3"), cache)
+    other_venue = _tick(10.00, venue="waxpeer", event_type="listed", listing_id="3")
+    assert not detection.is_duplicate(other_venue, cache)
 
 
 def test_unchanged_rest_snapshot_is_recognised_however_old():

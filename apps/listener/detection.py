@@ -49,7 +49,8 @@ SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
 # 25,300 items, and a cap below that evicts items every poll, so their unchanged lowest asks are scored again.
 # The cap leaves room for the item list to grow; each venue has its own, so venues never evict each other.
 DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "100000"))
-# A tick at the same price as the item's previous tick within this many seconds is a duplicate.
+# A REST snapshot at the same price as the item's previous tick within this many seconds is a duplicate.
+# Feed listings are not held to it: each one is a separate offer (see `is_duplicate`).
 DEDUP_WINDOW_SECONDS = 300
 
 # Dedup state and price windows belong to one item on one venue: venues differ in fees and price levels,
@@ -77,10 +78,16 @@ class DedupEntry:
 
 
 class DedupCache:
-    """What the dedup rules remember, per venue and item, in one LRU cache per venue."""
+    """
+    What the dedup rules remember, per venue and item, in one LRU cache per venue.
+
+    It also remembers the price each feed listing was last seen at, per venue and listing, in a second LRU
+    cache per venue of the same size.
+    """
 
     def __init__(self) -> None:
         self._venues: dict[str, OrderedDict[str, DedupEntry]] = {}
+        self._listing_prices: dict[str, OrderedDict[str, int]] = {}
 
     def get(self, tick: MarketTick) -> DedupEntry | None:
         entries = self._venues.get(tick.venue)
@@ -96,6 +103,22 @@ class DedupCache:
             entries.popitem(last=False)
             evicted += 1
         return evicted
+
+    def listing_price(self, tick: MarketTick) -> int | None:
+        """The price the tick's listing was last seen at; None for a listing not seen yet (or no listing)."""
+        prices = self._listing_prices.get(tick.venue)
+        if prices is None or tick.listing_id is None:
+            return None
+        return prices.get(tick.listing_id)
+
+    def put_listing_price(self, tick: MarketTick) -> None:
+        if tick.listing_id is None:
+            return
+        prices = self._listing_prices.setdefault(tick.venue, OrderedDict())
+        prices[tick.listing_id] = tick.price_cents
+        prices.move_to_end(tick.listing_id)
+        while len(prices) > DEDUP_CACHE_MAX_SIZE:
+            prices.popitem(last=False)
 
     def size(self, venue: str) -> int:
         return len(self._venues.get(venue, ()))
@@ -164,7 +187,15 @@ async def migrate_legacy_price_windows(cache: Redis) -> int:
 
 
 def is_duplicate(tick: MarketTick, dedup_cache: DedupCache) -> bool:
-    """Returns True if this tick is a duplicate (same price within the dedup window)."""
+    """
+    Returns True if this tick repeats one the listener already has.
+
+    A feed listing is a duplicate only when the same listing was already seen at the same price. Another
+    listing of the item at the same price is a separate offer that can be bought, so it is scored (#312).
+    A REST snapshot is a duplicate at the same price as the item's previous tick within the dedup window.
+    """
+    if tick.listing_id is not None:
+        return dedup_cache.listing_price(tick) == tick.price_cents
     entry = dedup_cache.get(tick)
     if entry is None:
         return False
@@ -222,6 +253,7 @@ def update_dedup_cache(tick: MarketTick, dedup_cache: DedupCache, *, enters_wind
         snapshot_windowed_at=snapshot_windowed_at,
     )
     evicted = dedup_cache.put(tick, entry)
+    dedup_cache.put_listing_price(tick)
     if evicted:
         # An evicted item that never changes price is scored again on its next snapshot, so this should stay 0.
         dedup_cache_evictions_total.labels(venue=tick.venue).inc(evicted)

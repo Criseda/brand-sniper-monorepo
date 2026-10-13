@@ -188,8 +188,9 @@ Trimmed, sanitized `sold` sale:
    - `sold` (and any unknown type) ticks are buffered for persistence only. They never touch the dedup
      cache, the sliding price window, or the DRE.
    - `listed` ticks and REST snapshots follow the unchanged Z-score/DRE path.
-   - A `listed` tick that the dedup filter drops (same item, same price, within 300 s) is still recorded
-     when it has a `listing_id`, because it is a distinct listing. It does not re-enter the price window.
+   - A `listed` tick is a duplicate only when the same `listing_id` was already seen at the same price
+     (#312). Another listing of the item at the same price is a separate offer and is scored. A duplicate
+     is still recorded, but it does not re-enter the price window.
 4. **Durable batch path**: raw events travel in the same batch as the ticks (`StoredBatch.feed_events`),
    through the Redis Stream pending queue and dead-letter queue to `POST /api/v1/ingest/bulk`.
    Idempotency is still per `batch_id`, and the payload digest covers the feed events. Batches written before
