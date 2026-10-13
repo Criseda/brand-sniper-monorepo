@@ -2,12 +2,12 @@
   "as_of": "2026-10-13T17:00:00",
   "candidate": false,
   "data": {
-    "decision_log_sha256": "018e021b16453c29a293a68465b33ca3173977732b0324260033f75b076fd925",
+    "decision_log_sha256": "a0c0c45f08e8ae2c5a9cdb4feb56abf0eb98411ed92783134610ecc63990a330",
     "end": "2026-10-13T16:00:00",
     "first_decision": "2026-09-26T17:31:23",
     "last_decision": "2026-09-28T23:26:23",
-    "listings": 2266,
-    "profitable": 221,
+    "listings": 6642,
+    "profitable": 271,
     "start": "2026-09-26T17:30:00",
     "strategy": "zscore_dre_features",
     "venue": "skinport"
@@ -27,36 +27,164 @@
       "sticker_value_ratio",
       "listings_per_hour_item"
     ],
-    "version": 1
+    "version": 2
   },
   "folds": [
     {
       "cutoff": "2026-09-26T23:00:00",
       "end": "2026-09-27T05:00:00",
-      "skipped": "667 labeled listings, fewer than 1000",
-      "train_profitable": 65,
-      "train_rows": 667,
-      "validation_rows": 131
+      "skipped": "73 listings of the rarer outcome, fewer than 100",
+      "train_profitable": 73,
+      "train_rows": 1921,
+      "validation_rows": 142
     },
     {
       "cutoff": "2026-09-28T11:00:00",
       "end": "2026-09-28T17:00:00",
-      "skipped": "798 labeled listings, fewer than 1000",
-      "train_profitable": 79,
-      "train_rows": 798,
-      "validation_rows": 30
-    },
-    {
-      "cutoff": "2026-09-28T17:00:00",
-      "end": "2026-09-28T23:00:00",
-      "skipped": "828 labeled listings, fewer than 1000",
-      "train_profitable": 85,
-      "train_rows": 828,
-      "validation_rows": 1279
+      "skipped": "90 listings of the rarer outcome, fewer than 100",
+      "train_profitable": 90,
+      "train_rows": 2063,
+      "validation_rows": 54
     },
     {
       "comparison": {
-        "listings": 159,
+        "listings": 4158,
+        "model_at_rules_volume": {
+          "labeled": 81,
+          "max_drawdown_cents": 757,
+          "net_pnl_cents": {
+            "interval": "bootstrap",
+            "mean": 95.92592592592592,
+            "mean_high": 188.12345679012347,
+            "mean_low": 32.2962962962963,
+            "total": 7770
+          },
+          "neutral": 0,
+          "pending": 0,
+          "precision": {
+            "high": 0.770579256056527,
+            "low": 0.5712341939491306,
+            "value": 0.6790123456790124
+          },
+          "status": "ok",
+          "trades": 81,
+          "unlabeled": 0
+        },
+        "model_at_threshold": {
+          "labeled": 269,
+          "max_drawdown_cents": 35802,
+          "net_pnl_cents": {
+            "interval": "bootstrap",
+            "mean": -132.635687732342,
+            "mean_high": -42.301115241635685,
+            "mean_low": -241.52044609665427,
+            "total": -35679
+          },
+          "neutral": 0,
+          "pending": 0,
+          "precision": {
+            "high": 0.4946925260645282,
+            "low": 0.37702791539307934,
+            "value": 0.4349442379182156
+          },
+          "status": "ok",
+          "trades": 269,
+          "unlabeled": 0
+        },
+        "rules": {
+          "labeled": 81,
+          "max_drawdown_cents": 5751,
+          "net_pnl_cents": {
+            "interval": "bootstrap",
+            "mean": -62.876543209876544,
+            "mean_high": 46.382716049382715,
+            "mean_low": -203.4320987654321,
+            "total": -5093
+          },
+          "neutral": 0,
+          "pending": 0,
+          "precision": {
+            "high": 0.6702809722940679,
+            "low": 0.4593724052942849,
+            "value": 0.5679012345679012
+          },
+          "status": "ok",
+          "trades": 81,
+          "unlabeled": 0
+        }
+      },
+      "cutoff": "2026-09-28T17:00:00",
+      "end": "2026-09-28T23:00:00",
+      "metrics": {
+        "base_rate": 0.03823953823953824,
+        "brier": 0.02459035447743854,
+        "calibration": [
+          {
+            "bin": 0,
+            "count": 3679,
+            "mean_predicted": 0.014083370500829535,
+            "observed": 0.0032617559119325905
+          },
+          {
+            "bin": 1,
+            "count": 184,
+            "mean_predicted": 0.14040481068915905,
+            "observed": 0.13043478260869565
+          },
+          {
+            "bin": 2,
+            "count": 85,
+            "mean_predicted": 0.24664146745909418,
+            "observed": 0.27058823529411763
+          },
+          {
+            "bin": 3,
+            "count": 44,
+            "mean_predicted": 0.3532347461516785,
+            "observed": 0.36363636363636365
+          },
+          {
+            "bin": 4,
+            "count": 23,
+            "mean_predicted": 0.4542508188670187,
+            "observed": 0.34782608695652173
+          },
+          {
+            "bin": 5,
+            "count": 22,
+            "mean_predicted": 0.5509927446091336,
+            "observed": 0.3181818181818182
+          },
+          {
+            "bin": 6,
+            "count": 43,
+            "mean_predicted": 0.6542407177245491,
+            "observed": 0.37209302325581395
+          },
+          {
+            "bin": 7,
+            "count": 25,
+            "mean_predicted": 0.7463204731515097,
+            "observed": 0.48
+          },
+          {
+            "bin": 8,
+            "count": 53,
+            "mean_predicted": 0.8366828441447776,
+            "observed": 0.7735849056603774
+          }
+        ],
+        "pr_auc": 0.5664510256799186,
+        "roc_auc": 0.9694727140904723
+      },
+      "threshold": 0.22740115886161283,
+      "train_profitable": 103,
+      "train_rows": 2117,
+      "validation_rows": 4158
+    },
+    {
+      "comparison": {
+        "listings": 367,
         "model_at_rules_volume": {
           "labeled": 2,
           "max_drawdown_cents": null,
@@ -94,62 +222,74 @@
       "cutoff": "2026-09-28T23:00:00",
       "end": "2026-09-29T05:00:00",
       "metrics": {
-        "base_rate": 0.050314465408805034,
-        "brier": 0.04211299223736888,
+        "base_rate": 0.02452316076294278,
+        "brier": 0.017672777899241446,
         "calibration": [
           {
             "bin": 0,
-            "count": 137,
-            "mean_predicted": 0.01719996124020969,
-            "observed": 0.029197080291970802
+            "count": 340,
+            "mean_predicted": 0.0086307535705959,
+            "observed": 0.011764705882352941
           },
           {
             "bin": 1,
-            "count": 8,
-            "mean_predicted": 0.16136128313227183,
-            "observed": 0.125
+            "count": 9,
+            "mean_predicted": 0.12517982989713025,
+            "observed": 0.0
           },
           {
             "bin": 2,
-            "count": 3,
-            "mean_predicted": 0.22210126918419684,
+            "count": 5,
+            "mean_predicted": 0.2563460812692505,
             "observed": 0.0
           },
           {
             "bin": 3,
-            "count": 5,
-            "mean_predicted": 0.3597186916340034,
+            "count": 7,
+            "mean_predicted": 0.36346361609828065,
+            "observed": 0.14285714285714285
+          },
+          {
+            "bin": 5,
+            "count": 1,
+            "mean_predicted": 0.5554916929439719,
             "observed": 0.0
           },
           {
-            "bin": 4,
-            "count": 3,
-            "mean_predicted": 0.44589176500926514,
-            "observed": 0.3333333333333333
+            "bin": 6,
+            "count": 1,
+            "mean_predicted": 0.6447047036074135,
+            "observed": 1.0
           },
           {
             "bin": 7,
-            "count": 2,
-            "mean_predicted": 0.7493901541279281,
-            "observed": 0.5
+            "count": 1,
+            "mean_predicted": 0.7851467958785242,
+            "observed": 0.0
           },
           {
             "bin": 8,
+            "count": 2,
+            "mean_predicted": 0.820100596738115,
+            "observed": 1.0
+          },
+          {
+            "bin": 9,
             "count": 1,
-            "mean_predicted": 0.8244729303903249,
+            "mean_predicted": 0.9471067958455492,
             "observed": 1.0
           }
         ],
-        "pr_auc": 0.4049933862433862,
-        "roc_auc": 0.8932119205298015
+        "pr_auc": 0.5570158868357704,
+        "roc_auc": 0.9540657976412166
       },
-      "threshold": 0.4552715500108364,
-      "train_profitable": 213,
-      "train_rows": 2107,
-      "validation_rows": 159
+      "threshold": 0.7248730498812334,
+      "train_profitable": 262,
+      "train_rows": 6275,
+      "validation_rows": 367
     }
   ],
-  "git_commit": "b95929334e9070db1207c9073b463d998a9597c9",
+  "git_commit": "dbf2233976cfdc5678a651c7d7fe8d0639f5d16a",
   "labels": {
     "config": {
       "fees": {
@@ -179,7 +319,7 @@
   },
   "model": {
     "calibration_share": 0.2,
-    "onnx_parity_max_gap": 9.286267362226819e-07,
+    "onnx_parity_max_gap": 6.737107239047219e-07,
     "params": {
       "colsample_bytree": 0.9,
       "deterministic": true,
@@ -195,99 +335,147 @@
       "subsample_freq": 1,
       "verbose": -1
     },
-    "platt_intercept": -0.034006796517764,
-    "platt_slope": 0.6673654361504913,
-    "threshold": 0.4247682932401189
+    "platt_intercept": 0.31068215133134425,
+    "platt_slope": 0.7781486531026022,
+    "threshold": 0.7243108411384609
   },
   "notes": [
     "Exploratory run: it reads labels that are not final and lets training labels overlap the validation windows. Its numbers check the pipeline; they are not an evaluation, and no model is registered."
   ],
   "pooled": {
     "comparison": {
-      "listings": 159,
+      "listings": 4525,
       "model_at_rules_volume": {
-        "labeled": 2,
-        "max_drawdown_cents": null,
-        "net_pnl_cents": null,
+        "labeled": 83,
+        "max_drawdown_cents": 1258,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 41.71084337349398,
+          "mean_high": 86.19277108433735,
+          "mean_low": -7.578313253012048,
+          "total": 3462
+        },
         "neutral": 0,
         "pending": 0,
-        "precision": null,
-        "status": "insufficient_data",
-        "trades": 2,
+        "precision": {
+          "high": 0.7658081379055438,
+          "low": 0.5681331989652646,
+          "value": 0.6746987951807228
+        },
+        "status": "ok",
+        "trades": 83,
         "unlabeled": 0
       },
       "model_at_threshold": {
-        "labeled": 4,
-        "max_drawdown_cents": null,
-        "net_pnl_cents": null,
+        "labeled": 273,
+        "max_drawdown_cents": 37060,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -134.83882783882783,
+          "mean_high": -45.52014652014652,
+          "mean_low": -242.77289377289378,
+          "total": -36811
+        },
         "neutral": 0,
         "pending": 0,
-        "precision": null,
-        "status": "insufficient_data",
-        "trades": 4,
+        "precision": {
+          "high": 0.4988725869827979,
+          "low": 0.38192567455015103,
+          "value": 0.43956043956043955
+        },
+        "status": "ok",
+        "trades": 273,
         "unlabeled": 0
       },
       "rules": {
-        "labeled": 2,
-        "max_drawdown_cents": null,
-        "net_pnl_cents": null,
+        "labeled": 83,
+        "max_drawdown_cents": 5751,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -62.204819277108435,
+          "mean_high": 42.98795180722892,
+          "mean_low": -192.79518072289156,
+          "total": -5163
+        },
         "neutral": 0,
         "pending": 0,
-        "precision": null,
-        "status": "insufficient_data",
-        "trades": 2,
+        "precision": {
+          "high": 0.6563887239594516,
+          "low": 0.4472482426556269,
+          "value": 0.5542168674698795
+        },
+        "status": "ok",
+        "trades": 83,
         "unlabeled": 0
       }
     },
     "metrics": {
-      "base_rate": 0.050314465408805034,
-      "brier": 0.04211299223736888,
+      "base_rate": 0.03712707182320442,
+      "brier": 0.02402930462015714,
       "calibration": [
         {
           "bin": 0,
-          "count": 137,
-          "mean_predicted": 0.01719996124020969,
-          "observed": 0.029197080291970802
+          "count": 4019,
+          "mean_predicted": 0.013622089148184741,
+          "observed": 0.003981089823339139
         },
         {
           "bin": 1,
-          "count": 8,
-          "mean_predicted": 0.16136128313227183,
-          "observed": 0.125
+          "count": 193,
+          "mean_predicted": 0.1396948374916033,
+          "observed": 0.12435233160621761
         },
         {
           "bin": 2,
-          "count": 3,
-          "mean_predicted": 0.22210126918419684,
-          "observed": 0.0
+          "count": 90,
+          "mean_predicted": 0.2471806126707695,
+          "observed": 0.25555555555555554
         },
         {
           "bin": 3,
-          "count": 5,
-          "mean_predicted": 0.3597186916340034,
-          "observed": 0.0
-        },
-        {
-          "bin": 4,
-          "count": 3,
-          "mean_predicted": 0.44589176500926514,
+          "count": 51,
+          "mean_predicted": 0.35463870869336905,
           "observed": 0.3333333333333333
         },
         {
+          "bin": 4,
+          "count": 23,
+          "mean_predicted": 0.4542508188670187,
+          "observed": 0.34782608695652173
+        },
+        {
+          "bin": 5,
+          "count": 23,
+          "mean_predicted": 0.5511883510584744,
+          "observed": 0.30434782608695654
+        },
+        {
+          "bin": 6,
+          "count": 44,
+          "mean_predicted": 0.6540239901309778,
+          "observed": 0.38636363636363635
+        },
+        {
           "bin": 7,
-          "count": 2,
-          "mean_predicted": 0.7493901541279281,
-          "observed": 0.5
+          "count": 26,
+          "mean_predicted": 0.7478137932563949,
+          "observed": 0.46153846153846156
         },
         {
           "bin": 8,
+          "count": 55,
+          "mean_predicted": 0.8360798533299898,
+          "observed": 0.7818181818181819
+        },
+        {
+          "bin": 9,
           "count": 1,
-          "mean_predicted": 0.8244729303903249,
+          "mean_predicted": 0.9471067958455492,
           "observed": 1.0
         }
       ],
-      "pr_auc": 0.4049933862433862,
-      "roc_auc": 0.8932119205298015
+      "pr_auc": 0.5652865419104646,
+      "roc_auc": 0.968458665311431
     }
   },
   "registrable": false,

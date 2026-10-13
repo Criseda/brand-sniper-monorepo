@@ -6,41 +6,44 @@ A LightGBM model of whether a feed listing is profitable, trained on outcome lab
 
 ## Run
 
-- Data: skinport feed listings decided from 2026-09-26T17:31:23 to 2026-09-28T23:26:23 UTC, 2266 with a profitable or unprofitable label (221 profitable). Listings the dedup rule dropped (same item and price within 5 minutes) are never scored, so they have no features.
+- Data: skinport feed listings decided from 2026-09-26T17:31:23 to 2026-09-28T23:26:23 UTC, 6642 with a profitable or unprofitable label (271 profitable). A listing whose first sighting came before the log starts has no features.
 - Labels: `v1` as of 2026-10-13T17:00:00 UTC, including labels that may still be revised.
-- Features: version 1, `price_to_window_mean`, `z_score`, `z_source`, `price_to_30d_avg`, `price_to_support_floor`, `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`, `listings_per_hour_item`.
+- Features: version 2, `price_to_window_mean`, `z_score`, `z_source`, `price_to_30d_avg`, `price_to_support_floor`, `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`, `listings_per_hour_item`.
 - Folds every 6 hours. A fold needs 1000 training listings and 100 of the rarer outcome; a metric needs 30 labeled trades.
-- Decision log sha256 `018e021b16453c29a293a68465b33ca3173977732b0324260033f75b076fd925`, commit `b95929334e9070db1207c9073b463d998a9597c9`.
+- Decision log sha256 `a0c0c45f08e8ae2c5a9cdb4feb56abf0eb98411ed92783134610ecc63990a330`, commit `dbf2233976cfdc5678a651c7d7fe8d0639f5d16a`.
 
 **Verdict:** not a candidate: exploratory run: labels overlap the validation windows and include revisable ones.
 
 ## Out of sample, all folds
 
-159 listings. ROC-AUC 0.893, PR-AUC 0.405 (base rate 0.050), Brier score 0.0421.
+4525 listings. ROC-AUC 0.968, PR-AUC 0.565 (base rate 0.037), Brier score 0.0240.
 
 | Who decides | Trades | Labeled | Precision (95% CI) | Net P&L |
 |---|---|---|---|---|
-| Live rules | 2 | 2 | insufficient data | insufficient data |
-| Model at its threshold | 4 | 4 | insufficient data | insufficient data |
-| Model at the rules' volume | 2 | 2 | insufficient data | insufficient data |
+| Live rules | 83 | 83 | 55.4% (44.7% to 65.6%) | -$51.63, -$0.62 per trade (-$1.93 to $0.43) |
+| Model at its threshold | 273 | 273 | 44.0% (38.2% to 49.9%) | -$368.11, -$1.35 per trade (-$2.43 to -$0.46) |
+| Model at the rules' volume | 83 | 83 | 67.5% (56.8% to 76.6%) | $34.62, $0.42 per trade (-$0.08 to $0.86) |
 
 ### Calibration
 
 | Predicted | Listings | Mean predicted | Observed |
 |---|---|---|---|
-| 0.0 to 0.1 | 137 | 0.017 | 0.029 |
-| 0.1 to 0.2 | 8 | 0.161 | 0.125 |
-| 0.2 to 0.3 | 3 | 0.222 | 0.000 |
-| 0.3 to 0.4 | 5 | 0.360 | 0.000 |
-| 0.4 to 0.5 | 3 | 0.446 | 0.333 |
-| 0.7 to 0.8 | 2 | 0.749 | 0.500 |
-| 0.8 to 0.9 | 1 | 0.824 | 1.000 |
+| 0.0 to 0.1 | 4019 | 0.014 | 0.004 |
+| 0.1 to 0.2 | 193 | 0.140 | 0.124 |
+| 0.2 to 0.3 | 90 | 0.247 | 0.256 |
+| 0.3 to 0.4 | 51 | 0.355 | 0.333 |
+| 0.4 to 0.5 | 23 | 0.454 | 0.348 |
+| 0.5 to 0.6 | 23 | 0.551 | 0.304 |
+| 0.6 to 0.7 | 44 | 0.654 | 0.386 |
+| 0.7 to 0.8 | 26 | 0.748 | 0.462 |
+| 0.8 to 0.9 | 55 | 0.836 | 0.782 |
+| 0.9 to 1.0 | 1 | 0.947 | 1.000 |
 
 ## Folds
 
 | Cutoff (UTC) | Training listings | Validation listings | ROC-AUC | Rules: trades, precision | Model: trades, precision | Note |
 |---|---|---|---|---|---|---|
-| 2026-09-26T23:00:00 | 667 | 131 | | | | skipped: 667 labeled listings, fewer than 1000 |
-| 2026-09-28T11:00:00 | 798 | 30 | | | | skipped: 798 labeled listings, fewer than 1000 |
-| 2026-09-28T17:00:00 | 828 | 1279 | | | | skipped: 828 labeled listings, fewer than 1000 |
-| 2026-09-28T23:00:00 | 2107 | 159 | 0.893 | 2, insufficient data | 4, insufficient data | |
+| 2026-09-26T23:00:00 | 1921 | 142 | | | | skipped: 73 listings of the rarer outcome, fewer than 100 |
+| 2026-09-28T11:00:00 | 2063 | 54 | | | | skipped: 90 listings of the rarer outcome, fewer than 100 |
+| 2026-09-28T17:00:00 | 2117 | 4158 | 0.969 | 81, 56.8% (45.9% to 67.0%) | 269, 43.5% (37.7% to 49.5%) | |
+| 2026-09-28T23:00:00 | 6275 | 367 | 0.954 | 2, insufficient data | 4, insufficient data | |
