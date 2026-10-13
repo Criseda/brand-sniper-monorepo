@@ -28,6 +28,9 @@ DEDUP_RULE = "time_window_and_unchanged_snapshot"
 REASON_INSUFFICIENT_HISTORY = "insufficient_history"
 REASON_BELOW_THRESHOLD = "below_threshold"
 REASON_DRE_REJECTED = "dre_rejected"
+# Scored with the macro Z score only (the window is too short, as right after a restart), which never
+# triggers (#308, zscore.source_can_trigger).
+REASON_MACRO_ONLY = "macro_only"
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +86,7 @@ class ZScoreDreStrategy:
             "min_history_points": zscore.MIN_HISTORY_POINTS,
             "macro_zscore_fallback": zscore.MACRO_ZSCORE_FALLBACK,
             "macro_prior_weight": zscore.MACRO_PRIOR_WEIGHT,
+            "macro_zscore_triggers": zscore.MACRO_ZSCORE_TRIGGERS,
         }
 
     async def decide(self, tick: MarketTick, context: DecisionContext) -> Decision:
@@ -97,6 +101,8 @@ class ZScoreDreStrategy:
         }
         if self.records_sweep_inputs:
             features["sticker_count"] = len(tick.stickers)
+        if not zscore.source_can_trigger(window_score.source):
+            return Decision(approve=False, reason=REASON_MACRO_ONLY, score=window_score.z_score, features=features)
         if not zscore.should_trigger_anomaly(window_score.z_score, window_score.mean_cents, tick, window_score.source):
             if self.records_sweep_inputs:
                 # The DRE does not read the Z-score thresholds, so its verdict here is the one a looser

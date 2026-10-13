@@ -18,6 +18,7 @@ def _pin_detection_constants(monkeypatch):
     monkeypatch.setattr(zscore, "MIN_SAVINGS_CENTS", 50)
     monkeypatch.setattr(zscore, "MACRO_ZSCORE_FALLBACK", True)
     monkeypatch.setattr(zscore, "MACRO_PRIOR_WEIGHT", 5.0)
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", False)
 
 
 def _tick(price_usd: float, stickers: list[dict] | None = None) -> MarketTick:
@@ -142,10 +143,22 @@ def test_should_trigger_anomaly(price_usd, z_score, mean_cents, stickers, expect
     assert should_trigger_anomaly(z_score, mean_cents, tick) is expected
 
 
-def test_source_param_does_not_alter_outcome():
+def test_local_and_hybrid_sources_share_thresholds():
     tick = _tick(5.00)
     assert should_trigger_anomaly(-3.0, 600, tick, source="local") is True
     assert should_trigger_anomaly(-3.0, 600, tick, source="hybrid") is True
-    assert should_trigger_anomaly(-3.0, 600, tick, source="macro") is True
     assert should_trigger_anomaly(-1.0, 600, tick, source="local") is False
+
+
+def test_macro_source_never_triggers():
+    """A short window (right after a restart) is scored with the macro Z score, which never triggers (#308)."""
+    tick = _tick(5.00)
+    assert should_trigger_anomaly(-30.0, 600, tick, source="macro") is False
+    assert should_trigger_anomaly(-30.0, 600, _tick(5.00, [{"name": "Titan"}]), source="macro") is False
+
+
+def test_macro_source_triggers_when_enabled(monkeypatch):
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", True)
+    tick = _tick(5.00)
+    assert should_trigger_anomaly(-3.0, 600, tick, source="macro") is True
     assert should_trigger_anomaly(-1.0, 600, tick, source="macro") is False

@@ -12,6 +12,9 @@ MIN_STD_DEV_FACTOR = float(os.getenv("MIN_STD_DEV_FACTOR", "0.04"))
 MIN_HISTORY_POINTS = int(os.getenv("MIN_HISTORY_POINTS", "4"))
 MACRO_ZSCORE_FALLBACK = os.getenv("MACRO_ZSCORE_FALLBACK", "true").lower() in ("true", "1", "yes")
 MACRO_PRIOR_WEIGHT = float(os.getenv("MACRO_PRIOR_WEIGHT", "5.0"))
+# A macro Z score (the item's window holds fewer than MIN_HISTORY_POINTS prices, as it does right after a
+# restart empties the edge Redis) is still computed and logged, but it never triggers the DRE (#308).
+MACRO_ZSCORE_TRIGGERS = os.getenv("MACRO_ZSCORE_TRIGGERS", "false").lower() in ("true", "1", "yes")
 
 # Every source calculate_z_score can report.
 ZSCORE_SOURCES = ("local", "hybrid", "macro")
@@ -74,12 +77,26 @@ def calculate_z_score(
     return z_score, mean_cents, source
 
 
+def source_can_trigger(source: str) -> bool:
+    """
+    False for a macro Z score unless MACRO_ZSCORE_TRIGGERS is set (#308).
+
+    A macro score compares the price with the baseline alone, which is the DRE's own test. Right after a
+    restart every window is empty, and a lowest ask that has sat under the support floor for days then looks
+    like a bargain. Replayed with restarts, those approvals lost money (docs/benchmarks/cold_start.md).
+    """
+    return source != "macro" or MACRO_ZSCORE_TRIGGERS
+
+
 def should_trigger_anomaly(z_score: float, mean_cents: float, tick: MarketTick, source: str = "local") -> bool:
     """
     Determines if a Z-score outlier should proceed to history verification,
     applying sticker-aware thresholds and the absolute savings floor.
-    source is logged for observability but does not alter thresholds.
+    A macro Z score never triggers (see source_can_trigger); otherwise source does not alter thresholds.
     """
+    if not source_can_trigger(source):
+        return False
+
     sticker_count = len(tick.stickers)
     threshold_z = Z_SCORE_STICKER_THRESHOLD if sticker_count > 0 else Z_SCORE_THRESHOLD
 

@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Changed
 - A REST lowest ask that has not changed since the last poll enters the price window only while the window holds fewer than `MIN_HISTORY_POINTS` prices or once an hour (`shared_utils.price_window`, replay header `window_rule`, counter `listener_snapshots_unchanged_windowed_total`), instead of on every poll; in sample it loses $1.00 per trade instead of $1.44, see `docs/benchmarks/price_window.md` (#269).
+- A macro Z score (a price window shorter than `MIN_HISTORY_POINTS`, as on the first poll after a restart) no longer triggers the DRE: the replay logs it as `macro_only`, and `MACRO_ZSCORE_TRIGGERS=true` restores the old rule. Replayed with restarts, in sample, it loses $0.40 per trade instead of $1.33, see `docs/benchmarks/cold_start.md` (#308).
 - Baseline scorecard counts each purchase once, as live trading buys it since #271: a listing once, a REST item and price once per venue and UTC day (none on a day a listing of it was bought at that price), from the shared `shared_utils.purchase_keys` rule the live executor now uses; the report counts the repeat approvals (#249).
 - Only a listener that reads a feed directly exports the `listener_feed_*` metrics, so the Skinport listener no longer reports a disconnected feed (#261).
 - The Skinport listener's batch streams are `listener:ingest:skinport:*` like every venue's; it moves entries left under the pre-#261 names when it starts, and so does `replay_batches.py --venue skinport` (#261).

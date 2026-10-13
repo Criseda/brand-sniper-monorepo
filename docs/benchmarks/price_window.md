@@ -137,6 +137,6 @@ does not add macro decisions. It also writes about 91% fewer unchanged asks to t
 instead of 15.2 million over the range).
 
 It does not make the rules profitable. The expensive tier still loses, and so do the macro decisions after a
-restart, which are a separate problem from what the window holds. I chose the hour and the rule on this week of
+restart, which are a separate problem from what the window holds ([cold_start.md](cold_start.md), #308). I chose the hour and the rule on this week of
 labels, so the improvement has to hold on the weeks that are still pending before I trust it. The next scorecard
 runs, once 2026-10-03 to 2026-10-10 is labeled, will show that.

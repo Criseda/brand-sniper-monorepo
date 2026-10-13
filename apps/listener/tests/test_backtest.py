@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+import zscore
 from backtest import database
 from backtest.harness import run_replay
 from backtest.sources import (
@@ -29,6 +30,7 @@ from backtest.strategy import (
     REASON_DRE_REJECTED,
     REASON_DUPLICATE,
     REASON_INSUFFICIENT_HISTORY,
+    REASON_MACRO_ONLY,
     STRATEGIES,
     ZScoreDreStrategy,
     ZScoreDreSweepStrategy,
@@ -93,6 +95,22 @@ def synthetic_stream() -> tuple[list, BaselineSnapshot]:
         sticker_prices={VALUABLE_STICKER: 500_000},
     )
     return events, baselines
+
+
+def cold_start_stream() -> tuple[list, BaselineSnapshot]:
+    """
+    Right after a restart: one item is seen for the first time far under its baseline, so its window is too
+    short and it is scored with the macro Z score; another has a full window and a listing under its floor.
+    """
+    cold_item = "AWP | Safari Mesh (Field-Tested)"
+    events = [_snapshot(0, 400, cold_item)]
+    events += [_snapshot(index * 305, price) for index, price in enumerate([1000, 1010, 990, 1005, 995])]
+    events += [
+        _feed(10, "listed", _sale(1, 380, cold_item)),  # window of 2: macro Z
+        _feed(1600, "listed", _sale(2, 400)),  # full window: support floor
+    ]
+    baseline = {"support_floor_cents": 500, "latest_price_cents": 1000, "rolling_30d_avg_cents": 1000, "volatility_cents": 50}
+    return events, BaselineSnapshot(baselines={ITEM: baseline, cold_item: baseline})
 
 
 async def _replay(events, baselines, strategy=None, **kwargs) -> tuple[str, list[tuple[MarketTick, object]]]:
@@ -246,6 +264,32 @@ async def test_synthetic_stream_reaches_every_decision_reason():
     [summary] = _rows(log_text, "summary")
     assert summary["outcome_ticks"] == 1
     assert summary["feed_events"] == 8
+
+
+@pytest.mark.asyncio
+async def test_a_macro_z_score_is_logged_but_never_approved(monkeypatch):
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", False)
+    events, baselines = cold_start_stream()
+
+    log_text, _ = await _replay(events, baselines)
+
+    rows = {row["listing_id"]: row for row in _rows(log_text)}
+    assert (rows["1"]["reason"], rows["1"]["approve"]) == (REASON_MACRO_ONLY, False)
+    assert rows["1"]["features"]["z_source"] == "macro"
+    assert rows["1"]["score"] < -2.0
+    assert (rows["2"]["reason"], rows["2"]["approve"]) == (REASON_SUPPORT_FLOOR, True)
+    assert json.loads(log_text.splitlines()[0])["config"]["macro_zscore_triggers"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_macro_z_score_is_approved_when_enabled(monkeypatch):
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", True)
+    events, baselines = cold_start_stream()
+
+    log_text, _ = await _replay(events, baselines)
+
+    rows = {row["listing_id"]: row for row in _rows(log_text)}
+    assert (rows["1"]["reason"], rows["1"]["approve"]) == (REASON_SUPPORT_FLOOR, True)
 
 
 @pytest.mark.asyncio
@@ -493,21 +537,35 @@ def _replay_run(decided) -> tuple[list[tuple], list[tuple]]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("stream", ["recorded_fixture", "synthetic", "repeated_snapshots"])
-async def test_replay_decisions_match_the_live_consumer(monkeypatch, stream):
+@pytest.mark.parametrize(
+    ("stream", "macro_triggers", "expected_trades"),
+    [
+        # Cold, the recorded fixture's approvals are all macro Z scores: none without them, 14 with them.
+        ("recorded_fixture", False, 0),
+        ("recorded_fixture", True, 14),
+        ("synthetic", False, 3),
+        ("repeated_snapshots", False, 3),
+        ("cold_start", False, 1),
+        ("cold_start", True, 3),
+    ],
+)
+async def test_replay_decisions_match_the_live_consumer(monkeypatch, stream, macro_triggers, expected_trades):
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", macro_triggers)
     if stream == "recorded_fixture":
         events = load_fixture(FIXTURE_DIR / "events.jsonl")
         baselines = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
     elif stream == "synthetic":
         events, baselines = synthetic_stream()
-    else:
+    elif stream == "repeated_snapshots":
         events, baselines = repeated_snapshot_stream()
+    else:
+        events, baselines = cold_start_stream()
 
     live_submissions, live_trades = await _live_run(monkeypatch, events, baselines)
     _, decided = await _replay(events, baselines)
     replay_submissions, replay_trades = _replay_run(decided)
 
-    assert live_trades, "the parity stream must produce trades, or the test proves nothing"
+    assert len(live_trades) == expected_trades
     assert replay_submissions == live_submissions
     assert replay_trades == live_trades
 
