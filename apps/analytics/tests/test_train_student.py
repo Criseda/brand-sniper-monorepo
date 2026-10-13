@@ -84,6 +84,7 @@ def _label(listing_id, decided_at, profitable, margin=None):
         "listing_id": listing_id,
         "is_profitable": profitable,
         "resale_net_margin_cents": margin if margin is not None else (100 if profitable else -100),
+        "listed_at": decided_at,
         "label_available_at": decided_at + HORIZON,
     }
 
@@ -134,10 +135,18 @@ def test_dataset_joins_the_first_decision_of_each_labeled_listing():
         _decision("B", at, student=_student(0.9)),  # neutral label
         _decision("C", at, student=_student(0.9)),  # no final label
         _decision("D", at, approve=True),  # duplicate decision, never scored: no features
+        _decision("D", at + timedelta(days=2), student=_student(0.9)),  # D seen again: not the labeled sighting
         _decision("E", datetime(2026, 9, 26), student=_student(0.9)),  # before tradable REST prices
+        _decision("F", at + timedelta(hours=3), student=_student(0.9)),  # first seen before the log started
     ]
     labels = _labels(
-        [_label("A", at, True), {**_label("B", at, True), "is_profitable": None}, _label("D", at, True), _label("E", at, False)]
+        [
+            _label("A", at, True),
+            {**_label("B", at, True), "is_profitable": None},
+            _label("D", at, True),
+            _label("E", datetime(2026, 9, 26), False),
+            _label("F", at, False),
+        ]
     )
 
     rows = build_dataset(_log(decisions), labels)
@@ -186,7 +195,7 @@ def test_a_label_available_after_the_cutoff_is_left_out_even_when_decided_before
     late_label = _row("late", T0, label_available_at=T0 + timedelta(days=30))
     rows = [late_label, _row("early", T0), _row("validation", T0 + timedelta(days=20))]
 
-    fold = next(fold for fold in walk_forward_folds(rows, fold_hours=24) if fold.validation)
+    (fold,) = walk_forward_folds(rows, fold_hours=24)
 
     assert [row.listing_id for row in fold.train] == ["early"]
 
@@ -310,6 +319,7 @@ def test_training_run_evaluates_walk_forward_and_exports_a_model():
     evaluated = [fold for fold in report["folds"] if "skipped" not in fold]
     assert evaluated
     assert any("skipped" in fold for fold in report["folds"])  # The first folds have no label old enough.
+    assert all(fold["validation_rows"] for fold in report["folds"])
     assert report["pooled"]["metrics"]["roc_auc"] > 0.8
     assert report["pooled"]["comparison"]["listings"] == sum(fold["validation_rows"] for fold in evaluated)
     assert report["registrable"] is True

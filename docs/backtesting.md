@@ -305,6 +305,18 @@ feature names and versions as metadata), and checked against the native model. I
 window. It is for checking the pipeline on the labels that exist. Its numbers are not an evaluation, and it
 never registers a model.
 
+**When it means something.** On 2026-10-13 the labels cover listings from 2026-09-26 17:30 to 09-28 23:26,
+one weekly slice with a gap where my PC was off. Of their 6,654 profitable or unprofitable labels only 2,266
+belong to a scored first sighting: the dedup rule drops a listing at the same price as the item's previous
+tick within 5 minutes, so it gets no features, live or in replay. Those 2,266 are enough to train a fold
+(221 profitable), but a strict fold can only validate on listings decided 14 days after them, so from about
+2026-10-13. Their labels exist from about 2026-10-27 and are final from about 2026-10-30. The rules approve
+100 to 280 feed listings on a day the PC was on, and about a third of those get a decisive label, so one such
+day of validation listings gives the 30 labeled trades a comparison needs. The first strict run is therefore
+due around 2026-10-31, and it will still rest on one training week and a day or two of validation, which is
+not enough to judge the model. Until then the committed report (`docs/benchmarks/student_model.md`) is an
+exploratory run.
+
 ## Parity and tests
 
 `tests/test_backtest.py` drives the live `main.tick_consumer` and the harness over the same streams,

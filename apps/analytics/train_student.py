@@ -28,6 +28,7 @@ import asyncio
 import json
 import os
 import sys
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -82,6 +83,8 @@ MIN_MINORITY_CLASS = 100
 # The newest share of a fold's training rows calibrates the probabilities and picks the operating threshold.
 CALIBRATION_SHARE = 0.2
 DEFAULT_FOLD_HOURS = 24
+# The log stores whole seconds and the label the edge receive time in milliseconds.
+FIRST_SIGHTING_TOLERANCE = timedelta(seconds=1)
 CALIBRATION_BINS = 10
 
 # Fixed hyperparameters: small trees and a seed, so a rerun on the same inputs trains the same model.
@@ -129,10 +132,12 @@ class LabeledListing:
 
 def build_dataset(log: DecisionLog, labels: FinalLabels) -> list[LabeledListing]:
     """
-    The first scored decision of every feed listing with a non neutral label, in decision order.
+    Every feed listing with a non neutral label whose first sighting was scored, in decision order.
 
-    Decisions before tradable REST prices filled the windows, or made with a later baseline build, are left
-    out, as in the scorecard.
+    A label describes the listing as first seen (`listed_at`), so only the decision on that sighting counts.
+    A listing whose first sighting was dropped as a duplicate, or happened before the log starts, is left
+    out rather than joined to a later sighting. Decisions before tradable REST prices filled the windows,
+    or made with a later baseline build, are left out, as in the scorecard.
     """
     if log.strategy != FEATURES_STRATEGY:
         raise ValueError(f"Training needs a log made with the {FEATURES_STRATEGY} strategy; this one used {log.strategy}")
@@ -146,15 +151,17 @@ def build_dataset(log: DecisionLog, labels: FinalLabels) -> list[LabeledListing]
     seen: set[str] = set()
     for decision in log.decisions:
         row = decision.row
-        student = (row.get("features") or {}).get("student")
-        if decision.tick_kind != TICK_KIND_LISTING or student is None or not is_scorable(decision, start):
+        if decision.tick_kind != TICK_KIND_LISTING:
             continue
         listing_id = str(row["listing_id"])
         if listing_id in seen:
             continue
         seen.add(listing_id)
+        student = (row.get("features") or {}).get("student")
         label = by_listing.get(listing_id)
-        if label is None or label["is_profitable"] is None:
+        if student is None or not is_scorable(decision, start) or label is None or label["is_profitable"] is None:
+            continue
+        if abs(decision.decided_at - label["listed_at"]) > FIRST_SIGHTING_TOLERANCE:
             continue
         rows.append(
             LabeledListing(
@@ -197,7 +204,8 @@ class Fold:
 
 def walk_forward_folds(rows: Sequence[LabeledListing], fold_hours: int, exploratory: bool = False) -> list[Fold]:
     """
-    Expanding window folds with cutoffs every `fold_hours`, from the first decision to the last.
+    Expanding window folds with cutoffs every `fold_hours`, from the first decision to the last. A window
+    without listings (my PC was off) makes no fold.
 
     A fold trains on listings decided before its cutoff whose label was available by the cutoff, and
     validates on the listings decided in [cutoff, cutoff + fold_hours). `exploratory` drops the label
@@ -217,7 +225,8 @@ def walk_forward_folds(rows: Sequence[LabeledListing], fold_hours: int, explorat
         end = cutoff + step
         train = [row for row in rows if row.decided_at < cutoff and (exploratory or row.label_available_at <= cutoff)]
         validation = [row for row in rows if cutoff <= row.decided_at < end]
-        folds.append(Fold(cutoff=cutoff, end=end, train=train, validation=validation))
+        if validation:
+            folds.append(Fold(cutoff=cutoff, end=end, train=train, validation=validation))
         cutoff = end
     return folds
 
@@ -301,6 +310,46 @@ def train_model(rows: Sequence[LabeledListing]) -> StudentModel:
 # --- ONNX ---
 
 
+def _split_thresholds(booster: lightgbm.LGBMClassifier) -> dict[int, set[float]]:
+    """LightGBM's split thresholds (doubles) per feature index."""
+    thresholds: dict[int, set[float]] = defaultdict(set)
+    stack = [tree["tree_structure"] for tree in booster.booster_.dump_model()["tree_info"]]
+    while stack:
+        node = stack.pop()
+        if "split_index" in node:
+            thresholds[int(node["split_feature"])].add(float(node["threshold"]))
+            stack.extend([node["left_child"], node["right_child"]])
+    return thresholds
+
+
+def round_thresholds_down(converted: onnx.ModelProto, booster: lightgbm.LGBMClassifier) -> int:
+    """
+    Makes the ONNX trees split float32 inputs exactly as LightGBM does; returns how many thresholds moved.
+
+    LightGBM splits on `x <= t` with a double t, often halfway between two float32 values, and the converter
+    stores t as float32. When that rounds t up onto the next float32 value, an input equal to it goes left in
+    ONNX and right in LightGBM. The largest float32 at or below t gives the same answer for every float32 x.
+    """
+    thresholds = _split_thresholds(booster)
+    moved = 0
+    for node in converted.graph.node:
+        if not node.op_type.startswith("TreeEnsemble"):
+            continue
+        attributes = {attribute.name: attribute for attribute in node.attribute}
+        features = list(attributes["nodes_featureids"].ints)
+        modes = list(attributes["nodes_modes"].strings)
+        values = attributes["nodes_values"].floats
+        for index, value in enumerate(values):
+            if modes[index] != b"BRANCH_LEQ":
+                continue
+            stored = np.float32(value)
+            originals = [threshold for threshold in thresholds[features[index]] if np.float32(threshold) == stored]
+            if originals and all(threshold < float(stored) for threshold in originals):
+                values[index] = float(np.nextafter(stored, np.float32(-np.inf)))
+                moved += 1
+    return moved
+
+
 def to_onnx(model: StudentModel, metadata: dict[str, str]) -> onnx.ModelProto:
     """
     One ONNX graph: float32 features [n, 11] in, calibrated probability [n] out.
@@ -314,6 +363,7 @@ def to_onnx(model: StudentModel, metadata: dict[str, str]) -> onnx.ModelProto:
         zipmap=False,
         target_opset=ONNX_TARGET_OPSET,
     )
+    round_thresholds_down(converted, model.booster)
     graph = converted.graph
     graph.name = REGISTERED_MODEL  # The converter names the graph with a random ID; the same model gives the same bytes.
     probabilities = next(output.name for output in graph.output if output.name != "label")
@@ -498,8 +548,8 @@ def evaluate_folds(
             "validation_rows": len(fold.validation),
         }
         too_small = size_rule(fold.train)
-        if too_small is not None or not fold.validation:
-            report["skipped"] = too_small or "no validation listings"
+        if too_small is not None:
+            report["skipped"] = too_small
             fold_reports.append(report)
             continue
         model = train_model(fold.train)
@@ -625,6 +675,16 @@ def _number(value: float | None, digits: int = 3) -> str:
     return "n/a" if value is None else f"{value:.{digits}f}"
 
 
+def _data_line(data: dict[str, Any]) -> str:
+    if not data["listings"]:
+        return f"- Data: no scored {data['venue']} feed listing in the log has a profitable or unprofitable label yet."
+    return (
+        f"- Data: {data['venue']} feed listings decided from {data['first_decision']} to {data['last_decision']} UTC, "
+        f"{data['listings']} with a profitable or unprofitable label ({data['profitable']} profitable). Listings the "
+        "dedup rule dropped (same item and price within 5 minutes) are never scored, so they have no features."
+    )
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     data = report["data"]
     lines = ["# Student model", ""]
@@ -640,8 +700,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         [
             "## Run",
             "",
-            f"- Data: {data['venue']} feed listings decided from {data['first_decision']} to {data['last_decision']} UTC, "
-            f"{data['listings']} with a profitable or unprofitable label ({data['profitable']} profitable).",
+            _data_line(data),
             f"- Labels: `{report['labels']['version']}` as of {report['as_of']} UTC, "
             + ("final labels only." if report["labels"]["final_only"] else "including labels that may still be revised."),
             f"- Features: version {report['features']['version']}, "
