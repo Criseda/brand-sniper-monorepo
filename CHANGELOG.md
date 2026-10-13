@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/data_sources.md` describes the data we have, why the Kaggle Steam baselines cannot be used as live prices, the Skinport data, the edge PC not running all the time, and the edge running without baselines since July 2026.
 - `docs/skinport_feed.md` records why REST lowest asks sat below every recent sale: `/v1/items` with `tradable=0` returns only trade locked listings, so every stored REST snapshot is a trade locked price (fix in #275). It also records that a feed `sold` can be relisted with the same Steam asset, and how the rate limit behaves after a 429 (#267).
 - Baseline scorecard (`apps/analytics/baseline_scorecard.py`, `make scorecard START=... END=...`): scores replayed approvals against outcome labels (precision and recall with Wilson intervals, fee aware net P&L with a seeded bootstrap, max drawdown, time slices, breakdowns by tick kind, DRE rule, Z-score source, price, item type and liquidity, an in sample threshold sweep), says "insufficient data" below 30 labeled trades, leaves out decisions before tradable REST prices, writes `docs/benchmarks/baseline_scorecard.{md,json}` and logs an MLflow run; the `zscore_dre_sweep` replay strategy records what the sweep needs (#249).
+- First baseline scorecard (`docs/benchmarks/baseline_scorecard.{md,json}`): Skinport decisions from 2026-09-26 17:30 to 2026-10-13 01:27 UTC, 202 labeled trades, precision 48.5% and a net loss of $1.44 per trade (#249).
 - Waxpeer venue (#261): a second listener (`listener-waxpeer`) reads Waxpeer's public Socket.IO feed directly, records and scores only listings priced below the item's Skinport price (plus their later price cuts and removal), judges them against the Skinport baselines with buy on Waxpeer, resell on Skinport P&L, stores raw payloads grouped per 500 events or 10 seconds, and registers `WAXPEER_FEES` (6% seller fee); paper trades record their `venue`; see `docs/waxpeer_feed.md`.
 - Fee-aware P&L function (`shared_utils.pnl`) and a versioned market-outcome labeler (`listing_outcomes` table, `label_outcomes.py` Prefect flow) with censoring and a look-ahead guard (#233).
 
@@ -60,7 +61,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A listing is paper traded once across listener restarts and for any executor: unique indexes on `simulated_trades` (one buy per venue and listing, one REST snapshot buy per venue, item and price per UTC day), the trade endpoint answers a repeat `200 ALREADY_RECORDED`, the in memory check moved into `ExecutionService`, and migration `d064786e47a8` removes repeated buys, keeping the first (#271).
 
 #### In Progress / Planned
-- `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).
 - `[PE-05]` Ingress-to-decision latency benchmark and Rust decision gate (#175).
 - `[PE-06]` Shared feature module & walk-forward student model with ONNX export (#234).
 - `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate (#236).
