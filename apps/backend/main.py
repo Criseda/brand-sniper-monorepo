@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from typing import Annotated
 
 import uvicorn
@@ -263,31 +264,79 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
     return False
 
 
+async def snapshot_already_bought(
+    session: AsyncSession, payload: SimulatedTradePayload, item_id: int, bought_at: datetime
+) -> bool:
+    """A REST snapshot buy repeats any buy of the item at that price on the venue the same UTC day.
+
+    The snapshot unique index covers repeated snapshots. This also covers a listing bought earlier that
+    day, which the next REST poll shows as the item's lowest ask.
+    """
+    day_start = bought_at.replace(hour=0, minute=0, second=0, microsecond=0)
+    stmt = (
+        select(SimulatedTrade.id)
+        .where(
+            SimulatedTrade.venue == payload.venue,
+            SimulatedTrade.item_id == item_id,
+            SimulatedTrade.purchase_price_cents == payload.purchase_price_cents,
+            SimulatedTrade.simulated_buy_timestamp >= day_start,
+            SimulatedTrade.simulated_buy_timestamp < day_start + timedelta(days=1),
+        )
+        .limit(1)
+    )
+    result = await session.exec(stmt)
+    return result.first() is not None
+
+
 @app.post(
     "/api/v1/ingest/trade",
     dependencies=[Depends(require_backend_api_key)],
     status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {"description": "The purchase was already recorded; nothing was stored"},
+        **COMMON_ERROR_RESPONSES,
+    },
 )
-async def ingest_simulated_trade(payload: SimulatedTradePayload):
+async def ingest_simulated_trade(payload: SimulatedTradePayload, response: Response):
     logger.info("Logging Simulated Trade: %s for $%.2f", payload.market_hash_name, payload.purchase_price_cents / 100)
 
     pending_items: dict[str, int] = {}
+    bought_at = utc_now_naive()
     async with session_scope() as session:
         item_id = await get_or_create_item_id(session, payload.market_hash_name, pending_items)
-        trade = SimulatedTrade(
-            item_id=item_id,
-            venue=payload.venue,
-            purchase_price_cents=payload.purchase_price_cents,
-            estimated_profit_cents=payload.estimated_profit_cents,
-            profit_estimate_basis=payload.profit_estimate_basis,
-            trigger_z_score=payload.trigger_z_score,
-            listing_id=payload.listing_id,
-            float_value=payload.float_value,
-            simulated_buy_timestamp=utc_now_naive(),
-        )
-        session.add(trade)
+        trade_id: int | None = None
+        if payload.listing_id is not None or not await snapshot_already_bought(session, payload, item_id, bought_at):
+            # The unique purchase indexes on simulated_trades decide; a repeat inserts nothing.
+            stmt = (
+                insert(SimulatedTrade)
+                .values(
+                    item_id=item_id,
+                    venue=payload.venue,
+                    purchase_price_cents=payload.purchase_price_cents,
+                    estimated_profit_cents=payload.estimated_profit_cents,
+                    profit_estimate_basis=payload.profit_estimate_basis,
+                    trigger_z_score=payload.trigger_z_score,
+                    listing_id=payload.listing_id,
+                    float_value=payload.float_value,
+                    simulated_buy_timestamp=bought_at,
+                )
+                .on_conflict_do_nothing()
+                .returning(cast(SimulatedTrade.id, Integer))
+            )
+            trade_id = (await session.exec(stmt)).scalar()
 
     item_cache.update(pending_items)
+    if trade_id is None:
+        # A listener that restarted, or any executor, sent a purchase already recorded: report it, do not count it.
+        logger.info(
+            "Trade already recorded: %s for $%.2f on %s (listing %s)",
+            payload.market_hash_name,
+            payload.purchase_price_cents / 100,
+            payload.venue,
+            payload.listing_id or "REST snapshot",
+        )
+        response.status_code = status.HTTP_200_OK
+        return {"status": "ALREADY_RECORDED"}
 
     paper_trades_executed_total.inc()
     if payload.estimated_profit_cents is not None:

@@ -372,6 +372,13 @@ both listeners with their full grace time (their batches wait in Redis), stop th
 then start the new images. The new backend still accepts batches that name the venue `source`, so batches a
 listener stored before the upgrade are delivered as before.
 
+Migration `d064786e47a8` (#271) makes the database record each paper trade once: one row per venue and
+listing ID, and for REST snapshot buys, which name no listing, one row per venue, item and price per UTC day.
+Before it creates those unique indexes it deletes the repeated rows, keeping the first buy of each purchase,
+and logs how many it removed. The downgrade drops the indexes but cannot bring those rows back. From this
+release the trade endpoint answers a repeat with `200` and `ALREADY_RECORDED`. An older listener counts that
+answer as a rejection, so update the backend and both listeners together.
+
 ## Data Retention
 
 | Table | Policy | Status |

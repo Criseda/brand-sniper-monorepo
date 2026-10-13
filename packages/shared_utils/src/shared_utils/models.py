@@ -213,6 +213,30 @@ class SimulatedTrade(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True
     )
 
+    # Each purchase is recorded once, whichever executor sent it and however often the listener restarted.
+    # A listing is bought once per venue. A REST snapshot names no listing, so its item and price stand
+    # in for one: one buy per venue, item and price per UTC day.
+    __table_args__ = (
+        Index(
+            "uq_simulated_trades_venue_listing_id",
+            "venue",
+            "listing_id",
+            unique=True,
+            postgresql_where=text("listing_id IS NOT NULL"),
+            sqlite_where=text("listing_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_simulated_trades_snapshot_buy_day",
+            "venue",
+            "item_id",
+            "purchase_price_cents",
+            text("date(simulated_buy_timestamp)"),
+            unique=True,
+            postgresql_where=text("listing_id IS NULL"),
+            sqlite_where=text("listing_id IS NULL"),
+        ),
+    )
+
 
 class ListingOutcome(SQLModel, table=True):
     """

@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -151,6 +152,130 @@ def test_ingest_simulated_trade_stores_estimate_basis_and_missing_estimate(clien
     assert trades[0].profit_estimate_basis == "net_of_seller_fee"
     # A trade without an estimate must not move the estimated-profit metric.
     assert backend_main.paper_trading_estimated_profit_total._value.get() == profit_before
+
+
+def _trade_payload(market_hash_name, venue="waxpeer", listing_id=None, price_cents=1000, z_score=-3.5):
+    return {
+        "venue": venue,
+        "market_hash_name": market_hash_name,
+        "purchase_price_cents": price_cents,
+        "estimated_profit_cents": 500,
+        "trigger_z_score": z_score,
+        "listing_id": listing_id,
+    }
+
+
+def _stored_trades(market_hash_name):
+    from shared_utils.models import MarketItem, SimulatedTrade
+    from sqlmodel import select
+
+    statement = (
+        select(SimulatedTrade)
+        .join(MarketItem, SimulatedTrade.item_id == MarketItem.id)
+        .where(MarketItem.market_hash_name == market_hash_name)
+    )
+    return asyncio.run(_fetch_all(statement))
+
+
+def test_ingest_trade_records_a_listing_bought_twice_once(client):
+    executed_before = backend_main.paper_trades_executed_total._value.get()
+
+    first = client.post("/api/v1/ingest/trade", json=_trade_payload("Repeat Listing Item", listing_id="80000001"))
+    # The same listing scored again, e.g. by a listener that restarted and forgot it bought it.
+    repeat = client.post(
+        "/api/v1/ingest/trade", json=_trade_payload("Repeat Listing Item", listing_id="80000001", z_score=-2.9)
+    )
+
+    assert first.status_code == 201
+    assert repeat.status_code == 200
+    assert repeat.json() == {"status": "ALREADY_RECORDED"}
+    trades = _stored_trades("Repeat Listing Item")
+    assert len(trades) == 1
+    assert trades[0].trigger_z_score == pytest.approx(-3.5)
+    assert backend_main.paper_trades_executed_total._value.get() == executed_before + 1
+
+
+def test_ingest_trade_scopes_listing_ids_by_venue(client):
+    for venue in ("skinport", "waxpeer"):
+        response = client.post("/api/v1/ingest/trade", json=_trade_payload("Two Venue Item", venue, listing_id="80000002"))
+        assert response.status_code == 201
+
+    assert sorted(trade.venue for trade in _stored_trades("Two Venue Item")) == ["skinport", "waxpeer"]
+
+
+def test_ingest_trade_records_a_rest_snapshot_price_once_a_day(client, monkeypatch):
+    now = {"value": datetime(2026, 10, 13, 9, 0)}
+    monkeypatch.setattr(backend_main, "utc_now_naive", lambda: now["value"])
+
+    statuses = [
+        client.post("/api/v1/ingest/trade", json=_trade_payload("Snapshot Item", "skinport")).status_code,
+        client.post("/api/v1/ingest/trade", json=_trade_payload("Snapshot Item", "skinport")).status_code,
+        client.post("/api/v1/ingest/trade", json=_trade_payload("Snapshot Item", "skinport", price_cents=990)).status_code,
+    ]
+    now["value"] = datetime(2026, 10, 14, 9, 0)
+    statuses.append(client.post("/api/v1/ingest/trade", json=_trade_payload("Snapshot Item", "skinport")).status_code)
+
+    assert statuses == [201, 200, 201, 201]
+    assert len(_stored_trades("Snapshot Item")) == 3
+
+
+def test_ingest_trade_counts_a_snapshot_of_a_listing_bought_that_day_as_recorded(client):
+    listing = client.post("/api/v1/ingest/trade", json=_trade_payload("Listing Then Snapshot", "skinport", "80000003"))
+    # The next REST poll shows the bought listing as the item's lowest ask, at the same price.
+    snapshot = client.post("/api/v1/ingest/trade", json=_trade_payload("Listing Then Snapshot", "skinport"))
+    # A new listing at a price bought from a snapshot is a different purchase.
+    new_listing = client.post("/api/v1/ingest/trade", json=_trade_payload("Listing Then Snapshot", "skinport", "80000004"))
+
+    assert [listing.status_code, snapshot.status_code, new_listing.status_code] == [201, 200, 201]
+    assert len(_stored_trades("Listing Then Snapshot")) == 2
+
+
+def test_ingest_trade_relies_on_the_database_for_a_repeated_snapshot(client, monkeypatch):
+    async def never_bought(*_args):
+        return False
+
+    # Two requests racing past the lookup: the unique index still stores one row.
+    monkeypatch.setattr(backend_main, "snapshot_already_bought", never_bought)
+    statuses = [client.post("/api/v1/ingest/trade", json=_trade_payload("Racing Snapshot")).status_code for _ in range(2)]
+
+    assert statuses == [201, 200]
+    assert len(_stored_trades("Racing Snapshot")) == 1
+
+
+def test_a_listing_bought_before_and_after_a_listener_restart_is_stored_once(client, monkeypatch):
+    import executor as listener_executor
+
+    class _BackendResponse:
+        def __init__(self, status_code):
+            self.status = status_code
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return None
+
+    class _BackendSession:
+        """Sends the listener's trade submissions to the backend under test."""
+
+        def post(self, url, json):
+            return _BackendResponse(client.post(url.removeprefix("http://backend"), json=json).status_code)
+
+    async def backend_session():
+        return _BackendSession()
+
+    monkeypatch.setattr(listener_executor, "_get_session", backend_session)
+
+    async def buy_twice_across_a_restart():
+        before_restart = listener_executor.PaperExecutor("http://backend")
+        await before_restart.execute("Restart Listing Item", 1000, 500, -3.5, listing_id="80000005", venue="waxpeer")
+        await before_restart.execute("Restart Listing Item", 1000, 500, -3.1, listing_id="80000005", venue="waxpeer")
+        after_restart = listener_executor.PaperExecutor("http://backend")
+        await after_restart.execute("Restart Listing Item", 1000, 500, -3.2, listing_id="80000005", venue="waxpeer")
+
+    asyncio.run(buy_twice_across_a_restart())
+
+    assert len(_stored_trades("Restart Listing Item")) == 1
 
 
 @pytest.mark.parametrize(
@@ -501,9 +626,16 @@ def test_item_cache_is_not_updated_when_commit_fails(client, monkeypatch):
     market_hash_name = "Uncommitted Cache Item"
     backend_main.item_cache.pop(market_hash_name, None)
 
-    class FakeSession:
-        def add(self, _instance):
+    class FakeResult:
+        def first(self):
             return None
+
+        def scalar(self):
+            return 1
+
+    class FakeSession:
+        async def exec(self, _statement):
+            return FakeResult()
 
     @asynccontextmanager
     async def fail_during_commit():

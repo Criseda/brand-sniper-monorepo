@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The #259 migration branched from an older revision and left Alembic with two heads; it now revises the current head, and a test fails whenever migrations have more than one head.
 - The DRE sticker premium rule never matched a sticker price: prices were keyed `Sticker | <name>` while listings name the applied sticker `<name>`. Sticker prices now use the listing's naming (#259).
 - The listener container gets a 120 s `stop_grace_period` in both compose stacks, so Docker no longer kills its shutdown drain after 10 s and drops buffered feed events (#252).
+- A listing is paper traded once across listener restarts and for any executor: unique indexes on `simulated_trades` (one buy per venue and listing, one REST snapshot buy per venue, item and price per UTC day), the trade endpoint answers a repeat `200 ALREADY_RECORDED`, the in memory check moved into `ExecutionService`, and migration `d064786e47a8` removes repeated buys, keeping the first (#271).
 
 #### In Progress / Planned
 - `[PE-04]` Baseline scorecard for the current Z-score DRE (#249).
