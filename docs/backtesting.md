@@ -48,10 +48,9 @@ log header.
 
 **Always warm up.** The live edge Redis keeps each item's window across listener restarts, but a replay
 starts with empty windows. Until an item has `MIN_HISTORY_POINTS` prices, the Z-score falls back to the
-macro baseline alone. On the committed fixture that changes the result from 14 approvals (cold) to none
-after 30 minutes of warm-up, which is what the live listener did over that period (no paper trades).
-Before #265 the cold run showed 25, because 11 of them were the same REST snapshot approved again on a
-later poll.
+macro baseline alone, and since #308 a macro Z score never approves. On the committed fixture a cold run
+used to approve 14 ticks, all of them on the macro Z score; it now approves none, as does a run after 30
+minutes of warm-up, which is what the live listener did over that period (no paper trades).
 
 ## Input
 
@@ -130,7 +129,8 @@ A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `base
 Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`venue`,
 `listing_id`). REST snapshots are logged only when approved; live can trade on them too.
 
-`zscore_dre` reasons: `insufficient_history`, `below_threshold`, `dre_rejected`, and on approval the DRE
+`zscore_dre` reasons: `insufficient_history`, `macro_only` (scored with the macro Z score, which never
+triggers, see below), `below_threshold`, `dre_rejected`, and on approval the DRE
 rule that approved (`support_floor`, `macro_sigma`, `stickers_below_base`, `sticker_premium`). An
 approval's `features.estimated_net_profit_cents` is the fee-aware estimate the live paper trade records.
 
@@ -166,6 +166,13 @@ before #269, when every poll entered). How I chose it, and what it did to the sc
 
 A replay keeps every window across gaps in the data, while live the edge Redis is empty after my PC has been
 off. Right after a restart the live listener scores more items with the macro Z score than a replay does.
+
+**A macro Z score never approves.** Since #308 a tick scored with the macro Z score (its window holds fewer
+than `MIN_HISTORY_POINTS` prices) is logged with reason `macro_only` and its score, and never reaches the
+DRE. Those were mostly REST lowest asks scored on the first poll after a restart, and they lost money. The
+header's `macro_zscore_triggers` says whether a run let them trigger (`MACRO_ZSCORE_TRIGGERS`, false by
+default); a log without it is from before #308, when they did. How I chose it is in
+[benchmarks/cold_start.md](benchmarks/cold_start.md).
 
 **Dedup state and price windows are kept per venue.** Since #270 the header's `state_key` is
 `venue_and_item`: each venue has its own dedup state and its own price window per item, and the dedup
