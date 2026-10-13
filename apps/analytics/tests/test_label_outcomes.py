@@ -553,3 +553,10 @@ async def test_fetch_final_labels_uses_the_stored_finality_rule(monkeypatch):
     stmt, params = engine.conn.executed[0]
     assert "labeled_at <= :as_of" in str(stmt)
     assert params == {"venue": "skinport", "label_version": "v1", "final_before": AS_OF - DAY, "as_of": AS_OF}
+
+
+@pytest.mark.asyncio
+async def test_load_label_contract_returns_the_stored_config(monkeypatch):
+    monkeypatch.setattr(label_outcomes, "async_engine", ContractEngine(LabelConfig().contract()))
+
+    assert await load_label_contract("v1") == LabelConfig().contract()
