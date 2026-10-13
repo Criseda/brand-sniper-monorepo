@@ -1,0 +1,927 @@
+{
+  "as_of": "2026-10-13T01:40:07.555120",
+  "breakdowns": {
+    "dre_rule": {
+      "support_floor": {
+        "labeled": 202,
+        "max_drawdown_cents": 29044,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -143.78217821782178,
+          "mean_high": -65.2871287128713,
+          "mean_low": -237.14851485148515,
+          "total": -29044
+        },
+        "neutral": 422,
+        "pending": 2531,
+        "precision": {
+          "high": 0.5537022122312977,
+          "low": 0.41714916086335385,
+          "value": 0.48514851485148514
+        },
+        "status": "ok",
+        "trades": 3155,
+        "unlabeled": 0
+      }
+    },
+    "item_type": {
+      "Agent": {
+        "labeled": 25,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 14,
+        "pending": 143,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 182,
+        "unlabeled": 0
+      },
+      "Container/Collectible": {
+        "labeled": 6,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 2,
+        "pending": 51,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 59,
+        "unlabeled": 0
+      },
+      "Glove": {
+        "labeled": 15,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 37,
+        "pending": 211,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 263,
+        "unlabeled": 0
+      },
+      "Knife": {
+        "labeled": 8,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 76,
+        "pending": 285,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 369,
+        "unlabeled": 0
+      },
+      "Music Kit": {
+        "labeled": 4,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 10,
+        "pending": 55,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 69,
+        "unlabeled": 0
+      },
+      "Patch": {
+        "labeled": 0,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 0,
+        "pending": 4,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 4,
+        "unlabeled": 0
+      },
+      "Sticker": {
+        "labeled": 4,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 16,
+        "pending": 141,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 161,
+        "unlabeled": 0
+      },
+      "Weapon Skin": {
+        "labeled": 140,
+        "max_drawdown_cents": 15189,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -108.49285714285715,
+          "mean_high": -19.035714285714285,
+          "mean_low": -215.25,
+          "total": -15189
+        },
+        "neutral": 267,
+        "pending": 1641,
+        "precision": {
+          "high": 0.6299776436597098,
+          "low": 0.46735164077539126,
+          "value": 0.55
+        },
+        "status": "ok",
+        "trades": 2048,
+        "unlabeled": 0
+      }
+    },
+    "liquidity": {
+      "1 to 10 sales a day": {
+        "labeled": 169,
+        "max_drawdown_cents": 25774,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -152.50887573964496,
+          "mean_high": -72.00591715976331,
+          "mean_low": -254.87573964497042,
+          "total": -25774
+        },
+        "neutral": 134,
+        "pending": 1014,
+        "precision": {
+          "high": 0.5484033303858029,
+          "low": 0.39952587184328997,
+          "value": 0.47337278106508873
+        },
+        "status": "ok",
+        "trades": 1317,
+        "unlabeled": 0
+      },
+      "10 to 50 sales a day": {
+        "labeled": 17,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 0,
+        "pending": 48,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 65,
+        "unlabeled": 0
+      },
+      "50 or more sales a day": {
+        "labeled": 1,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 0,
+        "pending": 3,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 4,
+        "unlabeled": 0
+      },
+      "under 1 sale a day": {
+        "labeled": 15,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 288,
+        "pending": 1466,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 1769,
+        "unlabeled": 0
+      }
+    },
+    "price_tier": {
+      "$5 to $50": {
+        "labeled": 116,
+        "max_drawdown_cents": 4118,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 6.25,
+          "mean_high": 44.21551724137931,
+          "mean_low": -31.060344827586206,
+          "total": 725
+        },
+        "neutral": 172,
+        "pending": 1087,
+        "precision": {
+          "high": 0.5474761552180205,
+          "low": 0.36908036605672895,
+          "value": 0.45689655172413796
+        },
+        "status": "ok",
+        "trades": 1375,
+        "unlabeled": 0
+      },
+      "$50 to $500": {
+        "labeled": 34,
+        "max_drawdown_cents": 27244,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -801.2941176470588,
+          "mean_high": -474.2647058823529,
+          "mean_low": -1188.0588235294117,
+          "total": -27244
+        },
+        "neutral": 123,
+        "pending": 705,
+        "precision": {
+          "high": 0.33514067740052156,
+          "low": 0.08348855603569685,
+          "value": 0.17647058823529413
+        },
+        "status": "ok",
+        "trades": 862,
+        "unlabeled": 0
+      },
+      "$500 and over": {
+        "labeled": 1,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 13,
+        "pending": 62,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 76,
+        "unlabeled": 0
+      },
+      "under $5": {
+        "labeled": 51,
+        "max_drawdown_cents": 138,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 25.431372549019606,
+          "mean_high": 37.03921568627451,
+          "mean_low": 13.784313725490197,
+          "total": 1297
+        },
+        "neutral": 114,
+        "pending": 677,
+        "precision": {
+          "high": 0.8599518740113747,
+          "low": 0.632375118636542,
+          "value": 0.7647058823529411
+        },
+        "status": "ok",
+        "trades": 842,
+        "unlabeled": 0
+      }
+    },
+    "tick_kind": {
+      "listing": {
+        "labeled": 131,
+        "max_drawdown_cents": 16563,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -126.43511450381679,
+          "mean_high": -22.374045801526716,
+          "mean_low": -257.3206106870229,
+          "total": -16563
+        },
+        "neutral": 165,
+        "pending": 799,
+        "precision": {
+          "high": 0.6175732678018113,
+          "low": 0.4491717129756343,
+          "value": 0.5343511450381679
+        },
+        "status": "ok",
+        "trades": 1095,
+        "unlabeled": 0
+      },
+      "rest_snapshot": {
+        "labeled": 71,
+        "max_drawdown_cents": 12544,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -175.7887323943662,
+          "mean_high": -75.54929577464789,
+          "mean_low": -304.6901408450704,
+          "total": -12481
+        },
+        "neutral": 257,
+        "pending": 1732,
+        "precision": {
+          "high": 0.5106444411163921,
+          "low": 0.28893226488668644,
+          "value": 0.39436619718309857
+        },
+        "status": "ok",
+        "trades": 2060,
+        "unlabeled": 0
+      }
+    },
+    "z_source": {
+      "hybrid": {
+        "labeled": 202,
+        "max_drawdown_cents": 29044,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -143.78217821782178,
+          "mean_high": -65.2871287128713,
+          "mean_low": -237.14851485148515,
+          "total": -29044
+        },
+        "neutral": 421,
+        "pending": 2529,
+        "precision": {
+          "high": 0.5537022122312977,
+          "low": 0.41714916086335385,
+          "value": 0.48514851485148514
+        },
+        "status": "ok",
+        "trades": 3152,
+        "unlabeled": 0
+      },
+      "macro": {
+        "labeled": 0,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 1,
+        "pending": 2,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 3,
+        "unlabeled": 0
+      }
+    }
+  },
+  "coverage": {
+    "approved_decisions": 3418,
+    "excluded_look_ahead": 0,
+    "excluded_trade_locked_rest": 0,
+    "listing_trades": 1095,
+    "repeat_approvals": 263,
+    "rest_snapshot_trades": 2060,
+    "scored_listings": 25837,
+    "trades": 3155
+  },
+  "data": {
+    "baseline_builds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "decision_log_sha256": "1562e76369f40f671c3f0512e90163ad3dbbd6ff91e406a83342000b6fcbe57c",
+    "end": "2026-10-13T01:27:00",
+    "look_ahead_ranges_ms": [],
+    "replay_start": "2026-09-26T17:30:00",
+    "replay_summary": {
+      "approved": 3418,
+      "decisions": 177524,
+      "duplicates": 352850,
+      "events": 15657608,
+      "feed_events": 18159,
+      "logged": 55665,
+      "outcome_ticks": 35170,
+      "ticks": 15729754,
+      "type": "summary",
+      "unchanged_snapshots": 15164210
+    },
+    "start": "2026-09-26T17:30:00",
+    "strategy": "zscore_dre_sweep",
+    "strategy_config": {
+      "dedup_cache_max_size_per_venue": 100000,
+      "dedup_rule": "time_window_and_unchanged_snapshot",
+      "dedup_window_seconds": 300,
+      "macro_prior_weight": 5.0,
+      "macro_zscore_fallback": true,
+      "min_history_points": 4,
+      "min_savings_cents": 50,
+      "min_std_dev_factor": 0.04,
+      "sliding_window_size": 20,
+      "state_key": "venue_and_item",
+      "z_score_sticker_threshold": -1.0,
+      "z_score_threshold": -2.0
+    },
+    "tradable_rest_from": "2026-09-26T17:30:00",
+    "venue": "skinport"
+  },
+  "fees": {
+    "buyer_fee_bps": 0,
+    "fee_tiers": [
+      {
+        "fee_bps": 800,
+        "min_price_cents": 0
+      },
+      {
+        "fee_bps": 600,
+        "min_price_cents": 100000
+      }
+    ],
+    "hold_seconds": 604800,
+    "min_margin_cents": 0,
+    "venue": "skinport"
+  },
+  "git_commit": "bfd07abad1bf9214f0e168d693a282c99006395a",
+  "labels": {
+    "horizon_seconds": 1209600,
+    "min_comparable_sales": 3,
+    "settle_seconds": 3600,
+    "version": "v1"
+  },
+  "notes": [],
+  "overall": {
+    "labeled": 202,
+    "max_drawdown_cents": 29044,
+    "net_pnl_cents": {
+      "interval": "bootstrap",
+      "mean": -143.78217821782178,
+      "mean_high": -65.2871287128713,
+      "mean_low": -237.14851485148515,
+      "total": -29044
+    },
+    "neutral": 422,
+    "pending": 2531,
+    "precision": {
+      "high": 0.5537022122312977,
+      "low": 0.41714916086335385,
+      "value": 0.48514851485148514
+    },
+    "recall": {
+      "approved": 70,
+      "high": 0.3135389526166312,
+      "low": 0.20982286742807826,
+      "profitable_listings": 271,
+      "status": "ok",
+      "value": 0.25830258302583026
+    },
+    "status": "ok",
+    "trades": 3155,
+    "unlabeled": 0
+  },
+  "rules": {
+    "bootstrap_max_trades": 500,
+    "bootstrap_resamples": 2000,
+    "bootstrap_seed": 249,
+    "confidence": 0.95,
+    "min_sample": 30
+  },
+  "scorecard_version": 2,
+  "slices": [
+    {
+      "end": "2026-10-03T17:30:00",
+      "labeled": 202,
+      "max_drawdown_cents": 29044,
+      "net_pnl_cents": {
+        "interval": "bootstrap",
+        "mean": -143.78217821782178,
+        "mean_high": -65.2871287128713,
+        "mean_low": -237.14851485148515,
+        "total": -29044
+      },
+      "neutral": 422,
+      "pending": 455,
+      "precision": {
+        "high": 0.5537022122312977,
+        "low": 0.41714916086335385,
+        "value": 0.48514851485148514
+      },
+      "recall": {
+        "approved": 70,
+        "high": 0.3135389526166312,
+        "low": 0.20982286742807826,
+        "profitable_listings": 271,
+        "status": "ok",
+        "value": 0.25830258302583026
+      },
+      "start": "2026-09-26T17:30:00",
+      "status": "ok",
+      "trades": 1079,
+      "unlabeled": 0
+    },
+    {
+      "end": "2026-10-10T17:30:00",
+      "labeled": 0,
+      "max_drawdown_cents": null,
+      "net_pnl_cents": null,
+      "neutral": 0,
+      "pending": 1283,
+      "precision": null,
+      "recall": {
+        "approved": 0,
+        "high": null,
+        "low": null,
+        "profitable_listings": 0,
+        "status": "insufficient_data",
+        "value": null
+      },
+      "start": "2026-10-03T17:30:00",
+      "status": "insufficient_data",
+      "trades": 1283,
+      "unlabeled": 0
+    },
+    {
+      "end": "2026-10-13T01:27:00",
+      "labeled": 0,
+      "max_drawdown_cents": null,
+      "net_pnl_cents": null,
+      "neutral": 0,
+      "pending": 793,
+      "precision": null,
+      "recall": {
+        "approved": 0,
+        "high": null,
+        "low": null,
+        "profitable_listings": 0,
+        "status": "insufficient_data",
+        "value": null
+      },
+      "start": "2026-10-10T17:30:00",
+      "status": "insufficient_data",
+      "trades": 793,
+      "unlabeled": 0
+    }
+  ],
+  "sweep": {
+    "available": true,
+    "in_sample": true,
+    "live": {
+      "min_savings_cents": 50,
+      "z_threshold": -2.0
+    },
+    "live_in_grid": true,
+    "live_matches_log": true,
+    "rows": [
+      {
+        "labeled": 169,
+        "live": false,
+        "max_drawdown_cents": 17093,
+        "min_savings_cents": 25,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -101.14201183431953,
+          "mean_high": -21.420118343195266,
+          "mean_low": -194.98816568047337,
+          "total": -17093
+        },
+        "neutral": 193,
+        "pending": 956,
+        "precision": {
+          "high": 0.5774336998837094,
+          "low": 0.428351944313058,
+          "value": 0.5029585798816568
+        },
+        "status": "ok",
+        "trades": 1318,
+        "unlabeled": 0,
+        "z_threshold": -1.5
+      },
+      {
+        "labeled": 140,
+        "live": false,
+        "max_drawdown_cents": 17167,
+        "min_savings_cents": 50,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -122.62142857142857,
+          "mean_high": -20.492857142857144,
+          "mean_low": -233.3357142857143,
+          "total": -17167
+        },
+        "neutral": 174,
+        "pending": 846,
+        "precision": {
+          "high": 0.5955833365107439,
+          "low": 0.4322250304707133,
+          "value": 0.5142857142857142
+        },
+        "status": "ok",
+        "trades": 1160,
+        "unlabeled": 0,
+        "z_threshold": -1.5
+      },
+      {
+        "labeled": 113,
+        "live": false,
+        "max_drawdown_cents": 17691,
+        "min_savings_cents": 100,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -156.55752212389382,
+          "mean_high": -35.02654867256637,
+          "mean_low": -291.2920353982301,
+          "total": -17691
+        },
+        "neutral": 144,
+        "pending": 719,
+        "precision": {
+          "high": 0.551870212942059,
+          "low": 0.37110242693962714,
+          "value": 0.46017699115044247
+        },
+        "status": "ok",
+        "trades": 976,
+        "unlabeled": 0,
+        "z_threshold": -1.5
+      },
+      {
+        "labeled": 93,
+        "live": false,
+        "max_drawdown_cents": 17112,
+        "min_savings_cents": 200,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -184.0,
+          "mean_high": -36.333333333333336,
+          "mean_low": -354.76344086021504,
+          "total": -17112
+        },
+        "neutral": 118,
+        "pending": 586,
+        "precision": {
+          "high": 0.5736316035328711,
+          "low": 0.3747376923069333,
+          "value": 0.4731182795698925
+        },
+        "status": "ok",
+        "trades": 797,
+        "unlabeled": 0,
+        "z_threshold": -1.5
+      },
+      {
+        "labeled": 159,
+        "live": false,
+        "max_drawdown_cents": 16486,
+        "min_savings_cents": 25,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -103.68553459119497,
+          "mean_high": -14.88679245283019,
+          "mean_low": -203.1572327044025,
+          "total": -16486
+        },
+        "neutral": 181,
+        "pending": 896,
+        "precision": {
+          "high": 0.5982174242673471,
+          "low": 0.444769134449836,
+          "value": 0.5220125786163522
+        },
+        "status": "ok",
+        "trades": 1236,
+        "unlabeled": 0,
+        "z_threshold": -2.0
+      },
+      {
+        "labeled": 131,
+        "live": true,
+        "max_drawdown_cents": 16563,
+        "min_savings_cents": 50,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -126.43511450381679,
+          "mean_high": -22.374045801526716,
+          "mean_low": -257.3206106870229,
+          "total": -16563
+        },
+        "neutral": 165,
+        "pending": 799,
+        "precision": {
+          "high": 0.6175732678018113,
+          "low": 0.4491717129756343,
+          "value": 0.5343511450381679
+        },
+        "status": "ok",
+        "trades": 1095,
+        "unlabeled": 0,
+        "z_threshold": -2.0
+      },
+      {
+        "labeled": 105,
+        "live": false,
+        "max_drawdown_cents": 17102,
+        "min_savings_cents": 100,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -162.8761904761905,
+          "mean_high": -31.34285714285714,
+          "mean_low": -314.4761904761905,
+          "total": -17102
+        },
+        "neutral": 137,
+        "pending": 681,
+        "precision": {
+          "high": 0.5708632960245974,
+          "low": 0.38319838627334735,
+          "value": 0.47619047619047616
+        },
+        "status": "ok",
+        "trades": 923,
+        "unlabeled": 0,
+        "z_threshold": -2.0
+      },
+      {
+        "labeled": 89,
+        "live": false,
+        "max_drawdown_cents": 16501,
+        "min_savings_cents": 200,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -185.40449438202248,
+          "mean_high": -37.348314606741575,
+          "mean_low": -366.59550561797755,
+          "total": -16501
+        },
+        "neutral": 114,
+        "pending": 556,
+        "precision": {
+          "high": 0.5854959627496036,
+          "low": 0.3821909362267175,
+          "value": 0.48314606741573035
+        },
+        "status": "ok",
+        "trades": 759,
+        "unlabeled": 0,
+        "z_threshold": -2.0
+      },
+      {
+        "labeled": 147,
+        "live": false,
+        "max_drawdown_cents": 12156,
+        "min_savings_cents": 25,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -78.91836734693878,
+          "mean_high": 1.2448979591836735,
+          "mean_low": -172.16326530612244,
+          "total": -11601
+        },
+        "neutral": 171,
+        "pending": 840,
+        "precision": {
+          "high": 0.609479876371835,
+          "low": 0.4501853618648319,
+          "value": 0.5306122448979592
+        },
+        "status": "ok",
+        "trades": 1158,
+        "unlabeled": 0,
+        "z_threshold": -2.5
+      },
+      {
+        "labeled": 122,
+        "live": false,
+        "max_drawdown_cents": 12302,
+        "min_savings_cents": 50,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -96.28688524590164,
+          "mean_high": -4.360655737704918,
+          "mean_low": -215.327868852459,
+          "total": -11747
+        },
+        "neutral": 155,
+        "pending": 756,
+        "precision": {
+          "high": 0.6189639821867152,
+          "low": 0.4446080003691328,
+          "value": 0.5327868852459017
+        },
+        "status": "ok",
+        "trades": 1033,
+        "unlabeled": 0,
+        "z_threshold": -2.5
+      },
+      {
+        "labeled": 99,
+        "live": false,
+        "max_drawdown_cents": 12666,
+        "min_savings_cents": 100,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -122.33333333333333,
+          "mean_high": -2.5656565656565657,
+          "mean_low": -265.7171717171717,
+          "total": -12111
+        },
+        "neutral": 131,
+        "pending": 646,
+        "precision": {
+          "high": 0.5820083459942758,
+          "low": 0.3888205792655413,
+          "value": 0.48484848484848486
+        },
+        "status": "ok",
+        "trades": 876,
+        "unlabeled": 0,
+        "z_threshold": -2.5
+      },
+      {
+        "labeled": 84,
+        "live": false,
+        "max_drawdown_cents": 12440,
+        "min_savings_cents": 200,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -141.48809523809524,
+          "mean_high": -4.630952380952381,
+          "mean_low": -294.4404761904762,
+          "total": -11885
+        },
+        "neutral": 110,
+        "pending": 532,
+        "precision": {
+          "high": 0.5931500262794481,
+          "low": 0.3840817181332218,
+          "value": 0.4880952380952381
+        },
+        "status": "ok",
+        "trades": 726,
+        "unlabeled": 0,
+        "z_threshold": -2.5
+      },
+      {
+        "labeled": 126,
+        "live": false,
+        "max_drawdown_cents": 7271,
+        "min_savings_cents": 25,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -56.58730158730159,
+          "mean_high": 23.26984126984127,
+          "mean_low": -158.14285714285714,
+          "total": -7130
+        },
+        "neutral": 157,
+        "pending": 776,
+        "precision": {
+          "high": 0.6090144965204826,
+          "low": 0.43719565492558715,
+          "value": 0.5238095238095238
+        },
+        "status": "ok",
+        "trades": 1059,
+        "unlabeled": 0,
+        "z_threshold": -3.0
+      },
+      {
+        "labeled": 106,
+        "live": false,
+        "max_drawdown_cents": 7227,
+        "min_savings_cents": 50,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -67.14150943396227,
+          "mean_high": 31.61320754716981,
+          "mean_low": -188.16037735849056,
+          "total": -7117
+        },
+        "neutral": 145,
+        "pending": 704,
+        "precision": {
+          "high": 0.6386243609959075,
+          "low": 0.4524158277850278,
+          "value": 0.5471698113207547
+        },
+        "status": "ok",
+        "trades": 955,
+        "unlabeled": 0,
+        "z_threshold": -3.0
+      },
+      {
+        "labeled": 89,
+        "live": false,
+        "max_drawdown_cents": 7598,
+        "min_savings_cents": 100,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -84.82022471910112,
+          "mean_high": 34.19101123595506,
+          "mean_low": -231.31460674157304,
+          "total": -7549
+        },
+        "neutral": 122,
+        "pending": 603,
+        "precision": {
+          "high": 0.6070872809325145,
+          "low": 0.4036837527420452,
+          "value": 0.5056179775280899
+        },
+        "status": "ok",
+        "trades": 814,
+        "unlabeled": 0,
+        "z_threshold": -3.0
+      },
+      {
+        "labeled": 76,
+        "live": false,
+        "max_drawdown_cents": 7453,
+        "min_savings_cents": 200,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": -97.42105263157895,
+          "mean_high": 41.421052631578945,
+          "mean_low": -263.0263157894737,
+          "total": -7404
+        },
+        "neutral": 104,
+        "pending": 495,
+        "precision": {
+          "high": 0.622164607849494,
+          "low": 0.4028849903549509,
+          "value": 0.5131578947368421
+        },
+        "status": "ok",
+        "trades": 675,
+        "unlabeled": 0,
+        "z_threshold": -3.0
+      }
+    ],
+    "sticker_z_threshold": -1.0,
+    "tick_kind": "listing"
+  }
+}
