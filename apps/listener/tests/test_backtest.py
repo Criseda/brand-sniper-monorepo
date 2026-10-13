@@ -380,11 +380,17 @@ async def test_live_strategy_log_carries_no_sweep_inputs():
 
 
 class RecordingExecutor(ExecutionService):
+    """Records every approval, before the buy-once check: the replay counts approvals, not purchases."""
+
     def __init__(self) -> None:
+        super().__init__()
         self.trades: list[dict] = []
 
     async def execute(self, **trade) -> None:
         self.trades.append(trade)
+
+    async def place_order(self, purchase) -> None:
+        raise AssertionError("approvals are recorded in execute, never placed")
 
 
 async def _live_run(monkeypatch, events, baselines) -> tuple[list[tuple], list[tuple]]:

@@ -20,6 +20,10 @@ number of tasks. Shutdown stops producers, drains queued work within
 grace window, so keep the container's `stop_grace_period` (120 s in both compose
 stacks) above three times `LISTENER_SHUTDOWN_GRACE_SECONDS`.
 
+Each executor buys a listing (or a REST item and price, once a day) once: `ExecutionService.execute`
+skips a purchase the process already made, and after a restart the backend answers a repeat as already
+recorded (`outcome="already_recorded"`), because the unique indexes on `simulated_trades` are the guarantee.
+
 Paper-trade submission is awaited inside the anomaly worker. Backend rejection,
 timeouts, and connection failures therefore reach the worker supervisor and are
 reported through `listener_trade_submissions_total` and

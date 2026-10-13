@@ -1,9 +1,11 @@
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
 import executor as executor_module
 import pytest
-from executor import ExecutionError, PaperExecutor, _get_session, close_http_session
+from executor import ExecutionError, ExecutionService, PaperExecutor, Purchase, _get_session, close_http_session
+from listener_telemetry import trade_submissions_total
 
 
 @pytest.mark.asyncio
@@ -116,6 +118,76 @@ async def test_paper_executor_buys_a_new_listing_at_a_price_bought_from_a_snapsh
         await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="skinport")
 
     assert mock_send.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_paper_executor_scopes_listing_ids_by_venue():
+    executor = PaperExecutor("http://mock-backend:8080")
+
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="waxpeer")
+
+    assert [call.args[0]["venue"] for call in mock_send.call_args_list] == ["skinport", "waxpeer"]
+
+
+@pytest.mark.asyncio
+async def test_paper_executor_buys_a_rest_snapshot_price_once_a_day(monkeypatch):
+    executor = PaperExecutor("http://mock-backend:8080")
+    now = {"value": datetime(2026, 10, 13, 23, 59)}
+    monkeypatch.setattr(executor_module, "utc_now_naive", lambda: now["value"])
+
+    with patch.object(executor, "_send_to_backend", new_callable=AsyncMock) as mock_send:
+        await executor.execute("Item", 1000, 500, -2.5, venue="skinport")
+        await executor.execute("Item", 1000, 500, -2.5, venue="skinport")
+        now["value"] = datetime(2026, 10, 14, 0, 1)
+        await executor.execute("Item", 1000, 500, -2.5, venue="skinport")
+
+    assert mock_send.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_every_executor_buys_a_listing_once():
+    class VenueExecutor(ExecutionService):
+        def __init__(self) -> None:
+            super().__init__()
+            self.orders: list[Purchase] = []
+
+        async def place_order(self, purchase: Purchase) -> None:
+            self.orders.append(purchase)
+
+    executor = VenueExecutor()
+    await executor.execute("Item", 1000, 500, -2.5, listing_id="58903454", float_value=0.2, venue="waxpeer")
+    await executor.execute("Item", 1000, 500, -2.1, listing_id="58903454", float_value=0.2, venue="waxpeer")
+
+    assert executor.orders == [
+        Purchase(
+            venue="waxpeer",
+            market_hash_name="Item",
+            purchase_price_cents=1000,
+            estimated_profit_cents=500,
+            profit_estimate_basis=None,
+            z_score=-2.5,
+            listing_id="58903454",
+            float_value=0.2,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_paper_executor_after_a_restart_accepts_a_buy_the_backend_already_recorded(mocker):
+    client = _Client(response=_Response(status=200))
+    mocker.patch("executor._get_session", return_value=client)
+    already_recorded = trade_submissions_total.labels(outcome="already_recorded")
+    before = already_recorded._value.get()
+    restarted = PaperExecutor("http://mock-backend:8080")
+
+    await restarted.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="waxpeer")
+    await restarted.execute("Item", 1000, 500, -2.5, listing_id="58903454", venue="waxpeer")
+
+    # The restarted listener asks the backend once, then remembers the purchase again.
+    assert len(client.posted) == 1
+    assert already_recorded._value.get() == before + 1
 
 
 @pytest.mark.asyncio
