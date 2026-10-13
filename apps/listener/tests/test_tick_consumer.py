@@ -93,17 +93,21 @@ async def test_listed_and_snapshot_ticks_still_drive_detection(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_repeated_prices_are_recorded_without_reentering_the_window(monkeypatch):
+async def test_duplicates_are_recorded_without_reentering_the_window(monkeypatch):
     first = _tick(3.97, event_type="listed", listing_id="1")
     second_listing = _tick(3.97, event_type="listed", listing_id="2")
+    first_again = _tick(3.97, event_type="listed", listing_id="1")
     repeated_snapshot = _tick(3.97)
 
-    detect, flushed = await _run_consumer(monkeypatch, [first, second_listing, repeated_snapshot])
+    detect, flushed = await _run_consumer(monkeypatch, [first, second_listing, first_again, repeated_snapshot])
 
-    assert [call.args[0] for call in detect.await_args_list] == [first]
+    # Another listing at the same price is a separate offer, so it is scored; the first one seen again and
+    # the snapshot repeating its price are duplicates.
+    assert [call.args[0] for call in detect.await_args_list] == [first, second_listing]
     assert flushed[0]["ticks"] == [
         first.to_batch_record(),
         second_listing.to_batch_record(),
+        first_again.to_batch_record(),
         repeated_snapshot.to_batch_record(),
     ]
 

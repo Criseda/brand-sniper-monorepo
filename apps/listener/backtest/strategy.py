@@ -24,12 +24,15 @@ from shared_utils import (
 from student_features import listing_features
 
 # Reasons shared by all strategies.
-REASON_DUPLICATE = "duplicate"  # Same price as the item's previous tick inside the dedup window; never scored.
+# A feed listing seen again at the same price, or a REST snapshot at the same price as the item's previous tick
+# inside the dedup window; never scored.
+REASON_DUPLICATE = "duplicate"
 # A REST snapshot at the same price as the item's previous snapshot: never scored (#265), and windowed only
 # while the window is short or once an hour (#269).
 REASON_UNCHANGED_SNAPSHOT = "unchanged_snapshot"
 # How the harness and the listener treat repeated prices; written to the log header so runs are comparable.
-DEDUP_RULE = "time_window_and_unchanged_snapshot"
+# Before #312 a feed listing was also a duplicate at the item's previous price (`time_window_and_unchanged_snapshot`).
+DEDUP_RULE = "listing_id_and_time_window_and_unchanged_snapshot"
 
 # Reasons specific to the Z-score/DRE strategy. Approvals carry the DRE rule (rules_engine.REASON_*).
 REASON_INSUFFICIENT_HISTORY = "insufficient_history"

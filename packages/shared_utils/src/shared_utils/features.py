@@ -17,7 +17,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-FEATURE_VERSION = 1
+# Version 2 (#312): every feed listing is scored, so `listings_per_hour_item` counts listings that version 1
+# missed when they repeated the item's previous price within 5 minutes.
+FEATURE_VERSION = 2
 
 # The model's input columns, in order. The ONNX model takes them as one float32 row per listing.
 FEATURE_NAMES = (

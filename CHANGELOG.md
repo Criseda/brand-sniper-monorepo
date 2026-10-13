@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- The dedup rule no longer drops a feed listing because another listing of the item had the same price; a listing is a duplicate only when the same listing is seen again at the same price, so live and replay score every listing once. Student features move to version 2, since `listings_per_hour_item` now counts those listings (#312).
 - sqlmodel 0.0.47 maps a plain `datetime` to `TIMESTAMPTZ` and rejects naive values; the model timestamp fields are now `NaiveDatetime`, so they keep the existing `TIMESTAMP` columns holding naive UTC.
 - `uv audit` failed the CI `quality` job on three vulnerable locked dependencies; mako is now 1.4.3, multidict 6.9.1 and werkzeug 3.1.9.
 - Prometheus stayed down after a Docker engine restart while every other server stack container came back; its config is now mounted as a folder (`config/prometheus/`) instead of two single Windows files, which Docker Desktop can fail to remount on restart.

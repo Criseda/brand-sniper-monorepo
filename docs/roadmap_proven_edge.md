@@ -216,7 +216,7 @@ model), never a zero.
 | `float_value` | The listing's float |
 | `float_tier_boundary_distance` | Float minus the lower bound of its wear tier (0, 0.07, 0.15, 0.38, 0.45) |
 | `sticker_value_ratio` | Resale venue price of the applied stickers over the baseline's latest price |
-| `listings_per_hour_item` | The item's scored listings on the venue in the hour before this one. A listing at the same price within the 5 minute dedup window is not scored, so it is not counted, and the count starts empty when the listener starts. |
+| `listings_per_hour_item` | The item's scored listings on the venue in the hour before this one. Since #312 (feature version 2) every listing is scored once; in version 1 a listing at the item's previous price within 5 minutes was not scored, so it was not counted. The count starts empty when the listener starts. |
 
 ### 4.6 Validation and promotion (#234, #236)
 - Walk-forward temporal validation only (expanding or rolling windows); random K-fold is prohibited:

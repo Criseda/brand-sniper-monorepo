@@ -106,8 +106,8 @@ recording order. Each event expands into the stream items the live producers put
 and each item is routed as `tick_consumer` routes it:
 
 1. Raw feed events and `sold` ticks are outcomes: counted, never scored.
-2. A tick at the same price as the item's previous tick on the same venue within 300 seconds is a
-   duplicate: logged with reason `duplicate`, never scored.
+2. A feed listing already seen at the same price, or a REST snapshot at the same price as the item's previous
+   tick on the same venue within 300 seconds, is a duplicate: logged with reason `duplicate`, never scored.
 3. A REST snapshot at the same price as the item's previous REST snapshot is not scored. It enters the price
    window only while the window holds fewer than `MIN_HISTORY_POINTS` prices or once an hour (see below).
 4. Any other tick enters the price window, and the strategy decides on it.
@@ -120,7 +120,7 @@ JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits. Fo
 {"type": "run", "format": 2, "strategy": "zscore_dre", "config": {...}, "source": "...", "baseline_mode": "schedule", "baseline_builds": [3, 4], "log_from_ms": 1790290800000}
 {"type": "baseline", "build_id": 3, "built_at": "2026-10-01T06:12:40", "from_ms": 1790283600000, "look_ahead": false, "sha256": "..."}
 {"type": "decision", "seq": 1, "timestamp": 1790287133, "venue": "skinport", "listing_id": "60823173", "event_type": "listed", "market_hash_name": "...", "price_cents": 412, "approve": false, "reason": "below_threshold", "score": -0.84, "features": {"mean_cents": 430.5, "window_size": 20, "z_source": "local"}}
-{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "unchanged_snapshots": 268, "unchanged_snapshots_windowed": 50, "decisions": 61, "logged": 149, "approved": 14}
+{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 37, "unchanged_snapshots": 263, "unchanged_snapshots_windowed": 44, "decisions": 166, "logged": 141, "approved": 0}
 ```
 
 A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `baseline_sha256` and
@@ -141,19 +141,21 @@ A `look_ahead` switch means the range starts before the first build, so the deci
 used later information. Keep that part out of any result that matters. Ranges before 2026-09-26 have no
 build at all.
 
-**Most listings are never scored.** A `listed` tick at the same price as the item's previous tick within
-300 seconds is dropped by the live dedup rule before the Z-score runs. On the committed fixture that is 112
-of the 141 listing ticks, almost all of them (107) repeating an earlier listing of the same item at
-the same price, the rest repeating a REST snapshot. Such rows carry reason `duplicate` and no score: the
-rules never looked at them, so count them as "not evaluated", not as rejections, when you measure
-precision or coverage against `listing_outcomes`. The summary's `duplicates` count (which also includes
-REST snapshots) shows the scale per run.
+**Every listing is scored once.** Since #312 a feed listing is a duplicate only when the same listing was
+already seen at the same price. Another listing of the item at the same price is a separate offer, so it is
+scored. Before that the 300 second rule dropped it too, and about half of all listings were never scored: on the
+committed fixture 112 of the 141 listing ticks, now 7, all of them a listing seen again. A row with reason
+`duplicate` has no score: the rules never looked at it, so count it as "not evaluated", not as a rejection, when
+you measure precision or coverage against `listing_outcomes`. The summary's `duplicates` count (which also
+includes REST snapshots) shows the scale per run, and the header's `dedup_rule` names the rule a run used
+(`time_window_and_unchanged_snapshot` before #312). What the old rule dropped, and why I chose this one, is in
+[benchmarks/dedup_listings.md](benchmarks/dedup_listings.md).
 
 **An unchanged REST snapshot is not scored again.** A snapshot at the same price as the item's previous
 REST snapshot is not scored, however old that one is (#265). Polls are 305 seconds apart plus the time a
 poll takes, so the 300 second rule never dropped one, and until #265 every poll scored the same lowest ask
 again and could paper trade it again. The summary counts these as `unchanged_snapshots` and they are not
-logged. The header's `dedup_rule` names the rule a run used.
+logged.
 
 **What the price window holds.** Since #269 an unchanged REST snapshot enters the price window only while
 the window holds fewer than `MIN_HISTORY_POINTS` prices, or when no REST snapshot of the item has entered it
