@@ -10,6 +10,11 @@ Labels are written to `listing_outcomes` under a label version. A listing is onl
 horizon has passed, so a label never contains information from after `label_available_at`.
 The flow is idempotent: re-running it for any date range rewrites the same rows.
 
+A label version is a contract: its parameters are stored in `label_versions` the first time it is used,
+and the labeler refuses to write under a version whose stored parameters differ from its own. A label
+may be revised for `revise_seconds` after it first becomes labelable (late edge batches), and is final
+after that: the labeler never rewrites a final label, so training reads final labels only.
+
 Label definition: docs/roadmap_proven_edge.md, section 4.3.
 
 Usage (from apps/analytics):
@@ -18,6 +23,7 @@ Usage (from apps/analytics):
 
 import asyncio
 import bisect
+import json
 import statistics
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -40,7 +46,8 @@ from shared_utils import (
     validate_required_env,
 )
 from shared_utils.db_connection import async_engine
-from shared_utils.models import ListingOutcome
+from shared_utils.models import LabelVersion, ListingOutcome
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 VENUE = "skinport"
@@ -63,6 +70,10 @@ class LabelConfig:
     # Extra wait after the horizon before labeling, so batches still in flight from the edge
     # (listener buffer, Redis stream retries) have landed in feed_events.
     settle_seconds: int = 3600
+    # How long after it first becomes labelable (label_available_at + settle) a label may still be
+    # rewritten by a later run that sees late batches. After that it is final. The daily run
+    # re-labels the last 3 matured days, which is exactly this window.
+    revise_seconds: int = 3 * 86_400
 
     def __post_init__(self) -> None:
         if self.horizon_seconds <= self.fees.hold_seconds:
@@ -71,6 +82,84 @@ class LabelConfig:
             raise ValueError("min_comparable_sales must be at least 1")
         if self.settle_seconds < 0:
             raise ValueError("settle_seconds must not be negative")
+        if self.revise_seconds < 0:
+            raise ValueError("revise_seconds must not be negative")
+
+    def contract(self) -> dict[str, Any]:
+        """The parameters that define this version, as stored in `label_versions.config`."""
+        return label_contract(
+            fees=self.fees,
+            horizon_seconds=self.horizon_seconds,
+            min_comparable_sales=self.min_comparable_sales,
+            settle_seconds=self.settle_seconds,
+            revise_seconds=self.revise_seconds,
+        )
+
+    def final_before(self, as_of: datetime) -> datetime:
+        """Labels with `label_available_at` at or before this time are final as of `as_of`."""
+        return final_before(self.contract(), as_of)
+
+
+class LabelVersionMismatchError(RuntimeError):
+    """The labeler's parameters differ from the ones stored for its label version."""
+
+
+def label_contract(
+    fees: VenueFees, horizon_seconds: int, min_comparable_sales: int, settle_seconds: int, revise_seconds: int
+) -> dict[str, Any]:
+    """The JSON stored in `label_versions.config`. The resale rule itself (comparable sales after the hold,
+    lower median) is code: changing it also needs a new version."""
+    return {
+        "venue": VENUE,
+        "fees": {
+            "venue": fees.venue,
+            "fee_tiers": [{"min_price_cents": tier.min_price_cents, "fee_bps": tier.fee_bps} for tier in fees.fee_tiers],
+            "buyer_fee_bps": fees.buyer_fee_bps,
+            "hold_seconds": fees.hold_seconds,
+            "min_margin_cents": fees.min_margin_cents,
+        },
+        "horizon_seconds": horizon_seconds,
+        "min_comparable_sales": min_comparable_sales,
+        "settle_seconds": settle_seconds,
+        "revise_seconds": revise_seconds,
+    }
+
+
+def final_before(contract: dict[str, Any], as_of: datetime) -> datetime:
+    """Labels with `label_available_at` at or before this time are final as of `as_of`: no run rewrites them."""
+    return as_of - timedelta(seconds=int(contract["settle_seconds"]) + int(contract["revise_seconds"]))
+
+
+def flatten_contract(contract: dict[str, Any], prefix: str = "") -> dict[str, str]:
+    """One string per leaf (`fees.hold_seconds`, ...), lists as JSON: for diffs and MLflow parameters."""
+    flat: dict[str, str] = {}
+    for key, value in sorted(contract.items()):
+        name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            flat.update(flatten_contract(value, prefix=f"{name}."))
+        elif isinstance(value, list):
+            flat[name] = json.dumps(value, sort_keys=True)
+        else:
+            flat[name] = str(value)
+    return flat
+
+
+def contract_differences(stored: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    """Human readable differences between two contracts, empty when they match."""
+    stored_flat = flatten_contract(stored)
+    expected_flat = flatten_contract(expected)
+    return [
+        f"{key}: stored {stored_flat.get(key, '(missing)')}, running {expected_flat.get(key, '(missing)')}"
+        for key in sorted(set(stored_flat) | set(expected_flat))
+        if stored_flat.get(key) != expected_flat.get(key)
+    ]
+
+
+def label_mlflow_params(version: str, contract: dict[str, Any]) -> dict[str, str]:
+    """MLflow parameters naming the label version and its full definition."""
+    params = {"label_version": version}
+    params.update({f"label.{key}": value for key, value in flatten_contract(contract).items()})
+    return params
 
 
 @dataclass(frozen=True)
@@ -230,11 +319,79 @@ async def fetch_feed_sales(event_type: str, start: datetime, end: datetime, name
     return [sale for sale in sales if sale is not None]
 
 
-async def save_outcomes(rows: list[dict[str, Any]]) -> None:
-    """Upserts labels. On conflict the earliest sighting of a listing wins, so runs over overlapping
-    or out-of-order date ranges converge on the same row."""
+async def register_label_version(config: LabelConfig) -> None:
+    """Stores the config of a new label version, or checks it against the stored one.
+
+    Raises LabelVersionMismatchError when the version exists with other parameters: writing would mix two
+    label definitions under one name, which nothing could detect afterwards."""
+    table = LabelVersion.__table__  # type: ignore[attr-defined]
+    contract = config.contract()
+    async with async_engine.begin() as conn:
+        await conn.execute(
+            insert(table).values(version=config.version, config=contract).on_conflict_do_nothing(index_elements=["version"])
+        )
+        result = await conn.execute(select(table.c.config).where(table.c.version == config.version))
+        stored = result.fetchall()[0][0]
+    differences = contract_differences(stored, contract)
+    if differences:
+        raise LabelVersionMismatchError(
+            f"Label version {config.version} is stored with other parameters ({'; '.join(differences)}). "
+            "Give the new parameters a new version."
+        )
+
+
+async def load_label_contract(version: str) -> dict[str, Any]:
+    """The stored definition of a label version. Raises LookupError for a version never registered."""
+    table = LabelVersion.__table__  # type: ignore[attr-defined]
+    async with async_engine.connect() as conn:
+        result = await conn.execute(select(table.c.config).where(table.c.version == version))
+        rows = result.fetchall()
+    if not rows:
+        raise LookupError(f"Label version {version} is not registered in label_versions")
+    return dict(rows[0][0])
+
+
+@dataclass(frozen=True)
+class FinalLabels:
+    """The final labels of one version as of a moment, with the definition they were made with."""
+
+    version: str
+    contract: dict[str, Any]
+    as_of: datetime
+    rows: list[dict[str, Any]]
+
+
+# Final labels only, and only rows written by `as_of`: a final label is never rewritten, so the same
+# `as_of` reads the same rows on every run. Served by ix_listing_outcomes_version_available.
+_FINAL_LABELS_QUERY = """
+SELECT listing_id, market_hash_name, listed_at, listed_price_cents, comparable_sales, resale_price_cents,
+       resale_net_margin_cents, is_profitable, listing_sold_within_s, sale_censored, label_available_at
+FROM listing_outcomes
+WHERE venue = :venue AND label_version = :label_version
+  AND label_available_at <= :final_before AND labeled_at <= :as_of
+ORDER BY label_available_at, listing_id
+"""
+
+
+async def fetch_final_labels(version: str, as_of: datetime) -> FinalLabels:
+    """Every final label of `version` as of `as_of`, for training and evaluation.
+
+    The finality rule comes from the stored contract, not from this code's defaults."""
+    contract = await load_label_contract(version)
+    params = {"venue": VENUE, "label_version": version, "final_before": final_before(contract, as_of), "as_of": as_of}
+    async with async_engine.connect() as conn:
+        result = await conn.execute(text(_FINAL_LABELS_QUERY), params)
+        rows = [dict(row._mapping) for row in result.fetchall()]
+    return FinalLabels(version=version, contract=contract, as_of=as_of, rows=rows)
+
+
+async def save_outcomes(rows: list[dict[str, Any]], final_cutoff: datetime) -> int:
+    """Upserts labels and returns how many rows were written. On conflict the earliest sighting of a
+    listing wins, so runs over overlapping or out-of-order date ranges converge on the same row. A stored
+    label with `label_available_at` at or before `final_cutoff` is final and kept as it is."""
     table = ListingOutcome.__table__  # type: ignore[attr-defined]
     updatable = [name for name in rows[0] if name not in ("venue", "listing_id", "label_version")] if rows else []
+    written = 0
     async with async_engine.begin() as conn:
         for chunk_start in range(0, len(rows), _UPSERT_CHUNK_SIZE):
             chunk = rows[chunk_start : chunk_start + _UPSERT_CHUNK_SIZE]
@@ -244,9 +401,11 @@ async def save_outcomes(rows: list[dict[str, Any]]) -> None:
             stmt = stmt.on_conflict_do_update(
                 index_elements=["venue", "listing_id", "label_version"],
                 set_=set_,
-                where=table.c.listed_at >= stmt.excluded.listed_at,
+                where=(table.c.listed_at >= stmt.excluded.listed_at) & (table.c.label_available_at > final_cutoff),
             )
-            await conn.execute(stmt)
+            result = await conn.execute(stmt)
+            written += max(int(result.rowcount or 0), 0)
+    return written
 
 
 @task(retries=2, retry_delay_seconds=30)
@@ -264,13 +423,13 @@ async def label_window(start: datetime, end: datetime, as_of: datetime, config: 
     sold = await fetch_feed_sales("sold", start, end + timedelta(seconds=config.horizon_seconds), names=feed_names)
 
     rows = label_listings(listed, sold, config, as_of)
-    if rows:
-        await save_outcomes(rows)
+    written = await save_outcomes(rows, config.final_before(as_of)) if rows else 0
     profitable = sum(1 for row in rows if row["is_profitable"] is True)
     neutral = sum(1 for row in rows if row["is_profitable"] is None)
     censored = sum(1 for row in rows if row["sale_censored"])
     logger.info(
-        "[LABELER] %s .. %s: %d labels (%d profitable, %d neutral, %d censored) from %d listing sightings, %d sold sales.",
+        "[LABELER] %s .. %s: %d labels (%d profitable, %d neutral, %d censored) from %d listing sightings, %d sold sales; "
+        "%d written, the others final or an earlier sighting.",
         start,
         end,
         len(rows),
@@ -279,6 +438,7 @@ async def label_window(start: datetime, end: datetime, as_of: datetime, config: 
         censored,
         len(listed),
         len(sold),
+        written,
     )
     return len(rows)
 
@@ -313,6 +473,7 @@ async def label_listing_outcomes(
     if end <= start:
         logger.info("[LABELER] Nothing to label yet: horizon has not passed for any listing after %s.", start)
         return 0
+    await register_label_version(config)
 
     total = 0
     for window_start, window_end in iter_windows(start, end, timedelta(hours=window_hours)):

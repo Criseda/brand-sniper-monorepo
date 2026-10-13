@@ -152,7 +152,7 @@ Triple-barrier style labels for each `listed` sale, written by `apps/analytics/l
 | `sale_censored` | True when this listing was not seen to sell by $t + H$. The feed never reports cancellations or price changes, and crash loss (#252) can drop events, so this means "not seen to sell", never "did not sell". It is not a negative label. |
 | `label_available_at` | $t + H$. No training, evaluation, or monitoring job may use a label before this time. |
 
-Parameters: hold 7 days, horizon $H$ = 14 days, minimum 3 comparable sales, USD prices only.
+Parameters: hold 7 days, horizon $H$ = 14 days, minimum 3 comparable sales, USD prices only, revision time 3 days.
 The flow only labels a listing once $t + H$ plus a 1-hour settle time (for edge batches still in flight)
 has passed, and only fetches sales up to $t + H$. It upserts, so re-running any date range is safe; on a
 conflict the earliest sighting wins. Float tiers inside a wear bucket, stickers, and pattern premiums are
@@ -161,7 +161,27 @@ not part of `v1` comparables; add them as a new label version.
 Run it daily over the last few matured days (`uv run python label_outcomes.py`), or over an explicit
 range (`--start 2026-09-24 --end 2026-10-01`).
 
-Labels are versioned (`label_version`); changing the definition creates a new version rather than rewriting history.
+Labels are versioned (`label_version`), and a version is a contract. The `label_versions` table stores the
+parameters of each version as JSON: the venue fees (seller fee tiers, buyer fee, trade hold, minimum margin),
+the horizon, the minimum number of comparable sales, the settle time and the revision time.
+`listing_outcomes.label_version` is a foreign key to it. The labeler stores its config the first time it runs
+a version and refuses to write under a version whose stored config differs from its own. Changing a parameter,
+or the resale rule in code, means a new version name. Migration `7c4e2a9f1b38` registered `v1` after checking
+every existing row against it.
+
+I keep the config in a table and the readable version name. A name derived from a hash of the config would
+catch a change just as well, but a training run could not read the parameters back from it, and the `v1` rows
+would need renaming. With the table, `is_profitable` can be recomputed from a row and the stored minimum
+margin, and training logs the whole config to MLflow next to the version (`label_mlflow_params`).
+
+Labels freeze. The daily run labels the last 3 matured days again, so a late edge batch can still change a
+label for 3 days after it first becomes labelable. Once `label_available_at` plus the settle time plus the
+revision time has passed, the label is final and the labeler never rewrites it, also when I rerun an old range
+by hand. It does still write a label that is missing, for example after my PC was off for a week. Training and
+evaluation read final labels written by their `as_of` (`fetch_final_labels`), so the same `as_of` gives the
+same rows on every run, and a walk forward fold never sees a label change after its cutoff. A revision only
+uses sales the edge saw before `label_available_at`, so freezing hides no information from before that time.
+The cost is that the newest 3 days of labels wait before training can use them.
 
 ### 4.4 Replay harness (#248)
 - Replays recorded events in timestamp order through the **real** listener decision code via injectable stores.
