@@ -14,10 +14,12 @@ from backtest.store import InMemoryEdgeStore
 from models import MarketTick
 from redis.asyncio import Redis
 from rules_engine import dre_approval_reason
+from shared_utils import PRICE_WINDOW_RULE, UNCHANGED_SNAPSHOT_WINDOW_SECONDS
 
 # Reasons shared by all strategies.
 REASON_DUPLICATE = "duplicate"  # Same price as the item's previous tick inside the dedup window; never scored.
-# A REST snapshot at the same price as the item's previous snapshot: windowed, never scored (#265).
+# A REST snapshot at the same price as the item's previous snapshot: never scored (#265), and windowed only
+# while the window is short or once an hour (#269).
 REASON_UNCHANGED_SNAPSHOT = "unchanged_snapshot"
 # How the harness and the listener treat repeated prices; written to the log header so runs are comparable.
 DEDUP_RULE = "time_window_and_unchanged_snapshot"
@@ -71,6 +73,8 @@ class ZScoreDreStrategy:
             "state_key": detection.STATE_KEY,
             "dedup_rule": DEDUP_RULE,
             "dedup_window_seconds": detection.DEDUP_WINDOW_SECONDS,
+            "window_rule": PRICE_WINDOW_RULE,
+            "unchanged_snapshot_window_seconds": UNCHANGED_SNAPSHOT_WINDOW_SECONDS,
             "dedup_cache_max_size_per_venue": detection.DEDUP_CACHE_MAX_SIZE,
             "z_score_threshold": zscore.Z_SCORE_THRESHOLD,
             "z_score_sticker_threshold": zscore.Z_SCORE_STICKER_THRESHOLD,

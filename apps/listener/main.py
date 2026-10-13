@@ -21,6 +21,7 @@ from detection import (
     is_unchanged_snapshot,
     migrate_legacy_price_windows,
     push_to_window,
+    unchanged_snapshot_enters_price_window,
     update_dedup_cache,
     update_window_and_detect,
 )
@@ -30,6 +31,7 @@ from listener_telemetry import (
     batch_buffer_size,
     feed_events_received_total,
     snapshots_unchanged_total,
+    snapshots_unchanged_windowed_total,
     tick_queue_size,
     ticks_deduplicated_total,
     ticks_processed_total,
@@ -264,16 +266,22 @@ async def tick_consumer(
                             batch_buffer.append(item.to_batch_record())
                     else:
                         unchanged_snapshot = is_unchanged_snapshot(item, dedup_cache)
-                        update_dedup_cache(item, dedup_cache)
+                        enters_window = not unchanged_snapshot or await unchanged_snapshot_enters_price_window(
+                            item, dedup_cache, cache
+                        )
+                        update_dedup_cache(item, dedup_cache, enters_window=enters_window)
                         ticks_processed_total.inc()
 
                         # Accumulate records for long-term database tracking
                         batch_buffer.append(item.to_batch_record())
                         if unchanged_snapshot:
-                            # The lowest ask has not changed since the last poll: keep the window as it
-                            # was, but do not score (or paper trade) the same reading again.
+                            # The lowest ask has not changed since the last poll: do not score (or paper
+                            # trade) the same reading again, and window it only while the window is short
+                            # or once an hour (#269).
                             snapshots_unchanged_total.inc()
-                            await push_to_window(item, cache)
+                            if enters_window:
+                                snapshots_unchanged_windowed_total.inc()
+                                await push_to_window(item, cache)
                         else:
                             await update_window_and_detect(item, cache, anomaly_pool, executor)
                     batch_buffer_size.set(len(batch_buffer))

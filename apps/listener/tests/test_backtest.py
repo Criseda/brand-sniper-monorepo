@@ -273,19 +273,51 @@ async def test_snapshots_are_logged_only_when_approved():
 
 
 @pytest.mark.asyncio
-async def test_unchanged_snapshots_enter_the_window_but_are_not_scored_again():
-    # Polls are 305 seconds apart, so the repeated 400 is past the dedup window every time.
-    prices = [1000, 1010, 990, 1005, 995, 400, 400, 400, 1000]
+async def test_unchanged_snapshots_are_not_scored_again_and_enter_the_window_once_an_hour():
+    # Polls are 305 seconds apart, so the repeated 400 is past the dedup window every time. The twelfth
+    # repeat is 3,660 seconds after the 400 entered the window, the first one past the hour.
+    prices = [1000, 1010, 990, 1005, 995, 400] + [400] * 12 + [1000]
     events = [_snapshot(index * 305, price) for index, price in enumerate(prices)]
     baselines = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 500, "latest_price_cents": 1000}})
 
     log_text, decided = await _replay(events, baselines)
 
-    assert _rows(log_text, "summary")[0]["unchanged_snapshots"] == 2
+    [summary] = _rows(log_text, "summary")
+    assert summary["unchanged_snapshots"] == 12
+    assert summary["unchanged_snapshots_windowed"] == 1
     assert [(row["price_cents"], row["reason"]) for row in _rows(log_text)] == [(400, REASON_SUPPORT_FLOOR)]
     assert [tick.price_cents for tick, _ in decided] == [1000, 1010, 990, 1005, 995, 400, 1000]
     last_decision = decided[-1][1]
-    assert last_decision.features["window_size"] == len(prices)  # the repeats are still in the window
+    assert last_decision.features["window_size"] == 8  # five prices, the 400, its hourly repeat, the 1000
+
+
+def repeated_snapshot_stream() -> tuple[list, BaselineSnapshot]:
+    """
+    Two quiet items whose lowest asks repeat for hours, then listings below them. The second starts with
+    repeats, so its window fills from every poll first; after that both are windowed once an hour.
+    """
+    other_item = "AWP | Safari Mesh (Field-Tested)"
+    item_prices = [1000, 1010, 990, 1005] + [1000] * 40 + [1020] * 15
+    other_prices = [2000] * 5 + [2010, 1990] + [2000] * 37 + [2020] * 15
+    events = [_snapshot(index * 305, price) for index, price in enumerate(item_prices)]
+    events += [_snapshot(index * 305, price, other_item) for index, price in enumerate(other_prices)]
+    events += [
+        _feed(18_100, "listed", _sale(1, 900)),
+        _feed(18_101, "listed", _sale(2, 400)),
+        _feed(18_102, "listed", _sale(3, 1500, other_item)),
+    ]
+    baselines = BaselineSnapshot(
+        baselines={
+            ITEM: {
+                "support_floor_cents": 500,
+                "latest_price_cents": 1000,
+                "rolling_30d_avg_cents": 1000,
+                "volatility_cents": 50,
+            },
+            other_item: {"support_floor_cents": 1700, "latest_price_cents": 2000},
+        },
+    )
+    return events, baselines
 
 
 @pytest.mark.asyncio
@@ -461,13 +493,15 @@ def _replay_run(decided) -> tuple[list[tuple], list[tuple]]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("stream", ["recorded_fixture", "synthetic"])
+@pytest.mark.parametrize("stream", ["recorded_fixture", "synthetic", "repeated_snapshots"])
 async def test_replay_decisions_match_the_live_consumer(monkeypatch, stream):
     if stream == "recorded_fixture":
         events = load_fixture(FIXTURE_DIR / "events.jsonl")
         baselines = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
-    else:
+    elif stream == "synthetic":
         events, baselines = synthetic_stream()
+    else:
+        events, baselines = repeated_snapshot_stream()
 
     live_submissions, live_trades = await _live_run(monkeypatch, events, baselines)
     _, decided = await _replay(events, baselines)

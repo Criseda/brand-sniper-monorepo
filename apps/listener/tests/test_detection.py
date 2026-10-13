@@ -163,6 +163,75 @@ def test_listing_is_never_an_unchanged_snapshot_and_keeps_the_snapshot_price():
     assert not detection.is_unchanged_snapshot(_listed(10.00, timestamp=1_790_000_500, listing_id="2"), cache)
 
 
+@pytest.mark.asyncio
+async def test_unchanged_snapshot_enters_a_filled_window_once_an_hour():
+    store = InMemoryEdgeStore()
+    await _fill_window(store, [1000, 1010, 990, 1005])
+    cache = detection.DedupCache()
+    first = _tick(10.00, timestamp=1_790_000_010)
+    detection.update_dedup_cache(first, cache)
+
+    windowed = []
+    for poll in range(1, 25):
+        repeat = _tick(10.00, timestamp=first.timestamp + poll * 305)
+        enters = await detection.unchanged_snapshot_enters_price_window(repeat, cache, cast(Redis, store))
+        detection.update_dedup_cache(repeat, cache, enters_window=enters)
+        if enters:
+            windowed.append(poll)
+
+    # 12 polls are 3,660 seconds, the first past the hour; the clock restarts at each one that enters.
+    assert windowed == [12, 24]
+
+
+@pytest.mark.asyncio
+async def test_unchanged_snapshot_fills_a_short_window_from_every_poll():
+    store = InMemoryEdgeStore()
+    cache = detection.DedupCache()
+    first = _tick(10.00)
+    await detection.push_to_window(first, cast(Redis, store))
+    detection.update_dedup_cache(first, cache)
+
+    windowed = []
+    for poll in range(1, 6):
+        repeat = _tick(10.00, timestamp=first.timestamp + poll * 305)
+        enters = await detection.unchanged_snapshot_enters_price_window(repeat, cache, cast(Redis, store))
+        detection.update_dedup_cache(repeat, cache, enters_window=enters)
+        if enters:
+            await detection.push_to_window(repeat, cast(Redis, store))
+            windowed.append(poll)
+
+    # After a restart the window is empty: it fills to MIN_HISTORY_POINTS (4) from polls, then waits an hour.
+    assert windowed == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_a_changed_snapshot_restarts_the_hour_and_a_listing_does_not():
+    store = InMemoryEdgeStore()
+    await _fill_window(store, [1000, 1010, 990, 1005])
+    cache = detection.DedupCache()
+    detection.update_dedup_cache(_tick(10.00), cache)
+    detection.update_dedup_cache(_tick(9.50, timestamp=1_790_003_000), cache)  # changed, so windowed
+    detection.update_dedup_cache(_listed(12.00, timestamp=1_790_006_000), cache)
+
+    entry = cache.get(_tick(9.50))
+    assert entry is not None and entry.snapshot_windowed_at == 1_790_003_000
+    redis = cast(Redis, store)
+    assert not await detection.unchanged_snapshot_enters_price_window(_tick(9.50, timestamp=1_790_006_599), cache, redis)
+    assert await detection.unchanged_snapshot_enters_price_window(_tick(9.50, timestamp=1_790_006_600), cache, redis)
+
+
+def test_a_snapshot_kept_out_of_the_window_keeps_the_last_windowed_time():
+    cache = detection.DedupCache()
+    detection.update_dedup_cache(_tick(10.00), cache)
+    detection.update_dedup_cache(_tick(10.00, timestamp=1_790_000_305), cache, enters_window=False)
+
+    entry = cache.get(_tick(10.00))
+    assert entry is not None
+    assert entry.snapshot_windowed_at == 1_790_000_000
+    assert entry.snapshot_price_cents == 1000
+    assert entry.timestamp == 1_790_000_305
+
+
 def test_dedup_cache_evicts_the_least_recently_used_item(monkeypatch):
     monkeypatch.setattr(detection, "DEDUP_CACHE_MAX_SIZE", 2)
     cache = detection.DedupCache()

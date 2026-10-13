@@ -38,10 +38,16 @@ def _tick(
     )
 
 
-async def _run_consumer(monkeypatch, items: list) -> tuple[AsyncMock, list[dict]]:
-    """Drive tick_consumer over `items` and return the detection mock plus every flushed batch."""
+def _cache_with_full_windows() -> MagicMock:
     cache = MagicMock()
     cache.aclose = AsyncMock()
+    cache.zcard = AsyncMock(return_value=20)
+    return cache
+
+
+async def _run_consumer(monkeypatch, items: list) -> tuple[AsyncMock, list[dict]]:
+    """Drive tick_consumer over `items` and return the detection mock plus every flushed batch."""
+    cache = _cache_with_full_windows()
     monkeypatch.setattr(listener_main.Redis, "from_url", lambda *_args, **_kwargs: cache)
 
     detect = AsyncMock()
@@ -103,16 +109,18 @@ async def test_repeated_prices_are_recorded_without_reentering_the_window(monkey
 
 
 @pytest.mark.asyncio
-async def test_unchanged_rest_snapshot_is_windowed_and_recorded_but_scored_once(monkeypatch):
+async def test_unchanged_rest_snapshot_is_recorded_scored_once_and_windowed_once_an_hour(monkeypatch):
     window_only = AsyncMock()
     monkeypatch.setattr(listener_main, "push_to_window", window_only)
-    polls = [_tick(3.97, timestamp=1_790_000_000 + poll * 305) for poll in range(4)]
-    changed = _tick(3.80, timestamp=1_790_000_000 + 4 * 305)
+    # The windows are full, so only the hourly rule applies. Poll 12 is 3,660 seconds after the first,
+    # the first unchanged poll past the hour.
+    polls = [_tick(3.97, timestamp=1_790_000_000 + poll * 305) for poll in range(14)]
+    changed = _tick(3.80, timestamp=1_790_000_000 + 14 * 305)
 
     detect, flushed = await _run_consumer(monkeypatch, [*polls, changed])
 
     assert [call.args[0] for call in detect.await_args_list] == [polls[0], changed]
-    assert [call.args[0] for call in window_only.await_args_list] == polls[1:]
+    assert [call.args[0] for call in window_only.await_args_list] == [polls[12]]
     assert flushed[0]["ticks"] == [tick.to_batch_record() for tick in [*polls, changed]]
 
 

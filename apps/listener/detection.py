@@ -32,11 +32,13 @@ from shared_utils import (
     edge_baselines_key,
     fees_for,
     get_logger,
+    hourly_snapshot_due,
     net_resale_margin_cents,
     resale_venue_for,
+    unchanged_snapshot_enters_window,
 )
 from task_supervisor import BoundedTaskPool
-from zscore import ZSCORE_SOURCES, calculate_z_score, should_trigger_anomaly
+from zscore import MIN_HISTORY_POINTS, ZSCORE_SOURCES, calculate_z_score, should_trigger_anomaly
 
 logger = get_logger("listener.main")
 
@@ -71,6 +73,7 @@ class DedupEntry:
     timestamp: int  # Time of the item's last tick that was not a duplicate
     price_cents: int  # Price of that tick
     snapshot_price_cents: int | None  # Price of the item's last REST snapshot; None before the first one
+    snapshot_windowed_at: int | None  # When the item's last REST snapshot entered the price window; None before
 
 
 class DedupCache:
@@ -180,15 +183,44 @@ def is_unchanged_snapshot(tick: MarketTick, dedup_cache: DedupCache) -> bool:
     return entry is not None and tick.is_rest_snapshot and tick.price_cents == entry.snapshot_price_cents
 
 
-def update_dedup_cache(tick: MarketTick, dedup_cache: DedupCache) -> None:
-    """Updates the venue's LRU dedup cache with the latest tick, evicting the oldest items over capacity."""
-    previous = dedup_cache.get(tick)
-    if tick.is_rest_snapshot:
-        snapshot_price_cents: int | None = tick.price_cents
-    else:
-        snapshot_price_cents = previous.snapshot_price_cents if previous is not None else None
+async def unchanged_snapshot_enters_price_window(tick: MarketTick, dedup_cache: DedupCache, cache: Redis) -> bool:
+    """
+    For an unchanged REST snapshot: True when it enters the price window (#269, see shared_utils.price_window).
 
-    entry = DedupEntry(timestamp=tick.timestamp, price_cents=tick.price_cents, snapshot_price_cents=snapshot_price_cents)
+    It enters when no REST snapshot of the item has entered the window for an hour, or while the window holds
+    fewer prices than the Z score needs. A quiet item's window then holds one reading an hour instead of one
+    copy per poll. Check it before `update_dedup_cache`.
+    """
+    entry = dedup_cache.get(tick)
+    last_windowed_at = entry.snapshot_windowed_at if entry is not None else None
+    if hourly_snapshot_due(tick.timestamp, last_windowed_at):
+        return True  # The window size does not matter, so Redis is not asked.
+    _t0 = time.monotonic()
+    window_size = await cache.zcard(price_window_key(tick.venue, tick.market_hash_name))
+    redis_operation_latency_seconds.observe(time.monotonic() - _t0)
+    return unchanged_snapshot_enters_window(tick.timestamp, last_windowed_at, window_size, MIN_HISTORY_POINTS)
+
+
+def update_dedup_cache(tick: MarketTick, dedup_cache: DedupCache, *, enters_window: bool = True) -> None:
+    """
+    Updates the venue's LRU dedup cache with the latest tick, evicting the oldest items over capacity.
+
+    `enters_window` says whether the tick goes into the price window; only an unchanged REST snapshot can stay out.
+    """
+    previous = dedup_cache.get(tick)
+    snapshot_price_cents = previous.snapshot_price_cents if previous is not None else None
+    snapshot_windowed_at = previous.snapshot_windowed_at if previous is not None else None
+    if tick.is_rest_snapshot:
+        snapshot_price_cents = tick.price_cents
+        if enters_window:
+            snapshot_windowed_at = tick.timestamp
+
+    entry = DedupEntry(
+        timestamp=tick.timestamp,
+        price_cents=tick.price_cents,
+        snapshot_price_cents=snapshot_price_cents,
+        snapshot_windowed_at=snapshot_windowed_at,
+    )
     evicted = dedup_cache.put(tick, entry)
     if evicted:
         # An evicted item that never changes price is scored again on its next snapshot, so this should stay 0.
