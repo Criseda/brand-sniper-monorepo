@@ -154,6 +154,7 @@ class ItemBaseline:
             rolling_30d_avg_cents=self.rolling_30d_avg_cents,
             volatility_cents=self.volatility_cents,
             drift_percent=self.drift_percent,
+            avg_volume_30d=self.avg_volume_30d,
         )
 
 

@@ -14,7 +14,14 @@ from backtest.store import InMemoryEdgeStore
 from models import MarketTick
 from redis.asyncio import Redis
 from rules_engine import dre_approval_reason
-from shared_utils import PRICE_WINDOW_RULE, UNCHANGED_SNAPSHOT_WINDOW_SECONDS
+from shared_utils import (
+    FEATURE_VERSION,
+    LISTING_RATE_WINDOW_SECONDS,
+    PRICE_WINDOW_RULE,
+    UNCHANGED_SNAPSHOT_WINDOW_SECONDS,
+    ListingRateTracker,
+)
+from student_features import listing_features
 
 # Reasons shared by all strategies.
 REASON_DUPLICATE = "duplicate"  # Same price as the item's previous tick inside the dedup window; never scored.
@@ -91,6 +98,12 @@ class ZScoreDreStrategy:
 
     async def decide(self, tick: MarketTick, context: DecisionContext) -> Decision:
         window_score = await detection.score_window(tick, context.cache)
+        return await self.decide_scored(tick, context, window_score)
+
+    async def decide_scored(
+        self, tick: MarketTick, context: DecisionContext, window_score: detection.WindowScore | None
+    ) -> Decision:
+        """The decision on a tick whose window has been scored (`window_score` None: too little history)."""
         if window_score is None:
             return Decision(approve=False, reason=REASON_INSUFFICIENT_HISTORY)
 
@@ -133,7 +146,43 @@ class ZScoreDreSweepStrategy(ZScoreDreStrategy):
     records_sweep_inputs = True
 
 
+class ZScoreDreFeaturesStrategy(ZScoreDreSweepStrategy):
+    """
+    The sweep strategy's decisions and inputs, plus the student model's features of every feed listing (#234).
+
+    Each scored listing carries `features["student"]` (shared_utils.features, computed by
+    student_features.listing_features), so the training flow builds its rows from the same replay that the
+    scorecard reads. REST snapshots name no listing and have no label, so they get no student features.
+    """
+
+    name = "zscore_dre_features"
+
+    def __init__(self) -> None:
+        self._rates = ListingRateTracker()
+
+    def config(self) -> dict[str, Any]:
+        return {
+            **super().config(),
+            "feature_version": FEATURE_VERSION,
+            "listing_rate_window_seconds": LISTING_RATE_WINDOW_SECONDS,
+        }
+
+    async def decide(self, tick: MarketTick, context: DecisionContext) -> Decision:
+        window_score = await detection.score_window(tick, context.cache)
+        decision = await self.decide_scored(tick, context, window_score)
+        if tick.listing_id is None:
+            return decision
+        student = await listing_features(tick, window_score, context.cache, self._rates)
+        return Decision(
+            approve=decision.approve,
+            reason=decision.reason,
+            score=decision.score,
+            features={**decision.features, "student": student},
+        )
+
+
 STRATEGIES: dict[str, Callable[[], Strategy]] = {
     ZScoreDreStrategy.name: ZScoreDreStrategy,
     ZScoreDreSweepStrategy.name: ZScoreDreSweepStrategy,
+    ZScoreDreFeaturesStrategy.name: ZScoreDreFeaturesStrategy,
 }

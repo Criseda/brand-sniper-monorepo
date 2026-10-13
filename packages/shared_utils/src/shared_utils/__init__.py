@@ -17,6 +17,15 @@ from .baselines import (
     edge_baselines_key,
     edge_sticker_prices_key,
 )
+from .features import (
+    FEATURE_NAMES,
+    FEATURE_VERSION,
+    LISTING_RATE_WINDOW_SECONDS,
+    FeatureInputs,
+    ListingRateTracker,
+    compute_features,
+    feature_vector,
+)
 from .item_classifier import build_versioned_name, parse_item_meta, parse_version_from_name
 from .logging_utils import get_logger
 from .models import (
@@ -62,6 +71,13 @@ from .script_utils import setup_script_environment, setup_service_environment, v
 from .time_utils import utc_fromtimestamp_naive, utc_now_naive
 
 __all__ = [
+    "FEATURE_NAMES",
+    "FEATURE_VERSION",
+    "LISTING_RATE_WINDOW_SECONDS",
+    "FeatureInputs",
+    "ListingRateTracker",
+    "compute_features",
+    "feature_vector",
     "BACKEND_API_KEY_ENV",
     "BACKEND_API_KEY_HEADER",
     "MIN_BACKEND_API_KEY_LENGTH",

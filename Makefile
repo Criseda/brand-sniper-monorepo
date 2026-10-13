@@ -48,6 +48,16 @@ scorecard:
 		--warmup-hours $(WARMUP_HOURS) --strategy zscore_dre_sweep --out $(CURDIR)/$(SCORECARD_LOG)
 	cd apps/analytics && uv run python baseline_scorecard.py --decisions $(CURDIR)/$(SCORECARD_LOG)
 
+STUDENT_LOG ?= data/student/decisions.jsonl
+STUDENT_ARGS ?=
+.PHONY: student  ## Student model (#234): make student START=2026-09-26T17:30 END=2026-10-27T00:00 [STUDENT_ARGS=--exploratory]
+student:
+	@test -n "$(START)" -a -n "$(END)" || (echo "Usage: make student START=<ISO, UTC> END=<ISO, UTC>" && exit 1)
+	mkdir -p $(dir $(STUDENT_LOG))
+	cd apps/listener && uv run python -m backtest run --start $(START) --end $(END) \
+		--warmup-hours $(WARMUP_HOURS) --strategy zscore_dre_features --out $(CURDIR)/$(STUDENT_LOG)
+	cd apps/analytics && uv run python train_student.py --decisions $(CURDIR)/$(STUDENT_LOG) $(STUDENT_ARGS)
+
 STACK ?= server-stack
 .PHONY: docker-up  ## docker compose up -d for $(STACK) (use STACK=edge-stack for edge)
 docker-up:

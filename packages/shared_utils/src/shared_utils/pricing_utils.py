@@ -133,10 +133,12 @@ def edge_baseline_payload(
     rolling_30d_avg_cents: int,
     volatility_cents: int,
     drift_percent: float,
+    avg_volume_30d: float,
 ) -> dict:
     """The per-item baseline document the edge reads from `baseline:<market_hash_name>`.
 
     Built in one place so the Redis sync and the replay harness give the decision path identical inputs.
+    `avg_volume_30d` (sales per day) is not used by the rules; it is a feature of the student model (#234).
     """
     return {
         "support_floor_cents": support_floor_cents,
@@ -144,6 +146,7 @@ def edge_baseline_payload(
         "rolling_30d_avg_cents": rolling_30d_avg_cents,
         "volatility_cents": volatility_cents,
         "drift_percent": drift_percent,
+        "avg_volume_30d": avg_volume_30d,
         "coefficient_of_variation": round(volatility_cents / rolling_30d_avg_cents, 4)
         if rolling_30d_avg_cents and volatility_cents
         else 0.0,
