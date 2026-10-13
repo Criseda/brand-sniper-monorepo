@@ -9,6 +9,7 @@ from rules_engine import (
     REASON_SUPPORT_FLOOR,
     dre_approval_reason,
     evaluate_opportunity,
+    sticker_value_cents,
 )
 
 
@@ -235,3 +236,19 @@ async def test_waxpeer_listing_uses_skinport_baselines_and_sticker_prices(mock_r
         venue="waxpeer",
     )
     assert await dre_approval_reason(with_stickers, mock_redis) == REASON_STICKER_PREMIUM
+
+
+class _StickerPrices:
+    async def hget(self, name, key):
+        return {"Titan | Katowice 2014": "500000", "Broken": "n/a"}.get(key)
+
+
+@pytest.mark.asyncio
+async def test_sticker_value_sums_known_prices_and_skips_unnamed_unknown_or_bad_ones():
+    tick = MockMarketTick(
+        market_hash_name="AK-47 | Redline (Field-Tested)",
+        price_cents=1700,
+        stickers=[{"name": "Titan | Katowice 2014"}, {"wear": "0.1"}, {"name": "Unknown"}, {"name": "Broken"}],
+    )
+
+    assert await sticker_value_cents(tick, _StickerPrices()) == 500_000

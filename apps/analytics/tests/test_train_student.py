@@ -542,3 +542,60 @@ def test_onnx_routes_inputs_on_a_split_exactly_as_lightgbm(monkeypatch):
 
     assert moved > 0
     assert check_onnx(to_onnx(model, {}), model, features) <= 1e-4
+
+
+def test_calibration_slice_with_one_outcome_keeps_the_raw_probabilities():
+    rows = [
+        _row(str(index), T0 + timedelta(minutes=index), profitable=index % 3 == 0 and index < 2000) for index in range(2500)
+    ]
+
+    model = train_model(rows)
+
+    assert (model.platt_slope, model.platt_intercept) == (1.0, 0.0)
+
+
+def test_onnx_check_rejects_a_wrong_signature():
+    log, labels = synthetic(count=1500, days=10)
+    model = train_model(build_dataset(log, labels))
+    renamed_input = to_onnx(model, {})
+    renamed_input.graph.input[0].name = "x"
+    for node in renamed_input.graph.node:
+        node.input[:] = ["x" if name == "features" else name for name in node.input]
+    renamed_output = to_onnx(model, {})
+    renamed_output.graph.output[0].name = "p"
+    renamed_output.graph.node[-1].output[0] = "p"
+
+    with pytest.raises(ValueError, match="input signature"):
+        check_onnx(renamed_input, model, np.zeros((1, len(FEATURE_NAMES)), dtype=np.float32))
+    with pytest.raises(ValueError, match="output signature"):
+        check_onnx(renamed_output, model, np.zeros((1, len(FEATURE_NAMES)), dtype=np.float32))
+
+
+def test_report_and_metrics_without_labels_or_with_thin_cells():
+    empty = train_student.train_student(TrainingInputs(log=_log([]), labels=_labels([])))
+    assert "has a profitable or unprofitable label yet" in render_markdown(empty.report)
+
+    log, labels = synthetic()
+    report = train_student.train_student(TrainingInputs(log=log, labels=labels, fold_hours=24 * 5)).report
+    thin = _cell(status="insufficient_data", labeled=3)
+    report["pooled"]["comparison"] = {"listings": 3, "rules": thin, "model_at_threshold": thin, "model_at_rules_volume": thin}
+    report["pooled"]["metrics"]["roc_auc"] = None
+
+    assert "| Live rules | 3 | 3 | insufficient data | insufficient data |" in render_markdown(report)
+    metrics = mlflow_metrics(report)
+    assert "roc_auc" not in metrics
+    assert "rules_precision" not in metrics
+    assert metrics["rules_trades"] == 3
+
+
+def test_mlflow_reuses_an_existing_registered_model(monkeypatch, tmp_path):
+    log, labels = synthetic()
+    result = train_student.train_student(TrainingInputs(log=log, labels=labels, fold_hours=24 * 5))
+    paths = train_student.write_reports(result.report, result.onnx_model, tmp_path)
+    client = FakeMlflowClient(registered=["brand-sniper-student"])
+    monkeypatch.setattr(train_student, "MlflowClient", lambda tracking_uri: client)
+
+    _, version = log_to_mlflow(result.report, paths)
+
+    assert version == "1"
+    assert client.registered == ["brand-sniper-student"]
