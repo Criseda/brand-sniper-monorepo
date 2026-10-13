@@ -135,9 +135,10 @@ def build_dataset(log: DecisionLog, labels: FinalLabels) -> list[LabeledListing]
     Every feed listing with a non neutral label whose first sighting was scored, in decision order.
 
     A label describes the listing as first seen (`listed_at`), so only the decision on that sighting counts.
-    A listing whose first sighting was dropped as a duplicate, or happened before the log starts, is left
-    out rather than joined to a later sighting. Decisions before tradable REST prices filled the windows,
-    or made with a later baseline build, are left out, as in the scorecard.
+    A listing whose first sighting was not scored (it happened before the log starts, or, in logs made
+    before #312, it repeated the item's previous price) is left out rather than joined to a later sighting.
+    Decisions before tradable REST prices filled the windows, or made with a later baseline build, are left
+    out, as in the scorecard.
     """
     if log.strategy != FEATURES_STRATEGY:
         raise ValueError(f"Training needs a log made with the {FEATURES_STRATEGY} strategy; this one used {log.strategy}")
@@ -680,8 +681,8 @@ def _data_line(data: dict[str, Any]) -> str:
         return f"- Data: no scored {data['venue']} feed listing in the log has a profitable or unprofitable label yet."
     return (
         f"- Data: {data['venue']} feed listings decided from {data['first_decision']} to {data['last_decision']} UTC, "
-        f"{data['listings']} with a profitable or unprofitable label ({data['profitable']} profitable). Listings the "
-        "dedup rule dropped (same item and price within 5 minutes) are never scored, so they have no features."
+        f"{data['listings']} with a profitable or unprofitable label ({data['profitable']} profitable). A listing "
+        "whose first sighting came before the log starts has no features."
     )
 
 
