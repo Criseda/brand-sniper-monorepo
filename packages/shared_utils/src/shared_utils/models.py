@@ -1,9 +1,13 @@
-from datetime import datetime
 from typing import Any
 
+from pydantic import NaiveDatetime
 from sqlalchemy import JSON, BigInteger, Column, Integer, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Index, SQLModel
+
+# Every timestamp column is TIMESTAMP WITHOUT TIME ZONE holding naive UTC (see time_utils).
+# NaiveDatetime keeps that column type; sqlmodel >= 0.0.47 maps a plain datetime to
+# TIMESTAMPTZ and rejects naive values.
 
 # JSONB on PostgreSQL, plain JSON elsewhere (the backend tests run on in-memory SQLite).
 # none_as_null stores Python None as SQL NULL rather than the JSON literal 'null'.
@@ -52,7 +56,7 @@ class LiveMarketTick(SQLModel, table=True):
     listing_url: str | None = Field(default=None, max_length=512)
 
     # Let the PostgreSQL server safely generate the UTC timestamp natively
-    inserted_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
+    inserted_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
 
     # Partial index: most rows are REST snapshots with a NULL listing_id, which would only bloat
     # the index and slow the hot ingest path.
@@ -74,7 +78,7 @@ class IngestionBatch(SQLModel, table=True):
     venue: str = Field(nullable=False)
     record_count: int = Field(nullable=False)
     payload_sha256: str = Field(nullable=False, max_length=64)
-    received_at: datetime = Field(
+    received_at: NaiveDatetime = Field(
         sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")},
         index=True,
     )
@@ -91,7 +95,7 @@ class FeedEvent(SQLModel, table=True):
     id: int | None = Field(default=None, sa_column=Column(BigIdentity, primary_key=True, autoincrement=True))
     venue: str = Field(nullable=False, max_length=32)  # e.g. skinport
     event_type: str = Field(nullable=False, max_length=32)
-    received_at: datetime = Field(nullable=False, index=True)  # Edge receive time (UTC)
+    received_at: NaiveDatetime = Field(nullable=False, index=True)  # Edge receive time (UTC)
     payload: dict[str, Any] = Field(sa_column=Column(JsonDocument, nullable=False))
 
 
@@ -105,7 +109,7 @@ class HistoricalPrice(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE")
-    sale_date: datetime = Field(nullable=False)
+    sale_date: NaiveDatetime = Field(nullable=False)
     median_price_cents: int = Field(nullable=False)
     volume_sold: int = Field(nullable=False)
 
@@ -132,7 +136,7 @@ class ItemMacroBaseline(SQLModel, table=True):
     avg_volume_30d: float = Field(nullable=False)
     support_floor_cents: int = Field(nullable=False)
 
-    updated_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
+    updated_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
 
 
 class BaselineBuild(SQLModel, table=True):
@@ -146,7 +150,7 @@ class BaselineBuild(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     venue: str = Field(nullable=False, max_length=32, index=True)  # e.g. skinport
     method: str = Field(nullable=False, max_length=32)  # shared_utils.baselines.BASELINE_METHOD
-    built_at: datetime = Field(nullable=False, index=True)  # When the source data was fetched (naive UTC)
+    built_at: NaiveDatetime = Field(nullable=False, index=True)  # When the source data was fetched (naive UTC)
     item_count: int = Field(nullable=False)
 
 
@@ -205,7 +209,9 @@ class SimulatedTrade(SQLModel, table=True):
     listing_id: str | None = Field(default=None, max_length=64)
     float_value: float | None = Field(default=None)  # Float of the bought listing, not of the item in general
 
-    simulated_buy_timestamp: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
+    simulated_buy_timestamp: NaiveDatetime = Field(
+        sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True
+    )
 
 
 class ListingOutcome(SQLModel, table=True):
@@ -224,7 +230,7 @@ class ListingOutcome(SQLModel, table=True):
     label_version: str = Field(primary_key=True, max_length=32)
 
     market_hash_name: str = Field(nullable=False)  # Versioned name (phase included), as in market_items
-    listed_at: datetime = Field(nullable=False, index=True)  # First time the listing was seen (edge receive time, UTC)
+    listed_at: NaiveDatetime = Field(nullable=False, index=True)  # First time the listing was seen (edge receive time, UTC)
     listed_price_cents: int = Field(nullable=False)
 
     # Comparable sales: same item, sold within [listed_at + hold, label_available_at], excluding this listing.
@@ -238,5 +244,5 @@ class ListingOutcome(SQLModel, table=True):
     listing_sold_within_s: int | None = Field(default=None)
     sale_censored: bool = Field(nullable=False)
 
-    label_available_at: datetime = Field(nullable=False, index=True)  # listed_at + horizon
-    labeled_at: datetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")})
+    label_available_at: NaiveDatetime = Field(nullable=False, index=True)  # listed_at + horizon
+    labeled_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")})
