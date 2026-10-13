@@ -869,3 +869,18 @@ async def test_run_verdicts_asks_every_prompt_about_a_trade_before_the_next(tmp_
     assert [variant for _, variant in asked] == [VARIANT_ADVERSARIAL, VARIANT_NEUTRAL] * 6
     assert asked[0][0] == asked[1][0]
     assert [key for key, _ in asked[::2]] != [case.key for case in cases]  # Seeded random order, not decision order
+
+
+@pytest.mark.asyncio
+async def test_a_tool_call_in_the_json_phase_asks_again_without_any_tools(fake_llm):
+    fake_llm.chat.completions.create.side_effect = [
+        completion("Looks fine."),
+        _BadRequest("tool_use_failed: Tool choice is none, but model called a tool"),
+        completion('{"probability_of_profit": 0.55, "reasoning": "Fine."}'),
+    ]
+
+    verdict = await ask_cfo(make_case(), history().as_of(DECIDED_AT), VARIANT_NEUTRAL, "model-a")
+
+    assert verdict.probability == 0.55
+    last_call = fake_llm.chat.completions.create.call_args_list[2].kwargs
+    assert "tools" not in last_call and "tool_choice" not in last_call

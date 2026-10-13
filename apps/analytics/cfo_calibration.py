@@ -465,10 +465,10 @@ async def ask_cfo(case: TradeCase, view: MarketView, variant: str, model: str) -
         reasoning="",
     )
 
-    async def call(tool_choice: str) -> Any:
-        response = await _create(
-            model=model, messages=messages, temperature=0, max_tokens=2048, tools=TOOL_SCHEMAS, tool_choice=tool_choice
-        )
+    async def call(tool_choice: str | None) -> Any:
+        """One completion; `tool_choice` None sends no tools at all."""
+        tool_kwargs: dict[str, Any] = {} if tool_choice is None else {"tools": TOOL_SCHEMAS, "tool_choice": tool_choice}
+        response = await _create(model=model, messages=messages, temperature=0, max_tokens=2048, **tool_kwargs)
         verdict.llm_calls += 1
         usage = getattr(response, "usage", None)
         verdict.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -506,7 +506,13 @@ async def ask_cfo(case: TradeCase, view: MarketView, variant: str, model: str) -
             parsed = parse_verdict(answer)
         except (ValueError, ValidationError):
             messages.append({"role": "user", "content": FINAL_INSTRUCTION})
-            response = await call("none")
+            try:
+                response = await call("none")
+            except Exception as error:
+                # Some models still call a tool with tool_choice none; without the tools they cannot.
+                if "tool_use_failed" not in str(error):
+                    raise
+                response = await call(None)
             parsed = parse_verdict(response.choices[0].message.content or "")
     except QuotaExhaustedError:
         raise
