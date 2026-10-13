@@ -503,6 +503,7 @@ async def get_latest_baseline_build(venue: str, after_build_id: int | None = Non
             rolling_30d_avg_cents=row.rolling_30d_avg_cents,
             volatility_cents=row.volatility_cents,
             drift_percent=row.drift_percent,
+            avg_volume_30d=row.avg_volume_30d,
         )
         sticker_name = applied_sticker_name(row.market_hash_name)
         if sticker_name is not None:

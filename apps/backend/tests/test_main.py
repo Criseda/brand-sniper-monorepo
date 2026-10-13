@@ -792,6 +792,7 @@ def test_latest_baselines_serves_the_newest_build_with_sticker_prices(client):
     assert (body["venue"], body["built_at"], body["item_count"]) == (venue, "2026-09-26T12:00:00", 2)
     assert body["baselines"]["AK-47 | Redline (Field-Tested)"]["latest_price_cents"] == 2739
     assert body["baselines"]["AK-47 | Redline (Field-Tested)"]["coefficient_of_variation"] == round(10 / 2739, 4)
+    assert body["baselines"]["AK-47 | Redline (Field-Tested)"]["avg_volume_30d"] == 1.5
     # Sticker prices are keyed the way a listing names an applied sticker.
     assert body["sticker_prices"] == {"Crown (Foil)": 90000}
 

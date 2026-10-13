@@ -112,6 +112,7 @@ def test_edge_payload_matches_the_shared_document_shape():
         "rolling_30d_avg_cents": 2929,
         "volatility_cents": 228,
         "drift_percent": baseline.drift_percent,
+        "avg_volume_30d": baseline.avg_volume_30d,
         "coefficient_of_variation": round(228 / 2929, 4),
     }
 

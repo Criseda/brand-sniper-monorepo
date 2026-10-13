@@ -2,11 +2,13 @@ import asyncio
 import importlib.util
 import io
 import json
+import math
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import detection
 import pytest
 import zscore
 from backtest import database
@@ -32,13 +34,15 @@ from backtest.strategy import (
     REASON_INSUFFICIENT_HISTORY,
     REASON_MACRO_ONLY,
     STRATEGIES,
+    ZScoreDreFeaturesStrategy,
     ZScoreDreStrategy,
     ZScoreDreSweepStrategy,
 )
 from executor import ExecutionService
 from models import FeedEvent, MarketTick
 from rules_engine import REASON_MACRO_SIGMA, REASON_STICKER_PREMIUM, REASON_STICKERS_BELOW_BASE, REASON_SUPPORT_FLOOR
-from shared_utils import build_versioned_name
+from shared_utils import FEATURE_NAMES, FEATURE_VERSION, ListingRateTracker, build_versioned_name, feature_vector
+from student_features import listing_features
 from task_supervisor import BoundedTaskPool
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "replay"
@@ -637,8 +641,8 @@ async def test_build_snapshot_matches_what_the_listener_loads():
     engine = FakeEngine(
         {
             database._BUILD_ROWS_QUERY.text: [
-                (ITEM, 900, 1000, 1100, 110, 1.5),
-                (f"Sticker | {VALUABLE_STICKER}", 400_000, 500_000, 480_000, 4800, 0.0),
+                (ITEM, 900, 1000, 1100, 110, 1.5, 2.5),
+                (f"Sticker | {VALUABLE_STICKER}", 400_000, 500_000, 480_000, 4800, 0.0, 12.0),
             ]
         }
     )
@@ -651,6 +655,7 @@ async def test_build_snapshot_matches_what_the_listener_loads():
         "rolling_30d_avg_cents": 1100,
         "volatility_cents": 110,
         "drift_percent": 1.5,
+        "avg_volume_30d": 2.5,
         "coefficient_of_variation": 0.1,
     }
     # Keyed the way a listing names the applied sticker, as the backend serves it.
@@ -663,7 +668,7 @@ async def test_baseline_schedule_lists_builds_and_loads_them_on_demand():
     engine = FakeEngine(
         {
             database._BUILDS_QUERY.text: [(3, _at(0)), (4, _at(3600))],
-            database._BUILD_ROWS_QUERY.text: [(ITEM, 900, 1000, 1100, 110, 1.5)],
+            database._BUILD_ROWS_QUERY.text: [(ITEM, 900, 1000, 1100, 110, 1.5, 2.5)],
         }
     )
 
@@ -743,3 +748,105 @@ async def test_replay_rejects_an_empty_schedule():
 
 def test_epoch_ms_is_exact_for_naive_utc():
     assert database._epoch_ms(datetime(2026, 9, 24, 21, 58, 53, 318000)) == 1_790_287_133_318
+
+
+# --- Student features (#234): live, replay and training compute the same features ---
+
+
+def _feature_streams():
+    return {
+        "synthetic": synthetic_stream(),
+        "fixture": (load_fixture(FIXTURE_DIR / "events.jsonl"), BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")),
+    }
+
+
+async def _replay_log(events, baselines, strategy) -> str:
+    log = io.StringIO()
+    await run_replay(events, strategy, baselines, log, source_label="test")
+    return log.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["synthetic", "fixture"])
+async def test_features_strategy_makes_the_live_decisions(stream):
+    events, baselines = _feature_streams()[stream]
+
+    live = await _replay_log(events, baselines, ZScoreDreStrategy())
+    with_features = await _replay_log(events, baselines, STRATEGIES["zscore_dre_features"]())
+
+    assert _verdicts(with_features) == _verdicts(live)
+    header = json.loads(with_features.splitlines()[0])
+    assert header["strategy"] == "zscore_dre_features"
+    assert header["config"]["feature_version"] == FEATURE_VERSION
+
+
+@pytest.mark.asyncio
+async def test_every_scored_listing_carries_student_features_and_snapshots_none():
+    events, baselines = synthetic_stream()
+
+    rows = _rows(await _replay_log(events, baselines, ZScoreDreFeaturesStrategy()))
+
+    scored_listings = [row for row in rows if row["listing_id"] is not None and row["reason"] != "duplicate"]
+    assert scored_listings
+    assert all(set(row["features"]["student"]) == set(FEATURE_NAMES) for row in scored_listings)
+    assert all("student" not in row["features"] for row in rows if row["listing_id"] is None)
+    # The listing of an item with no history and no baseline is still logged, with missing features.
+    unknown = next(row for row in rows if row["market_hash_name"] == "Unknown Item")
+    assert unknown["features"]["student"]["z_score"] is None
+    assert unknown["features"]["student"]["price_to_30d_avg"] is None
+
+
+@pytest.mark.asyncio
+async def test_sticker_value_and_order_flow_features():
+    events = [_snapshot(index * 305, price) for index, price in enumerate([1000, 1010, 990, 1005, 995])]
+    events += [
+        _feed(1600, "listed", _sale(1, 1000)),
+        _feed(1900, "listed", _sale(2, 1500, stickers=[{"name": VALUABLE_STICKER}])),
+        _feed(1600 + 3600, "listed", _sale(3, 1200)),
+    ]
+    baselines = BaselineSnapshot(
+        baselines={ITEM: {"support_floor_cents": 500, "latest_price_cents": 1000}},
+        sticker_prices={VALUABLE_STICKER: 500_000},
+    )
+
+    rows = {
+        row["listing_id"]: row["features"]["student"]
+        for row in _rows(await _replay_log(events, baselines, ZScoreDreFeaturesStrategy()))
+    }
+
+    assert [rows[listing]["listings_per_hour_item"] for listing in ("1", "2", "3")] == [0, 1, 1]
+    assert rows["1"]["sticker_value_ratio"] == 0
+    assert rows["2"]["sticker_value_ratio"] == 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["synthetic", "fixture"])
+async def test_live_replay_and_training_compute_the_same_features(monkeypatch, stream):
+    events, baselines = _feature_streams()[stream]
+
+    # Live: the real tick consumer, with the features computed from its own edge state right where it scores.
+    live_features: dict[str, dict] = {}
+    live_rates = ListingRateTracker()
+    score_window = detection.score_window
+
+    async def scoring_with_features(tick, cache):
+        window_score = await score_window(tick, cache)
+        if tick.listing_id is not None:
+            live_features[tick.listing_id] = await listing_features(tick, window_score, cache, live_rates)
+        return window_score
+
+    monkeypatch.setattr(detection, "score_window", scoring_with_features)
+    await _live_run(monkeypatch, events, baselines)
+    monkeypatch.undo()
+
+    # Replay: the decision log, as the training flow reads it back.
+    rows = _rows(await _replay_log(events, baselines, ZScoreDreFeaturesStrategy()))
+    logged = {row["listing_id"]: row["features"]["student"] for row in rows if "student" in row["features"]}
+
+    assert logged
+    assert set(logged) == set(live_features)
+    for listing_id, features in logged.items():
+        training_row = feature_vector(features)
+        live_row = feature_vector(live_features[listing_id])
+        for name, trained, live in zip(FEATURE_NAMES, training_row, live_row, strict=True):
+            assert (math.isnan(trained) and math.isnan(live)) or trained == pytest.approx(live, abs=1e-6), (listing_id, name)

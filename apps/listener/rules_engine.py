@@ -17,6 +17,23 @@ STICKER_VALUE_MIN_CENTS = 10_000
 STICKER_PREMIUM_MAX_PERCENT = 3.0
 
 
+async def sticker_value_cents(tick: MarketTick, redis_client: Redis) -> int:
+    """Sum of the resale venue's prices of the stickers applied to the listing; unknown stickers count 0."""
+    reference_venue = resale_venue_for(tick.venue)
+    total_cents = 0
+    for sticker in getattr(tick, "stickers", None) or []:
+        name = sticker.get("name")
+        if name:
+            # Fetch the sticker's price on the resale venue from the Redis hash
+            price_str = await redis_client.hget(edge_sticker_prices_key(reference_venue), name)
+            if price_str:
+                try:
+                    total_cents += int(price_str)
+                except ValueError:
+                    pass
+    return total_cents
+
+
 async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> str | None:
     """
     Evaluates a market anomaly deterministically using macro baselines and sticker valuations.
@@ -55,19 +72,7 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
             return REASON_MACRO_SIGMA
 
     # 4. Sticker Premium Valuation
-    total_sticker_value_cents = 0
-
-    if hasattr(tick, "stickers") and tick.stickers:
-        for sticker in tick.stickers:
-            name = sticker.get("name")
-            if name:
-                # Fetch the sticker's price on the resale venue from the Redis hash
-                price_str = await redis_client.hget(edge_sticker_prices_key(reference_venue), name)
-                if price_str:
-                    try:
-                        total_sticker_value_cents += int(price_str)
-                    except ValueError:
-                        pass
+    total_sticker_value_cents = await sticker_value_cents(tick, redis_client)
 
     # 5. Sticker Premium Percentage (SP%) Logic
     if total_sticker_value_cents > STICKER_VALUE_MIN_CENTS:  # Minimum $100 sticker value required to care

@@ -373,12 +373,15 @@ ORDER BY label_available_at, listing_id
 """
 
 
-async def fetch_final_labels(version: str, as_of: datetime) -> FinalLabels:
+async def fetch_final_labels(version: str, as_of: datetime, include_revisable: bool = False) -> FinalLabels:
     """Every final label of `version` as of `as_of`, for training and evaluation.
 
-    The finality rule comes from the stored contract, not from this code's defaults."""
+    The finality rule comes from the stored contract, not from this code's defaults. `include_revisable`
+    also reads labels that a later run may still revise: only for exploratory runs, which are not
+    reproducible."""
     contract = await load_label_contract(version)
-    params = {"venue": VENUE, "label_version": version, "final_before": final_before(contract, as_of), "as_of": as_of}
+    cutoff = as_of if include_revisable else final_before(contract, as_of)
+    params = {"venue": VENUE, "label_version": version, "final_before": cutoff, "as_of": as_of}
     async with async_engine.connect() as conn:
         result = await conn.execute(text(_FINAL_LABELS_QUERY), params)
         rows = [dict(row._mapping) for row in result.fetchall()]

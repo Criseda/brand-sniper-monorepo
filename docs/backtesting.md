@@ -35,7 +35,7 @@ Times are ISO 8601. A value without an offset is taken as UTC.
 
 | Option | Meaning |
 |:---|:---|
-| `--strategy` | Decision strategy: `zscore_dre` (default, the live rules) or `zscore_dre_sweep` (the same decisions plus the inputs the scorecard's threshold sweep needs). |
+| `--strategy` | Decision strategy: `zscore_dre` (default, the live rules), `zscore_dre_sweep` (the same decisions plus the inputs the scorecard's threshold sweep needs) or `zscore_dre_features` (the sweep log plus the student model's features of every feed listing, #234). |
 | `--warmup-hours` | Database replay: also replay this many hours before `--start`. It fills the price windows and the dedup cache; those decisions are not logged. |
 | `--log-from` | Fixture replay: the same idea. Events before this time only warm up. |
 | `--speed` | Replay at recorded pace times this factor (`1` = real time). Omit it to run flat out. |
@@ -191,6 +191,11 @@ sticker count, and for a tick below the Z threshold it writes the verdict the DR
 (`dre_reason`, null for a rejection). The DRE never reads the Z threshold or the savings floor, so with
 those two fields any other threshold can be scored from the same log (see the threshold sweep below).
 
+`zscore_dre_features` writes everything `zscore_dre_sweep` writes, and adds `features.student` to every
+scored feed listing: the student model's features (`shared_utils.features`), gathered by
+`apps/listener/student_features.py` from the price window, baseline and sticker prices the listener had at
+that moment. The scorecard reads this log as well, so one replay serves both.
+
 ## Baseline scorecard
 
 The scorecard (#249) is the number every later change has to beat: how the current rules would have done,
@@ -259,6 +264,58 @@ never changes a threshold. A change it suggests becomes its own issue.
 **When it means something.** Labels arrive 14 days and an hour after a listing, so the first listings after
 the #275 cutover are labeled from 2026-10-10 18:30 UTC. Until a range has 30 labeled trades, every
 metric says insufficient data.
+
+## Student model
+
+The student model (#234) is trained on the same replay. One command replays a range with
+`zscore_dre_features`, then trains and evaluates the model:
+
+```bash
+make student START=2026-09-26T17:30 END=2026-10-27T00:00
+```
+
+The second step on its own, from apps/analytics:
+
+```bash
+uv run python train_student.py --decisions ../../data/student/decisions.jsonl
+```
+
+`train_student.py` joins every scored feed listing to its final `listing_outcomes` label
+(`fetch_final_labels`, so the same `--as-of` reads the same labels), leaves out neutral labels, and trains
+LightGBM with walk forward folds (`--fold-hours`, 24 by default). A fold with cutoff t trains on listings
+decided before t whose label was available by t, and validates on the listings of the next window. With a
+14 day horizon that puts at least 14 days between the newest training listing and the validation window,
+so the first folds have nothing to train on. Inside a fold the newest 20% of the training listings fit a
+Platt scaling of the raw score and pick the operating threshold, the one with the most net P&L on them.
+
+On the validation listings the live rules, the model at its threshold, and the model at the rules' volume
+(as many listings as the rules approved, most probable first) are scored with the scorecard's own
+`score_trades`, so precision, net P&L and the 30 trade minimum mean exactly what they mean in the
+scorecard. It also reports ROC-AUC, PR-AUC, the Brier score and a calibration table.
+
+A fold, or the final model, needs 1000 labeled listings and 100 of the rarer outcome. The final model is
+trained on every listing, exported to ONNX (float32 `features` [n, 11] in, `probability` [n] out, the
+feature names and versions as metadata), and checked against the native model. It writes
+`docs/benchmarks/student_model.{md,json}` and `student_model.onnx`, logs them to the MLflow experiment
+`student-model` with the label config and feature version as parameters, and registers the ONNX model as
+`brand-sniper-student` when the run is not exploratory and at least one fold was evaluated. The version's
+`candidate` tag is true only when the model beat the rules out of sample (see section 4.6 of the roadmap).
+
+`--exploratory` also reads labels that are not final and lets training labels overlap the validation
+window. It is for checking the pipeline on the labels that exist. Its numbers are not an evaluation, and it
+never registers a model.
+
+**When it means something.** On 2026-10-13 the labels cover listings from 2026-09-26 17:30 to 09-28 23:26,
+one weekly slice with a gap where my PC was off. Of their 6,654 profitable or unprofitable labels only 2,266
+belong to a scored first sighting: the dedup rule drops a listing at the same price as the item's previous
+tick within 5 minutes, so it gets no features, live or in replay. Those 2,266 are enough to train a fold
+(221 profitable), but a strict fold can only validate on listings decided 14 days after them, so from about
+2026-10-13. Their labels exist from about 2026-10-27 and are final from about 2026-10-30. The rules approve
+100 to 280 feed listings on a day the PC was on, and about a third of those get a decisive label, so one such
+day of validation listings gives the 30 labeled trades a comparison needs. The first strict run is therefore
+due around 2026-10-31, and it will still rest on one training week and a day or two of validation, which is
+not enough to judge the model. Until then the committed report (`docs/benchmarks/student_model.md`) is an
+exploratory run.
 
 ## Parity and tests
 

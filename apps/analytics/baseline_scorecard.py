@@ -56,7 +56,10 @@ logger = get_logger("analytics.scorecard")
 # 2: REST snapshots count once per venue, item, price and UTC day, as live trading buys them (#271).
 SCORECARD_VERSION = 2
 SWEEP_STRATEGY = "zscore_dre_sweep"
-SUPPORTED_STRATEGIES = ("zscore_dre", SWEEP_STRATEGY)
+# The sweep strategy plus the student model's features (#234): the same decisions and sweep inputs.
+FEATURES_STRATEGY = "zscore_dre_features"
+SWEEP_STRATEGIES = (SWEEP_STRATEGY, FEATURES_STRATEGY)
+SUPPORTED_STRATEGIES = ("zscore_dre", *SWEEP_STRATEGIES)
 
 # REST snapshots were trade locked lowest asks until #275. The first tradable poll ran at 15:46:56 UTC on
 # 2026-09-26, and the price windows (20 prices, one per poll) still held trade locked asks for 20 polls
@@ -577,7 +580,7 @@ def sweep_thresholds(
     Only feed listings are swept; the log holds a REST snapshot only when the live rules approved it.
     `listing_trade` turns a decision into a trade carrying its listing's outcome.
     """
-    if log.strategy != SWEEP_STRATEGY:
+    if log.strategy not in SWEEP_STRATEGIES:
         return {"available": False, "reason": f"the decision log was not made with the {SWEEP_STRATEGY} strategy"}
     config = log.config
     live_z = float(config["z_score_threshold"])

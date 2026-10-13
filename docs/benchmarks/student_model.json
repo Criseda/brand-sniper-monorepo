@@ -1,0 +1,302 @@
+{
+  "as_of": "2026-10-13T17:00:00",
+  "candidate": false,
+  "data": {
+    "decision_log_sha256": "018e021b16453c29a293a68465b33ca3173977732b0324260033f75b076fd925",
+    "end": "2026-10-13T16:00:00",
+    "first_decision": "2026-09-26T17:31:23",
+    "last_decision": "2026-09-28T23:26:23",
+    "listings": 2266,
+    "profitable": 221,
+    "start": "2026-09-26T17:30:00",
+    "strategy": "zscore_dre_features",
+    "venue": "skinport"
+  },
+  "exploratory": true,
+  "features": {
+    "names": [
+      "price_to_window_mean",
+      "z_score",
+      "z_source",
+      "price_to_30d_avg",
+      "price_to_support_floor",
+      "macro_cv",
+      "avg_volume_30d",
+      "float_value",
+      "float_tier_boundary_distance",
+      "sticker_value_ratio",
+      "listings_per_hour_item"
+    ],
+    "version": 1
+  },
+  "folds": [
+    {
+      "cutoff": "2026-09-26T23:00:00",
+      "end": "2026-09-27T05:00:00",
+      "skipped": "667 labeled listings, fewer than 1000",
+      "train_profitable": 65,
+      "train_rows": 667,
+      "validation_rows": 131
+    },
+    {
+      "cutoff": "2026-09-28T11:00:00",
+      "end": "2026-09-28T17:00:00",
+      "skipped": "798 labeled listings, fewer than 1000",
+      "train_profitable": 79,
+      "train_rows": 798,
+      "validation_rows": 30
+    },
+    {
+      "cutoff": "2026-09-28T17:00:00",
+      "end": "2026-09-28T23:00:00",
+      "skipped": "828 labeled listings, fewer than 1000",
+      "train_profitable": 85,
+      "train_rows": 828,
+      "validation_rows": 1279
+    },
+    {
+      "comparison": {
+        "listings": 159,
+        "model_at_rules_volume": {
+          "labeled": 2,
+          "max_drawdown_cents": null,
+          "net_pnl_cents": null,
+          "neutral": 0,
+          "pending": 0,
+          "precision": null,
+          "status": "insufficient_data",
+          "trades": 2,
+          "unlabeled": 0
+        },
+        "model_at_threshold": {
+          "labeled": 4,
+          "max_drawdown_cents": null,
+          "net_pnl_cents": null,
+          "neutral": 0,
+          "pending": 0,
+          "precision": null,
+          "status": "insufficient_data",
+          "trades": 4,
+          "unlabeled": 0
+        },
+        "rules": {
+          "labeled": 2,
+          "max_drawdown_cents": null,
+          "net_pnl_cents": null,
+          "neutral": 0,
+          "pending": 0,
+          "precision": null,
+          "status": "insufficient_data",
+          "trades": 2,
+          "unlabeled": 0
+        }
+      },
+      "cutoff": "2026-09-28T23:00:00",
+      "end": "2026-09-29T05:00:00",
+      "metrics": {
+        "base_rate": 0.050314465408805034,
+        "brier": 0.04211299223736888,
+        "calibration": [
+          {
+            "bin": 0,
+            "count": 137,
+            "mean_predicted": 0.01719996124020969,
+            "observed": 0.029197080291970802
+          },
+          {
+            "bin": 1,
+            "count": 8,
+            "mean_predicted": 0.16136128313227183,
+            "observed": 0.125
+          },
+          {
+            "bin": 2,
+            "count": 3,
+            "mean_predicted": 0.22210126918419684,
+            "observed": 0.0
+          },
+          {
+            "bin": 3,
+            "count": 5,
+            "mean_predicted": 0.3597186916340034,
+            "observed": 0.0
+          },
+          {
+            "bin": 4,
+            "count": 3,
+            "mean_predicted": 0.44589176500926514,
+            "observed": 0.3333333333333333
+          },
+          {
+            "bin": 7,
+            "count": 2,
+            "mean_predicted": 0.7493901541279281,
+            "observed": 0.5
+          },
+          {
+            "bin": 8,
+            "count": 1,
+            "mean_predicted": 0.8244729303903249,
+            "observed": 1.0
+          }
+        ],
+        "pr_auc": 0.4049933862433862,
+        "roc_auc": 0.8932119205298015
+      },
+      "threshold": 0.4552715500108364,
+      "train_profitable": 213,
+      "train_rows": 2107,
+      "validation_rows": 159
+    }
+  ],
+  "git_commit": "b95929334e9070db1207c9073b463d998a9597c9",
+  "labels": {
+    "config": {
+      "fees": {
+        "buyer_fee_bps": 0,
+        "fee_tiers": [
+          {
+            "fee_bps": 800,
+            "min_price_cents": 0
+          },
+          {
+            "fee_bps": 600,
+            "min_price_cents": 100000
+          }
+        ],
+        "hold_seconds": 604800,
+        "min_margin_cents": 0,
+        "venue": "skinport"
+      },
+      "horizon_seconds": 1209600,
+      "min_comparable_sales": 3,
+      "revise_seconds": 259200,
+      "settle_seconds": 3600,
+      "venue": "skinport"
+    },
+    "final_only": false,
+    "version": "v1"
+  },
+  "model": {
+    "calibration_share": 0.2,
+    "onnx_parity_max_gap": 9.286267362226819e-07,
+    "params": {
+      "colsample_bytree": 0.9,
+      "deterministic": true,
+      "force_row_wise": true,
+      "learning_rate": 0.05,
+      "min_child_samples": 40,
+      "n_estimators": 200,
+      "n_jobs": 1,
+      "num_leaves": 15,
+      "random_state": 234,
+      "reg_lambda": 1.0,
+      "subsample": 0.8,
+      "subsample_freq": 1,
+      "verbose": -1
+    },
+    "platt_intercept": -0.034006796517764,
+    "platt_slope": 0.6673654361504913,
+    "threshold": 0.4247682932401189
+  },
+  "notes": [
+    "Exploratory run: it reads labels that are not final and lets training labels overlap the validation windows. Its numbers check the pipeline; they are not an evaluation, and no model is registered."
+  ],
+  "pooled": {
+    "comparison": {
+      "listings": 159,
+      "model_at_rules_volume": {
+        "labeled": 2,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 0,
+        "pending": 0,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 2,
+        "unlabeled": 0
+      },
+      "model_at_threshold": {
+        "labeled": 4,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 0,
+        "pending": 0,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 4,
+        "unlabeled": 0
+      },
+      "rules": {
+        "labeled": 2,
+        "max_drawdown_cents": null,
+        "net_pnl_cents": null,
+        "neutral": 0,
+        "pending": 0,
+        "precision": null,
+        "status": "insufficient_data",
+        "trades": 2,
+        "unlabeled": 0
+      }
+    },
+    "metrics": {
+      "base_rate": 0.050314465408805034,
+      "brier": 0.04211299223736888,
+      "calibration": [
+        {
+          "bin": 0,
+          "count": 137,
+          "mean_predicted": 0.01719996124020969,
+          "observed": 0.029197080291970802
+        },
+        {
+          "bin": 1,
+          "count": 8,
+          "mean_predicted": 0.16136128313227183,
+          "observed": 0.125
+        },
+        {
+          "bin": 2,
+          "count": 3,
+          "mean_predicted": 0.22210126918419684,
+          "observed": 0.0
+        },
+        {
+          "bin": 3,
+          "count": 5,
+          "mean_predicted": 0.3597186916340034,
+          "observed": 0.0
+        },
+        {
+          "bin": 4,
+          "count": 3,
+          "mean_predicted": 0.44589176500926514,
+          "observed": 0.3333333333333333
+        },
+        {
+          "bin": 7,
+          "count": 2,
+          "mean_predicted": 0.7493901541279281,
+          "observed": 0.5
+        },
+        {
+          "bin": 8,
+          "count": 1,
+          "mean_predicted": 0.8244729303903249,
+          "observed": 1.0
+        }
+      ],
+      "pr_auc": 0.4049933862433862,
+      "roc_auc": 0.8932119205298015
+    }
+  },
+  "registrable": false,
+  "report_version": 1,
+  "rules": {
+    "fold_hours": 6,
+    "min_minority_class": 100,
+    "min_sample": 30,
+    "min_train_rows": 1000
+  },
+  "verdict": "exploratory run: labels overlap the validation windows and include revisable ones"
+}

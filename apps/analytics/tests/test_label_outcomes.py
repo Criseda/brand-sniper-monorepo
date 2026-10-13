@@ -556,6 +556,20 @@ async def test_fetch_final_labels_uses_the_stored_finality_rule(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_final_labels_can_include_revisable_labels_for_exploratory_runs(monkeypatch):
+    async def fake_load(version):
+        return LabelConfig().contract()
+
+    engine = FakeEngine()
+    monkeypatch.setattr(label_outcomes, "async_engine", engine)
+    monkeypatch.setattr(label_outcomes, "load_label_contract", fake_load)
+
+    await fetch_final_labels("v1", AS_OF, include_revisable=True)
+
+    assert engine.conn.executed[0][1]["final_before"] == AS_OF
+
+
+@pytest.mark.asyncio
 async def test_load_label_contract_returns_the_stored_config(monkeypatch):
     monkeypatch.setattr(label_outcomes, "async_engine", ContractEngine(LabelConfig().contract()))
 

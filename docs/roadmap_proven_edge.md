@@ -198,11 +198,36 @@ The cost is that the newest 3 days of labels wait before training can use them.
   `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`,
   `listings_per_hour_item`. Changes to this list update this document and bump the feature version logged in MLflow.
 
+Feature version 1 lives in `shared_utils/features.py`. The listener gathers its inputs in
+`apps/listener/student_features.py`, the replay logs them with the `zscore_dre_features` strategy, and the
+training flow reads them back from that log. A test drives the live tick consumer and the replay over the
+same events and checks that both give the same features. A missing input gives a missing feature (NaN in the
+model), never a zero.
+
+| Feature | Definition |
+|:---|:---|
+| `price_to_window_mean` | Price over the mean the Z score compared against: the window mean, or the 30 day average for a macro Z score |
+| `z_score` | The listener's Z score of the listing in its price window |
+| `z_source` | How the Z score was computed: 0 local, 1 hybrid, 2 macro |
+| `price_to_30d_avg` | Price over the baseline's 30 day median |
+| `price_to_support_floor` | Price over the baseline's support floor |
+| `macro_cv` | The baseline's volatility over its 30 day median |
+| `avg_volume_30d` | The baseline's sales per day over 30 days. The edge baseline document carries it since #234. |
+| `float_value` | The listing's float |
+| `float_tier_boundary_distance` | Float minus the lower bound of its wear tier (0, 0.07, 0.15, 0.38, 0.45) |
+| `sticker_value_ratio` | Resale venue price of the applied stickers over the baseline's latest price |
+| `listings_per_hour_item` | The item's scored listings on the venue in the hour before this one. A listing at the same price within the 5 minute dedup window is not scored, so it is not counted, and the count starts empty when the listener starts. |
+
 ### 4.6 Validation and promotion (#234, #236)
 - Walk-forward temporal validation only (expanding or rolling windows); random K-fold is prohibited:
   $$\text{Train: } [t_0, t_k] \longrightarrow \text{Validate: } [t_k, t_{k+1}]$$
 - Metrics: ROC-AUC, PR-AUC, Brier score, calibration, plus precision and realized net P&L at the operating threshold.
 - A model becomes a **candidate** only if it beats the #249 baseline out of sample.
+- In `train_student.py` a fold with cutoff t trains on listings decided before t with `label_available_at <= t`
+  and validates on the next window. A fold, and the registered model, need 1000 labeled listings and 100 of the
+  rarer outcome. Pooled over the folds, the model is a candidate when it makes more net P&L than the rules at
+  its threshold, or is more precise than the rules at the rules' volume, with at least 30 labeled trades on each
+  side. An exploratory run (labels not final, or overlapping the validation window) is never a candidate.
 - A candidate is **promoted** from shadow to deciding only after a documented shadow period in which it beats the rules on live, realized outcomes. The Z-score path remains the fallback.
 
 ### 4.7 Monitoring (#235)
