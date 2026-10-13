@@ -238,6 +238,21 @@ class SimulatedTrade(SQLModel, table=True):
     )
 
 
+class LabelVersion(SQLModel, table=True):
+    """
+    The definition behind one label version: the labeler's parameters (fees, trade hold, horizon, minimum
+    comparable sales, settle and revision time) as JSON. A version's config never changes. The labeler
+    refuses to write under a version whose stored config differs from the one it runs with, and training
+    reads the config from here, so every label in `listing_outcomes` has one known definition.
+    """
+
+    __tablename__: str = "label_versions"
+
+    version: str = Field(primary_key=True, max_length=32)
+    config: dict[str, Any] = Field(sa_column=Column(JsonDocument, nullable=False))
+    created_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")})
+
+
 class ListingOutcome(SQLModel, table=True):
     """
     Market-outcome label for one listed offer: what comparable items actually sold for after the
@@ -251,7 +266,7 @@ class ListingOutcome(SQLModel, table=True):
 
     venue: str = Field(primary_key=True, max_length=32)  # e.g. skinport
     listing_id: str = Field(primary_key=True, max_length=64)  # Skinport productId
-    label_version: str = Field(primary_key=True, max_length=32)
+    label_version: str = Field(primary_key=True, max_length=32, foreign_key="label_versions.version")
 
     market_hash_name: str = Field(nullable=False)  # Versioned name (phase included), as in market_items
     listed_at: NaiveDatetime = Field(nullable=False, index=True)  # First time the listing was seen (edge receive time, UTC)
@@ -270,3 +285,6 @@ class ListingOutcome(SQLModel, table=True):
 
     label_available_at: NaiveDatetime = Field(nullable=False, index=True)  # listed_at + horizon
     labeled_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")})
+
+    # Training reads one label version up to a cutoff on label_available_at.
+    __table_args__ = (Index("ix_listing_outcomes_version_available", "label_version", "label_available_at"),)

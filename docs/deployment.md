@@ -379,6 +379,14 @@ and logs how many it removed. The downgrade drops the indexes but cannot bring t
 release the trade endpoint answers a repeat with `200` and `ALREADY_RECORDED`. An older listener counts that
 answer as a rejection, so update the backend and both listeners together.
 
+Migration `7c4e2a9f1b38` (#234) adds `label_versions`, which stores the config of each label version, makes
+`listing_outcomes.label_version` a foreign key to it, and adds the index on (`label_version`,
+`label_available_at`) that training reads through. It registers `v1` with the config every existing label was
+written with, after checking each row's horizon, neutral rule, minimum margin and seller fee against it. If a row
+contradicts that config, or a version other than `v1` exists, it stops and changes nothing. Run it before the
+new backend image starts, because `create_all` would otherwise create an empty `label_versions` first, and
+before the next labeler run, which needs the table.
+
 ## Data Retention
 
 | Table | Policy | Status |
