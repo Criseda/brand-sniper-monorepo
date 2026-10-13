@@ -172,6 +172,8 @@ Labels are versioned (`label_version`); changing the definition creates a new ve
 ### 4.5 Feature contract (#234)
 - One shared feature module used by replay, training, and the listener. Never reimplement features per consumer.
 - Every feature must be computable from data available at decision time.
+- Window features (`price_to_window_mean`, `z_score`, `z_source`) read the price window as `shared_utils.price_window`
+  defines it (#269): an unchanged REST lowest ask enters only while the window is short or once an hour.
 - Initial set: `price_to_window_mean`, `z_score`, `z_source`, `price_to_30d_avg`, `price_to_support_floor`,
   `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`,
   `listings_per_hour_item`. Changes to this list update this document and bump the feature version logged in MLflow.

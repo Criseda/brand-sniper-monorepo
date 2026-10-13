@@ -109,7 +109,9 @@ and each item is routed as `tick_consumer` routes it:
 1. Raw feed events and `sold` ticks are outcomes: counted, never scored.
 2. A tick at the same price as the item's previous tick on the same venue within 300 seconds is a
    duplicate: logged with reason `duplicate`, never scored.
-3. Any other tick enters the price window, and the strategy decides on it.
+3. A REST snapshot at the same price as the item's previous REST snapshot is not scored. It enters the price
+   window only while the window holds fewer than `MIN_HISTORY_POINTS` prices or once an hour (see below).
+4. Any other tick enters the price window, and the strategy decides on it.
 
 ## Decision log
 
@@ -119,7 +121,7 @@ JSON Lines with sorted keys, LF line endings, and floats rounded to 6 digits. Fo
 {"type": "run", "format": 2, "strategy": "zscore_dre", "config": {...}, "source": "...", "baseline_mode": "schedule", "baseline_builds": [3, 4], "log_from_ms": 1790290800000}
 {"type": "baseline", "build_id": 3, "built_at": "2026-10-01T06:12:40", "from_ms": 1790283600000, "look_ahead": false, "sha256": "..."}
 {"type": "decision", "seq": 1, "timestamp": 1790287133, "venue": "skinport", "listing_id": "60823173", "event_type": "listed", "market_hash_name": "...", "price_cents": 412, "approve": false, "reason": "below_threshold", "score": -0.84, "features": {"mean_cents": 430.5, "window_size": 20, "z_source": "local"}}
-{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "unchanged_snapshots": 268, "decisions": 61, "logged": 149, "approved": 14}
+{"type": "summary", "events": 355, "feed_events": 30, "ticks": 558, "outcome_ticks": 92, "duplicates": 137, "unchanged_snapshots": 268, "unchanged_snapshots_windowed": 50, "decisions": 61, "logged": 149, "approved": 14}
 ```
 
 A replay with a fixed baseline file writes `"baseline_mode": "fixed"` with `baseline_sha256` and
@@ -150,9 +152,20 @@ REST snapshots) shows the scale per run.
 **An unchanged REST snapshot is not scored again.** A snapshot at the same price as the item's previous
 REST snapshot is not scored, however old that one is (#265). Polls are 305 seconds apart plus the time a
 poll takes, so the 300 second rule never dropped one, and until #265 every poll scored the same lowest ask
-again and could paper trade it again. The price still enters the window as before, so every other decision
-is the same as it was. The summary counts these as `unchanged_snapshots` and they are not logged. The
-header's `dedup_rule` names the rule a run used.
+again and could paper trade it again. The summary counts these as `unchanged_snapshots` and they are not
+logged. The header's `dedup_rule` names the rule a run used.
+
+**What the price window holds.** Since #269 an unchanged REST snapshot enters the price window only while
+the window holds fewer than `MIN_HISTORY_POINTS` prices, or when no REST snapshot of the item has entered it
+for an hour. Before, every poll entered, so a quiet item's window held 20 copies of one price and its local
+variance went to about zero. The rule is `shared_utils.price_window`, which the listener, the replay and the
+feature module (#234) all use. The summary counts the unchanged snapshots that entered as
+`unchanged_snapshots_windowed`, and the header names the rule in `window_rule` (a log without it is from
+before #269, when every poll entered). How I chose it, and what it did to the scorecard, is in
+[benchmarks/price_window.md](benchmarks/price_window.md).
+
+A replay keeps every window across gaps in the data, while live the edge Redis is empty after my PC has been
+off. Right after a restart the live listener scores more items with the macro Z score than a replay does.
 
 **Dedup state and price windows are kept per venue.** Since #270 the header's `state_key` is
 `venue_and_item`: each venue has its own dedup state and its own price window per item, and the dedup

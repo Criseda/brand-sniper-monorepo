@@ -18,7 +18,12 @@ ticks_deduplicated_total = Counter(
 
 snapshots_unchanged_total = Counter(
     "listener_snapshots_unchanged_total",
-    "REST snapshots whose price had not changed since the item's previous snapshot: windowed, not scored",
+    "REST snapshots whose price had not changed since the item's previous snapshot: not scored",
+)
+
+snapshots_unchanged_windowed_total = Counter(
+    "listener_snapshots_unchanged_windowed_total",
+    "Unchanged REST snapshots that entered the price window (while it is short, or once an hour per item)",
 )
 
 # Labels on the anomaly counters: `source` is the Z-score source (local, hybrid, macro), `tick_kind`

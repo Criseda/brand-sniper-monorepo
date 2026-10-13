@@ -65,7 +65,9 @@ It ingests real-time market data ticks via:
 
 Incoming prices are written concurrently to an edge-local Redis hot-cache (sliding window, port **6380**).
 Each venue has its own window per item (`price_window:<venue>:<item>`) and its own dedup state, so prices
-from venues with different fees and price levels are never scored together.
+from venues with different fees and price levels are never scored together. A REST lowest ask that has not
+changed since the last poll enters the window only while it is short or once an hour (#269), so a quiet item's
+window is not filled with copies of one price.
 The **Deterministic Rules Engine (DRE)** evaluates every tick using Z-score anomaly detection against
 the cached price history. On a confirmed anomaly:
 

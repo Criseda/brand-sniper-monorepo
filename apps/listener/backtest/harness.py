@@ -1,7 +1,7 @@
 """
 The replay loop. Routes stream items exactly as `main.tick_consumer` does (outcome ticks recorded only,
-duplicates dropped, unchanged REST snapshots windowed but not scored, everything else pushed into the price
-window) and asks a strategy for a decision.
+duplicates dropped, unchanged REST snapshots not scored and windowed only while the window is short or once
+an hour, everything else pushed into the price window) and asks a strategy for a decision.
 
 The decision log is JSON Lines: a `run` header, one `decision` row per logged tick, and a `summary`.
 With a baseline schedule, a `baseline` row marks each point where a new build took effect. The log holds
@@ -39,6 +39,7 @@ class ReplaySummary:
     outcome_ticks: int = 0
     duplicates: int = 0
     unchanged_snapshots: int = 0
+    unchanged_snapshots_windowed: int = 0
     decisions: int = 0
     logged: int = 0
     approved: int = 0
@@ -51,6 +52,7 @@ class ReplaySummary:
             "outcome_ticks": self.outcome_ticks,
             "duplicates": self.duplicates,
             "unchanged_snapshots": self.unchanged_snapshots,
+            "unchanged_snapshots_windowed": self.unchanged_snapshots_windowed,
             "decisions": self.decisions,
             "logged": self.logged,
             "approved": self.approved,
@@ -213,9 +215,13 @@ async def run_replay(
                 summary.duplicates += 1
                 decision = Decision(approve=False, reason=REASON_DUPLICATE)
             elif detection.is_unchanged_snapshot(item, dedup_cache):
-                # Live keeps the window as it was but does not score the same lowest ask again.
-                detection.update_dedup_cache(item, dedup_cache)
-                await detection.push_to_window(item, context.cache)
+                # Live does not score the same lowest ask again, and windows it only while the window is
+                # short or once an hour.
+                enters_window = await detection.unchanged_snapshot_enters_price_window(item, dedup_cache, context.cache)
+                detection.update_dedup_cache(item, dedup_cache, enters_window=enters_window)
+                if enters_window:
+                    await detection.push_to_window(item, context.cache)
+                    summary.unchanged_snapshots_windowed += 1
                 summary.unchanged_snapshots += 1
                 decision = Decision(approve=False, reason=REASON_UNCHANGED_SNAPSHOT)
             else:

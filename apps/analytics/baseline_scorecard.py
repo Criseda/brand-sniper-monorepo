@@ -63,6 +63,9 @@ SUPPORTED_STRATEGIES = ("zscore_dre", SWEEP_STRATEGY)
 # after it. Decisions before this time compared against the wrong prices, so the scorecard leaves them out.
 TRADABLE_REST_FROM = datetime(2026, 9, 26, 17, 30)
 
+# A decision log written before #269 has no `window_rule`: every unchanged REST snapshot entered the window.
+PRE_269_WINDOW_RULE = "every_poll"
+
 # Below this many labeled trades (or profitable listings, for recall) a cell reports insufficient data.
 MIN_SAMPLE = 30
 CONFIDENCE_Z = 1.96  # 95% intervals
@@ -880,7 +883,8 @@ def render_markdown(card: dict[str, Any]) -> str:
         "when tradable REST prices had filled the price windows).",
         f"- Strategy: `{data['strategy']}`, Z threshold {data['strategy_config'].get('z_score_threshold')}, "
         f"sticker Z threshold {data['strategy_config'].get('z_score_sticker_threshold')}, "
-        f"savings floor {dollars(data['strategy_config'].get('min_savings_cents', 0))}.",
+        f"savings floor {dollars(data['strategy_config'].get('min_savings_cents', 0))}, "
+        f"price window `{data['strategy_config'].get('window_rule', PRE_269_WINDOW_RULE)}`.",
         f"- Labels: `{labels['version']}`, horizon {labels['horizon_seconds'] // 86_400} days, "
         f"at least {labels['min_comparable_sales']} comparable sales, labels read as of {card['as_of']} UTC.",
         f"- Fees: {fees['venue']} seller fee {fee_text}, buyer fee {fees['buyer_fee_bps'] / 100:g}%, "
