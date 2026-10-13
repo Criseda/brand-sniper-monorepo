@@ -518,3 +518,27 @@ async def test_flow_logs_to_mlflow_when_asked(monkeypatch, tmp_path):
 
     assert report["registrable"] is False
     assert len(logged) == 1
+
+
+def test_onnx_routes_inputs_on_a_split_exactly_as_lightgbm(monkeypatch):
+    # Prices on a 0.001 grid put LightGBM's double thresholds halfway between float32 inputs, where a float32
+    # threshold can round onto an input value and send it down the other branch.
+    rng = random.Random(3)
+    rows = []
+    for index in range(3000):
+        ratio = round(rng.uniform(0.5, 1.2), 3)
+        profitable = rng.random() < (0.8 if ratio < 0.7 else 0.1)
+        rows.append(_row(str(index), T0 + timedelta(minutes=index), profitable=profitable, ratio=ratio))
+    model = train_model(rows)
+    features = feature_matrix(rows)
+
+    unrounded = train_student.onnxmltools.convert_lightgbm(
+        model.booster,
+        initial_types=[("features", train_student.FloatTensorType([None, len(FEATURE_NAMES)]))],
+        zipmap=False,
+        target_opset=train_student.ONNX_TARGET_OPSET,
+    )
+    moved = train_student.round_thresholds_down(unrounded, model.booster)
+
+    assert moved > 0
+    assert check_onnx(to_onnx(model, {}), model, features) <= 1e-4
