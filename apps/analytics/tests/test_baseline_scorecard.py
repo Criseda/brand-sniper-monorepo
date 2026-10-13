@@ -42,6 +42,7 @@ from baseline_scorecard import (
     would_trigger,
 )
 from label_outcomes import FeedSale, LabelConfig, SoldIndex
+from shared_utils import purchase_keys
 
 START = datetime(2026, 10, 1)
 END = datetime(2026, 10, 15)
@@ -175,12 +176,11 @@ def test_parse_database_source_reads_offsets_as_utc():
 # --- Trades and labels ---
 
 
-def test_collect_trades_counts_a_listing_once_and_each_rest_snapshot():
+def test_collect_trades_counts_a_listing_once_and_skips_unscorable_approvals():
     decisions = [
         logged(decision_row("1", START, approve=True, reason="support_floor")),
         logged(decision_row("1", START + DAY, approve=True, reason="support_floor")),
-        logged(decision_row(None, START, approve=True, reason="macro_sigma")),
-        logged(decision_row(None, START + DAY, approve=True, reason="macro_sigma")),
+        logged(decision_row(None, START, approve=True, reason="macro_sigma", price=850)),
         logged(decision_row("2", START)),  # not approved
         logged(decision_row("3", START - DAY, approve=True, reason="support_floor")),  # before the range
         logged(decision_row("4", START, approve=True, reason="support_floor"), look_ahead=True),
@@ -191,9 +191,50 @@ def test_collect_trades_counts_a_listing_once_and_each_rest_snapshot():
     assert [(item.listing_id, item.tick_kind, item.rule) for item in trades] == [
         ("1", TICK_KIND_LISTING, "support_floor"),
         (None, TICK_KIND_REST_SNAPSHOT, "macro_sigma"),
-        (None, TICK_KIND_REST_SNAPSHOT, "macro_sigma"),
     ]
     assert trades[0].decided_at == START
+
+
+def test_collect_trades_counts_a_rest_item_and_price_once_a_utc_day():
+    day_end = datetime.combine(START.date(), datetime.max.time()).replace(microsecond=0)
+    decisions = [
+        logged(decision_row(None, START, approve=True, reason="macro_sigma")),
+        logged(decision_row(None, START + timedelta(hours=1), approve=True, reason="macro_sigma")),  # repeat
+        logged(decision_row(None, day_end, approve=True, reason="macro_sigma")),  # repeat, same UTC day
+        logged(decision_row(None, START + timedelta(hours=2), approve=True, reason="macro_sigma", price=880)),  # new price
+        logged(decision_row(None, day_end + timedelta(seconds=1), approve=True, reason="macro_sigma")),  # new day
+    ]
+
+    trades = collect_trades(decisions, START)
+
+    assert [(item.decided_at, item.price_cents) for item in trades] == [
+        (START, 900),
+        (START + timedelta(hours=2), 880),
+        (day_end + timedelta(seconds=1), 900),
+    ]
+
+
+def test_collect_trades_counts_a_rest_item_and_price_per_venue():
+    waxpeer_row = {**decision_row(None, START + timedelta(hours=1), approve=True, reason="macro_sigma"), "venue": "waxpeer"}
+    decisions = [logged(decision_row(None, START, approve=True, reason="macro_sigma")), logged(waxpeer_row)]
+
+    assert len(collect_trades(decisions, START)) == 2
+
+
+def test_collect_trades_skips_a_rest_snapshot_of_a_listing_bought_that_day():
+    decisions = [
+        logged(decision_row("1", START, approve=True, reason="support_floor")),
+        # The next poll shows the bought listing as the lowest ask: live trading does not buy it again.
+        logged(decision_row(None, START + timedelta(minutes=5), approve=True, reason="macro_sigma")),
+        logged(decision_row("2", START + timedelta(minutes=6), approve=True, reason="support_floor")),
+    ]
+
+    assert [item.listing_id for item in collect_trades(decisions, START)] == ["1", "2"]
+
+
+def test_collect_trades_uses_the_live_purchase_keys():
+    """The scorecard and the live executor share one definition of a repeat purchase (#271)."""
+    assert baseline_scorecard.purchase_keys is purchase_keys
 
 
 @pytest.mark.parametrize(
@@ -508,6 +549,7 @@ def _card_with(sweep):
             "rest_snapshot_trades": 0,
             "excluded_trade_locked_rest": 0,
             "excluded_look_ahead": 0,
+            "repeat_approvals": 0,
         },
         "overall": {**score_trades([]), "recall": score_recall([], [])},
         "slices": [],
@@ -552,7 +594,9 @@ async def test_scorecard_scores_approvals_against_their_labels(monkeypatch, tmp_
         at = START + timedelta(hours=index)
         rows.append(decision_row(listing_id, at, approve=True, reason="support_floor", score=-2.5, price=800))
         labels[listing_id] = _label(index % 4 != 0, 150 if index % 4 else -60)
-    rows.append(decision_row(None, START, approve=True, reason="macro_sigma", score=-2.5, price=800))
+    # Listing L0 was bought at 800 that day, so the snapshot is at 790; its repeat an hour later is not counted.
+    rows.append(decision_row(None, START, approve=True, reason="macro_sigma", score=-2.5, price=790))
+    rows.append(decision_row(None, START + timedelta(hours=1), approve=True, reason="macro_sigma", score=-2.5, price=790))
     rows.append(decision_row("early", TRADABLE_REST_FROM - DAY, approve=True, reason="support_floor"))
     profitable = {f"L{index}": START for index in range(40) if index % 4} | {f"M{index}": START for index in range(30)}
     sold = [FeedSale(f"S{i}", NAME, NAME, 1000, START + 8 * DAY + timedelta(hours=i)) for i in range(3)]
@@ -566,12 +610,13 @@ async def test_scorecard_scores_approvals_against_their_labels(monkeypatch, tmp_
     overall = card["overall"]
     assert (overall["trades"], overall["labeled"]) == (41, 41)
     assert overall["status"] == "ok"
-    # 30 profitable listings, and the REST snapshot resold at 1000 less the 80 fee: 120 over its 800 price.
+    # 30 profitable listings, and the REST snapshot resold at 1000 less the 80 fee: 130 over its 790 price.
     assert overall["precision"]["value"] == pytest.approx(31 / 41)
-    assert overall["net_pnl_cents"]["total"] == 30 * 150 - 10 * 60 + 120
+    assert overall["net_pnl_cents"]["total"] == 30 * 150 - 10 * 60 + 130
     assert overall["recall"]["approved"] == 30
     assert overall["recall"]["profitable_listings"] == 60
     assert card["coverage"]["excluded_trade_locked_rest"] == 1
+    assert card["coverage"]["repeat_approvals"] == 1
     assert card["data"]["start"] == TRADABLE_REST_FROM.isoformat()
     assert set(card["breakdowns"]) == {"tick_kind", "dre_rule", "z_source", "price_tier", "item_type", "liquidity"}
     assert card["breakdowns"]["liquidity"]["10 to 50 sales a day"]["trades"] == 41

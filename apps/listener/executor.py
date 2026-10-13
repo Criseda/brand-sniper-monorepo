@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import aiohttp
 from listener_telemetry import trade_submissions_total
-from shared_utils import backend_api_headers, get_logger, utc_now_naive
+from shared_utils import backend_api_headers, get_logger, purchase_keys, utc_now_naive
 
 logger = get_logger("listener.executor")
 
@@ -32,18 +32,6 @@ async def close_http_session() -> None:
 
 class ExecutionError(RuntimeError):
     """Raised when an execution cannot be submitted to the backend."""
-
-
-def listing_purchase_key(venue: str, listing_id: str) -> str:
-    return f"listing:{venue}:{listing_id}"
-
-
-def snapshot_purchase_key(venue: str, market_hash_name: str, purchase_price_cents: int) -> str:
-    """A REST snapshot names no listing, so its item and price stand in for one, once per UTC day.
-
-    The same rule as the backend's snapshot unique index on simulated_trades.
-    """
-    return f"snapshot:{venue}:{market_hash_name}:{purchase_price_cents}:{utc_now_naive().date().isoformat()}"
 
 
 @dataclass(frozen=True)
@@ -83,8 +71,8 @@ class ExecutionService(abc.ABC):
         *,
         venue: str,
     ) -> None:
-        snapshot_key = snapshot_purchase_key(venue, market_hash_name, purchase_price_cents)
-        key = listing_purchase_key(venue, listing_id) if listing_id is not None else snapshot_key
+        # The backend's unique purchase indexes and the scorecard apply the same once-only rule.
+        key, snapshot_key = purchase_keys(venue, market_hash_name, purchase_price_cents, listing_id, utc_now_naive().date())
         if key in self._bought:
             logger.info(
                 "[PAPER TRADE] Skipped repeat buy | Venue: %s | Item: %s | Price: $%.2f | Listing: %s",

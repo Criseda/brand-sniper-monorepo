@@ -40,13 +40,21 @@ REPO_ROOT = setup_script_environment(__file__)
 
 from label_outcomes import LABEL_VERSION, VENUE, FeedSale, LabelConfig, SoldIndex, fetch_feed_sales, label_listing
 from mlflow.client import MlflowClient
-from shared_utils import get_logger, parse_item_meta, parse_version_from_name, utc_fromtimestamp_naive, utc_now_naive
+from shared_utils import (
+    get_logger,
+    parse_item_meta,
+    parse_version_from_name,
+    purchase_keys,
+    utc_fromtimestamp_naive,
+    utc_now_naive,
+)
 from shared_utils.db_connection import async_engine
 from sqlalchemy import text
 
 logger = get_logger("analytics.scorecard")
 
-SCORECARD_VERSION = 1
+# 2: REST snapshots count once per venue, item, price and UTC day, as live trading buys them (#271).
+SCORECARD_VERSION = 2
 SWEEP_STRATEGY = "zscore_dre_sweep"
 SUPPORTED_STRATEGIES = ("zscore_dre", SWEEP_STRATEGY)
 
@@ -253,22 +261,24 @@ class Trade:
 
 def collect_trades(decisions: Iterable[LoggedDecision], start: datetime) -> list[Trade]:
     """
-    Approved decisions as trades, in decision order.
+    Approved decisions as trades, in decision order, each purchase once as live trading buys it (#271).
 
-    A feed listing is one trade however many times it was approved: it can only be bought once. Each
-    approved REST snapshot is a trade, as live paper trades it; since #265 an unchanged lowest ask is not
-    scored again, so a repeat means the price changed.
+    A feed listing is one trade however many times it was approved. A REST snapshot names no listing, so
+    its item and price count once per venue and UTC day, and not at all that day when a listing of the
+    item was bought at that price. `purchase_keys` is the rule the live executor uses.
     """
     trades: list[Trade] = []
-    seen_listings: set[str] = set()
+    bought: set[str] = set()
     for decision in decisions:
         if not decision.row["approve"] or not is_scorable(decision, start):
             continue
-        listing_id = decision.row["listing_id"]
-        if listing_id is not None:
-            if listing_id in seen_listings:
-                continue
-            seen_listings.add(listing_id)
+        row = decision.row
+        key, snapshot_key = purchase_keys(
+            row["venue"], row["market_hash_name"], int(row["price_cents"]), row["listing_id"], decision.decided_at.date()
+        )
+        if key in bought:
+            continue
+        bought.update((key, snapshot_key))
         trades.append(Trade.from_decision(decision))
     return trades
 
@@ -716,6 +726,8 @@ async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
     excluded_look_ahead = sum(
         1 for decision in log.decisions if decision.row["approve"] and decision.look_ahead and decision.decided_at >= start
     )
+    scorable_approvals = sum(1 for decision in log.decisions if decision.row["approve"] and is_scorable(decision, start))
+    repeat_approvals = scorable_approvals - len(trades)
     return {
         "scorecard_version": SCORECARD_VERSION,
         "as_of": inputs.as_of.isoformat(),
@@ -757,6 +769,7 @@ async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
             "approved_decisions": sum(1 for decision in log.decisions if decision.row["approve"]),
             "excluded_trade_locked_rest": excluded_before,
             "excluded_look_ahead": excluded_look_ahead,
+            "repeat_approvals": repeat_approvals,
             "trades": len(trades),
             "listing_trades": len(listing_trades),
             "rest_snapshot_trades": len(snapshot_trades),
@@ -899,7 +912,8 @@ def render_markdown(card: dict[str, Any]) -> str:
         f"Trades: {coverage['trades']} ({coverage['listing_trades']} from feed listings, "
         f"{coverage['rest_snapshot_trades']} from REST snapshots). Left out: {coverage['excluded_trade_locked_rest']} "
         f"approvals before tradable REST prices and {coverage['excluded_look_ahead']} made with a later baseline build. "
-        "Recall counts feed listings only.",
+        f"Not counted again: {coverage['repeat_approvals']} approvals of a purchase already made (a listing, or a REST "
+        "item and price the same UTC day). Recall counts feed listings only.",
         "",
         "## Time slices",
         "",

@@ -198,9 +198,12 @@ label version and fees as parameters, so model runs (#234) can be compared with 
 MLflow, `--as-of` fixes the time labels are read at (the default is now), `--label-version` picks another
 label version, and `--slice-days` sets the length of the time slices (7 by default).
 
-**What it counts as a trade.** Every approval in the range. A feed listing counts once however often it
-was approved, because it can only be bought once. Every approved REST snapshot counts, as the live
-listener paper trades each one. I leave out two kinds of approval and report how many:
+**What it counts as a trade.** Every purchase live trading would make from the approvals in the range,
+with the once only rule it has used since #271 (`shared_utils.purchase_keys`). A feed listing counts once
+however often it was approved, because it can only be bought once. A REST snapshot has no listing ID, so
+its item and price count once per venue and UTC day, and not at all on a day a listing of that item was
+bought at that price. The report says how many approvals repeated a purchase. I leave out two kinds of
+approval and report how many:
 
 - Anything before 2026-09-26 17:30 UTC. REST snapshots were trade locked asks until #275 went live at 15:47
   that day, and the price windows held them for another 20 polls.
