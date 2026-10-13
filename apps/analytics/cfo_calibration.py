@@ -80,7 +80,8 @@ RECENT_SALES_DAYS = 7
 RECENT_LISTINGS_HOURS = 24
 SEARCH_LIMIT = 10
 MAX_TOOL_ROUNDS = 4
-MAX_RATE_LIMIT_RETRIES = 6
+# Generous, because a free tier allows only a few trades a minute and every wait is short.
+MAX_RATE_LIMIT_RETRIES = 20
 SAMPLE_SEED = 250
 
 # A trade is kept when the CFO's probability of profit is at least the threshold. 0.5 is the natural cut for a
@@ -546,13 +547,20 @@ def latest_verdicts(verdicts: Iterable[Verdict]) -> dict[tuple[str, str, str, in
 async def run_verdicts(
     cases: Sequence[TradeCase], history: MarketHistory, variants: Sequence[str], model: str, out_path: Path
 ) -> dict[str, int]:
-    """Asks the CFO about every case and variant not already answered, appending each verdict as it arrives."""
+    """
+    Asks the CFO about every case and variant not already answered, appending each verdict as it arrives.
+
+    Cases go in a seeded random order with every variant asked about one case before the next, so a run that stops
+    at a daily quota leaves a random sample of trades answered by both prompts, not the first days of the range.
+    """
     done = {key for key, verdict in latest_verdicts(read_verdicts(out_path)).items() if verdict.status == STATUS_OK}
     counts = {"asked": 0, "skipped": 0, "errors": 0}
+    ordered = list(cases)
+    random.Random(SAMPLE_SEED).shuffle(ordered)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("a", encoding="utf-8") as out:
-        for variant in variants:
-            for case in cases:
+        for case in ordered:
+            for variant in variants:
                 if verdict_cache_key(variant, case.key, model) in done:
                     counts["skipped"] += 1
                     continue
@@ -838,6 +846,13 @@ def build_report(
     usd_per_mtok: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     latest = latest_verdicts(verdicts)
+    # Score only the trades every prompt has answered (an error counts as an answer), so the prompts are compared
+    # on the same trades while a run is still in progress. Once it is done this is every trade.
+    present = {variant for (variant, _, m, _) in latest if m == model}
+    answered_by = [{key for (v, key, m, _) in latest if v == variant and m == model} for variant in sorted(present)]
+    complete = set.intersection(*answered_by) if answered_by else set()
+    total = len(cases)
+    cases = [case for case in cases if case.key in complete]
     report: dict[str, Any] = {
         "prompt_version": PROMPT_VERSION,
         "model": model,
@@ -847,6 +862,7 @@ def build_report(
         "paired_resamples": PAIRED_RESAMPLES,
         "paired_seed": PAIRED_SEED,
         "trades": len(cases),
+        "trades_in_range": total,
         "tick_kinds": {
             kind: sum(1 for case in cases if case.trade.tick_kind == kind)
             for kind in (TICK_KIND_LISTING, TICK_KIND_REST_SNAPSHOT)
@@ -895,7 +911,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     """Tables of the run, for the write up in docs/benchmarks/cfo_calibration.md."""
     lines = [
         f"Model `{report['model']}`, prompt version {report['prompt_version']}, label `{report.get('label_version')}` "
-        f"read as of {report.get('as_of')}, {report['trades']} labeled trades "
+        f"read as of {report.get('as_of')}, {report['trades']} of {report['trades_in_range']} labeled trades scored "
         f"({report['tick_kinds'][TICK_KIND_LISTING]} feed listings, "
         f"{report['tick_kinds'][TICK_KIND_REST_SNAPSHOT]} REST snapshots).",
         "",

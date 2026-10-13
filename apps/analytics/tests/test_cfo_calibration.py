@@ -839,3 +839,33 @@ async def test_a_rejected_format_tool_call_asks_again_without_tools(fake_llm):
 
     assert verdict.probability == 0.6
     assert fake_llm.chat.completions.create.call_args_list[1].kwargs["tool_choice"] == "none"
+
+
+def test_a_partial_run_is_scored_on_the_trades_both_prompts_answered(monkeypatch):
+    monkeypatch.setattr(cfo_calibration, "git_commit", lambda: None)
+    cases, by_key = scored_cases()
+    adversarial = [verdict(case.key, 0.6, variant=VARIANT_ADVERSARIAL) for case in cases[:10]]
+
+    report = build_report(cases, list(by_key.values()) + adversarial, "model-a", {})
+
+    assert (report["trades"], report["trades_in_range"]) == (10, 40)
+    assert report["variants"][VARIANT_NEUTRAL]["trades"] == 10
+    assert "10 of 40 labeled trades scored" in render_markdown(report)
+
+
+@pytest.mark.asyncio
+async def test_run_verdicts_asks_every_prompt_about_a_trade_before_the_next(tmp_path, monkeypatch):
+    asked = []
+
+    async def fake_ask(case, view, variant, model):
+        asked.append((case.key, variant))
+        return verdict(case.key, 0.5, variant=variant)
+
+    monkeypatch.setattr(cfo_calibration, "ask_cfo", fake_ask)
+    cases = [make_case(f"L{index}") for index in range(6)]
+
+    await run_verdicts(cases, history(), [VARIANT_ADVERSARIAL, VARIANT_NEUTRAL], "model-a", tmp_path / "v.jsonl")
+
+    assert [variant for _, variant in asked] == [VARIANT_ADVERSARIAL, VARIANT_NEUTRAL] * 6
+    assert asked[0][0] == asked[1][0]
+    assert [key for key, _ in asked[::2]] != [case.key for case in cases]  # Seeded random order, not decision order
