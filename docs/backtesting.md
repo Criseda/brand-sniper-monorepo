@@ -287,8 +287,11 @@ uv run python train_student.py --decisions ../../data/student/decisions.jsonl
 LightGBM with walk forward folds (`--fold-hours`, 24 by default). A fold with cutoff t trains on listings
 decided before t whose label was available by t, and validates on the listings of the next window. With a
 14 day horizon that puts at least 14 days between the newest training listing and the validation window,
-so the first folds have nothing to train on. Inside a fold the newest 20% of the training listings fit a
-Platt scaling of the raw score and pick the operating threshold, the one with the most net P&L on them.
+so the first folds have nothing to train on. Inside a fold the model is fitted on every training listing.
+The training listings are also cut into five blocks in time, and each block after the first is scored by a
+model fitted on the blocks before it. Those out of sample scores, about 80% of the training listings, fit a
+Platt scaling of the raw score and pick the operating threshold: the one with the most net P&L on them that
+still approves at least 30 of them. `docs/benchmarks/student_threshold.md` explains why I pick it this way.
 
 On the validation listings the live rules, the model at its threshold, and the model at the rules' volume
 (as many listings as the rules approved, most probable first) are scored with the scorecard's own

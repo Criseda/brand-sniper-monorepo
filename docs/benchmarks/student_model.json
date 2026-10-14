@@ -51,44 +51,44 @@
         "listings": 4158,
         "model_at_rules_volume": {
           "labeled": 81,
-          "max_drawdown_cents": 757,
+          "max_drawdown_cents": 1238,
           "net_pnl_cents": {
             "interval": "bootstrap",
-            "mean": 95.92592592592592,
-            "mean_high": 188.12345679012347,
-            "mean_low": 32.2962962962963,
-            "total": 7770
+            "mean": 51.839506172839506,
+            "mean_high": 99.32098765432099,
+            "mean_low": 0.5555555555555556,
+            "total": 4199
           },
           "neutral": 0,
           "pending": 0,
           "precision": {
-            "high": 0.770579256056527,
-            "low": 0.5712341939491306,
-            "value": 0.6790123456790124
+            "high": 0.792081833436317,
+            "low": 0.5968782993287417,
+            "value": 0.7037037037037037
           },
           "status": "ok",
           "trades": 81,
           "unlabeled": 0
         },
         "model_at_threshold": {
-          "labeled": 269,
-          "max_drawdown_cents": 35802,
+          "labeled": 110,
+          "max_drawdown_cents": 1256,
           "net_pnl_cents": {
             "interval": "bootstrap",
-            "mean": -132.635687732342,
-            "mean_high": -42.301115241635685,
-            "mean_low": -241.52044609665427,
-            "total": -35679
+            "mean": 66.01818181818182,
+            "mean_high": 140.9090909090909,
+            "mean_low": 10.772727272727273,
+            "total": 7262
           },
           "neutral": 0,
           "pending": 0,
           "precision": {
-            "high": 0.4946925260645282,
-            "low": 0.37702791539307934,
-            "value": 0.4349442379182156
+            "high": 0.7285599624050894,
+            "low": 0.5525323623689828,
+            "value": 0.6454545454545455
           },
           "status": "ok",
-          "trades": 269,
+          "trades": 110,
           "unlabeled": 0
         },
         "rules": {
@@ -117,67 +117,67 @@
       "end": "2026-09-28T23:00:00",
       "metrics": {
         "base_rate": 0.03823953823953824,
-        "brier": 0.02459035447743854,
+        "brier": 0.022310091444384044,
         "calibration": [
           {
             "bin": 0,
-            "count": 3679,
-            "mean_predicted": 0.014083370500829535,
-            "observed": 0.0032617559119325905
+            "count": 3800,
+            "mean_predicted": 0.008708485644902788,
+            "observed": 0.005526315789473684
           },
           {
             "bin": 1,
-            "count": 184,
-            "mean_predicted": 0.14040481068915905,
-            "observed": 0.13043478260869565
+            "count": 130,
+            "mean_predicted": 0.1389743810773758,
+            "observed": 0.2153846153846154
           },
           {
             "bin": 2,
-            "count": 85,
-            "mean_predicted": 0.24664146745909418,
-            "observed": 0.27058823529411763
+            "count": 52,
+            "mean_predicted": 0.2399382332752164,
+            "observed": 0.2692307692307692
           },
           {
             "bin": 3,
-            "count": 44,
-            "mean_predicted": 0.3532347461516785,
-            "observed": 0.36363636363636365
+            "count": 31,
+            "mean_predicted": 0.3515091753477143,
+            "observed": 0.45161290322580644
           },
           {
             "bin": 4,
-            "count": 23,
-            "mean_predicted": 0.4542508188670187,
-            "observed": 0.34782608695652173
+            "count": 30,
+            "mean_predicted": 0.43735406111455066,
+            "observed": 0.36666666666666664
           },
           {
             "bin": 5,
-            "count": 22,
-            "mean_predicted": 0.5509927446091336,
-            "observed": 0.3181818181818182
+            "count": 20,
+            "mean_predicted": 0.5538294975717198,
+            "observed": 0.05
           },
           {
             "bin": 6,
-            "count": 43,
-            "mean_predicted": 0.6542407177245491,
-            "observed": 0.37209302325581395
+            "count": 37,
+            "mean_predicted": 0.6453157734137681,
+            "observed": 0.7027027027027027
           },
           {
             "bin": 7,
-            "count": 25,
-            "mean_predicted": 0.7463204731515097,
-            "observed": 0.48
+            "count": 33,
+            "mean_predicted": 0.7572196965958633,
+            "observed": 0.7272727272727273
           },
           {
             "bin": 8,
-            "count": 53,
-            "mean_predicted": 0.8366828441447776,
-            "observed": 0.7735849056603774
+            "count": 25,
+            "mean_predicted": 0.8366974260140893,
+            "observed": 0.8
           }
         ],
-        "pr_auc": 0.5664510256799186,
-        "roc_auc": 0.9694727140904723
+        "pr_auc": 0.5836312026428581,
+        "roc_auc": 0.9747688494450657
       },
-      "threshold": 0.22740115886161283,
+      "threshold": 0.5440232858801595,
       "train_profitable": 103,
       "train_rows": 2117,
       "validation_rows": 4158
@@ -223,73 +223,67 @@
       "end": "2026-09-29T05:00:00",
       "metrics": {
         "base_rate": 0.02452316076294278,
-        "brier": 0.017672777899241446,
+        "brier": 0.01801504236352994,
         "calibration": [
           {
             "bin": 0,
-            "count": 340,
-            "mean_predicted": 0.0086307535705959,
-            "observed": 0.011764705882352941
+            "count": 343,
+            "mean_predicted": 0.009670706073932202,
+            "observed": 0.011661807580174927
           },
           {
             "bin": 1,
-            "count": 9,
-            "mean_predicted": 0.12517982989713025,
+            "count": 8,
+            "mean_predicted": 0.13432393403002527,
             "observed": 0.0
           },
           {
             "bin": 2,
-            "count": 5,
-            "mean_predicted": 0.2563460812692505,
-            "observed": 0.0
+            "count": 7,
+            "mean_predicted": 0.24886098903926626,
+            "observed": 0.14285714285714285
           },
           {
             "bin": 3,
-            "count": 7,
-            "mean_predicted": 0.36346361609828065,
-            "observed": 0.14285714285714285
+            "count": 1,
+            "mean_predicted": 0.33754890344614247,
+            "observed": 0.0
+          },
+          {
+            "bin": 4,
+            "count": 4,
+            "mean_predicted": 0.4535829873991491,
+            "observed": 0.25
           },
           {
             "bin": 5,
             "count": 1,
-            "mean_predicted": 0.5554916929439719,
-            "observed": 0.0
+            "mean_predicted": 0.5580731455078001,
+            "observed": 1.0
           },
           {
             "bin": 6,
-            "count": 1,
-            "mean_predicted": 0.6447047036074135,
-            "observed": 1.0
+            "count": 2,
+            "mean_predicted": 0.6640060398568882,
+            "observed": 0.5
           },
           {
             "bin": 7,
             "count": 1,
-            "mean_predicted": 0.7851467958785242,
-            "observed": 0.0
-          },
-          {
-            "bin": 8,
-            "count": 2,
-            "mean_predicted": 0.820100596738115,
-            "observed": 1.0
-          },
-          {
-            "bin": 9,
-            "count": 1,
-            "mean_predicted": 0.9471067958455492,
+            "mean_predicted": 0.7782585275282909,
             "observed": 1.0
           }
         ],
-        "pr_auc": 0.5570158868357704,
-        "roc_auc": 0.9540657976412166
+        "pr_auc": 0.5126276338995637,
+        "roc_auc": 0.9522036002482929
       },
-      "threshold": 0.7248730498812334,
+      "threshold": 0.5551440492396783,
       "train_profitable": 262,
       "train_rows": 6275,
       "validation_rows": 367
     }
   ],
-  "git_commit": "dbf2233976cfdc5678a651c7d7fe8d0639f5d16a",
+  "git_commit": "85cdea575861f94ae1ac81db7359776e65f1cad2",
   "labels": {
     "config": {
       "fees": {
@@ -318,8 +312,9 @@
     "version": "v1"
   },
   "model": {
-    "calibration_share": 0.2,
-    "onnx_parity_max_gap": 6.737107239047219e-07,
+    "calibration_blocks": 5,
+    "calibration_rows": 5314,
+    "onnx_parity_max_gap": 8.659833320178757e-07,
     "params": {
       "colsample_bytree": 0.9,
       "deterministic": true,
@@ -335,9 +330,9 @@
       "subsample_freq": 1,
       "verbose": -1
     },
-    "platt_intercept": 0.31068215133134425,
-    "platt_slope": 0.7781486531026022,
-    "threshold": 0.7243108411384609
+    "platt_intercept": -0.28698576195525566,
+    "platt_slope": 0.6683080754489823,
+    "threshold": 0.6768276056213173
   },
   "notes": [
     "Exploratory run: it reads labels that are not final and lets training labels overlap the validation windows. Its numbers check the pipeline; they are not an evaluation, and no model is registered."
@@ -347,44 +342,44 @@
       "listings": 4525,
       "model_at_rules_volume": {
         "labeled": 83,
-        "max_drawdown_cents": 1258,
+        "max_drawdown_cents": 1327,
         "net_pnl_cents": {
           "interval": "bootstrap",
-          "mean": 41.71084337349398,
-          "mean_high": 86.19277108433735,
-          "mean_low": -7.578313253012048,
-          "total": 3462
+          "mean": 37.36144578313253,
+          "mean_high": 89.51807228915662,
+          "mean_low": -22.048192771084338,
+          "total": 3101
         },
         "neutral": 0,
         "pending": 0,
         "precision": {
-          "high": 0.7658081379055438,
-          "low": 0.5681331989652646,
-          "value": 0.6746987951807228
+          "high": 0.7973268825090616,
+          "low": 0.6057057654384659,
+          "value": 0.7108433734939759
         },
         "status": "ok",
         "trades": 83,
         "unlabeled": 0
       },
       "model_at_threshold": {
-        "labeled": 273,
-        "max_drawdown_cents": 37060,
+        "labeled": 114,
+        "max_drawdown_cents": 1513,
         "net_pnl_cents": {
           "interval": "bootstrap",
-          "mean": -134.83882783882783,
-          "mean_high": -45.52014652014652,
-          "mean_low": -242.77289377289378,
-          "total": -36811
+          "mean": 53.771929824561404,
+          "mean_high": 130.35087719298247,
+          "mean_low": -4.56140350877193,
+          "total": 6130
         },
         "neutral": 0,
         "pending": 0,
         "precision": {
-          "high": 0.4988725869827979,
-          "low": 0.38192567455015103,
-          "value": 0.43956043956043955
+          "high": 0.7305668185814715,
+          "low": 0.557956079953511,
+          "value": 0.6491228070175439
         },
         "status": "ok",
-        "trades": 273,
+        "trades": 114,
         "unlabeled": 0
       },
       "rules": {
@@ -411,75 +406,69 @@
     },
     "metrics": {
       "base_rate": 0.03712707182320442,
-      "brier": 0.02402930462015714,
+      "brier": 0.02196174160732913,
       "calibration": [
         {
           "bin": 0,
-          "count": 4019,
-          "mean_predicted": 0.013622089148184741,
-          "observed": 0.003981089823339139
+          "count": 4143,
+          "mean_predicted": 0.008788148113441792,
+          "observed": 0.006034274680183442
         },
         {
           "bin": 1,
-          "count": 193,
-          "mean_predicted": 0.1396948374916033,
-          "observed": 0.12435233160621761
+          "count": 138,
+          "mean_predicted": 0.13870478994419605,
+          "observed": 0.2028985507246377
         },
         {
           "bin": 2,
-          "count": 90,
-          "mean_predicted": 0.2471806126707695,
-          "observed": 0.25555555555555554
+          "count": 59,
+          "mean_predicted": 0.24099686531501893,
+          "observed": 0.2542372881355932
         },
         {
           "bin": 3,
-          "count": 51,
-          "mean_predicted": 0.35463870869336905,
-          "observed": 0.3333333333333333
+          "count": 32,
+          "mean_predicted": 0.3510729168507901,
+          "observed": 0.4375
         },
         {
           "bin": 4,
-          "count": 23,
-          "mean_predicted": 0.4542508188670187,
-          "observed": 0.34782608695652173
+          "count": 34,
+          "mean_predicted": 0.43926334655979765,
+          "observed": 0.35294117647058826
         },
         {
           "bin": 5,
-          "count": 23,
-          "mean_predicted": 0.5511883510584744,
-          "observed": 0.30434782608695654
+          "count": 21,
+          "mean_predicted": 0.5540315760448665,
+          "observed": 0.09523809523809523
         },
         {
           "bin": 6,
-          "count": 44,
-          "mean_predicted": 0.6540239901309778,
-          "observed": 0.38636363636363635
+          "count": 39,
+          "mean_predicted": 0.6462742486159794,
+          "observed": 0.6923076923076923
         },
         {
           "bin": 7,
-          "count": 26,
-          "mean_predicted": 0.7478137932563949,
-          "observed": 0.46153846153846156
+          "count": 34,
+          "mean_predicted": 0.7578384857409347,
+          "observed": 0.7352941176470589
         },
         {
           "bin": 8,
-          "count": 55,
-          "mean_predicted": 0.8360798533299898,
-          "observed": 0.7818181818181819
-        },
-        {
-          "bin": 9,
-          "count": 1,
-          "mean_predicted": 0.9471067958455492,
-          "observed": 1.0
+          "count": 25,
+          "mean_predicted": 0.8366974260140893,
+          "observed": 0.8
         }
       ],
-      "pr_auc": 0.5652865419104646,
-      "roc_auc": 0.968458665311431
+      "pr_auc": 0.5751463540036867,
+      "roc_auc": 0.9736070581549121
     }
   },
   "registrable": false,
-  "report_version": 1,
+  "report_version": 2,
   "rules": {
     "fold_hours": 6,
     "min_minority_class": 100,

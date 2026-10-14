@@ -71,7 +71,7 @@ from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_s
 
 logger = get_logger("analytics.student")
 
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 MLFLOW_EXPERIMENT = "student-model"
 REGISTERED_MODEL = "brand-sniper-student"
 
@@ -80,8 +80,10 @@ REGISTERED_MODEL = "brand-sniper-student"
 MIN_TRAIN_ROWS = 1000
 MIN_MINORITY_CLASS = 100
 
-# The newest share of a fold's training rows calibrates the probabilities and picks the operating threshold.
-CALIBRATION_SHARE = 0.2
+# A fold's training rows are cut into this many blocks in time. Each block after the first is scored by a
+# model fitted on the blocks before it, and those out of sample scores calibrate the probabilities and pick
+# the operating threshold. See docs/benchmarks/student_threshold.md for why.
+CALIBRATION_BLOCKS = 5
 DEFAULT_FOLD_HOURS = 24
 # The log stores whole seconds and the label the edge receive time in milliseconds.
 FIRST_SIGHTING_TOLERANCE = timedelta(seconds=1)
@@ -286,25 +288,56 @@ def choose_threshold(probabilities: np.ndarray, margins: np.ndarray) -> float:
     return float(probabilities[order][best_index])
 
 
-def train_model(rows: Sequence[LabeledListing]) -> StudentModel:
-    """Fits LightGBM on the older rows and calibrates it on the newest CALIBRATION_SHARE of them."""
-    ordered = sorted(rows, key=lambda row: (row.decided_at, row.listing_id))
-    split = max(1, min(len(ordered) - 1, int(len(ordered) * (1 - CALIBRATION_SHARE))))
-    fit_rows, calibration_rows = ordered[:split], ordered[split:]
+def fit_booster(rows: Sequence[LabeledListing]) -> lightgbm.LGBMClassifier:
     booster = lightgbm.LGBMClassifier(**MODEL_PARAMS)
-    booster.fit(feature_matrix(fit_rows), outcomes(fit_rows))
+    booster.fit(feature_matrix(rows), outcomes(rows))
+    return booster
+
+
+def walk_forward_raw_scores(ordered: Sequence[LabeledListing]) -> tuple[list[LabeledListing], np.ndarray]:
+    """
+    Out of sample raw scores of the training rows, from an inner walk forward over CALIBRATION_BLOCKS blocks
+    in time: each block after the first is scored by a model fitted on every row before it. A block whose
+    earlier rows hold only one outcome has no score. Every row is from before the fold cutoff, so nothing
+    here looks past it.
+    """
+    edges = [len(ordered) * index // CALIBRATION_BLOCKS for index in range(CALIBRATION_BLOCKS + 1)]
+    scored: list[LabeledListing] = []
+    raw_scores: list[float] = []
+    for block in range(1, CALIBRATION_BLOCKS):
+        earlier, held_out = ordered[: edges[block]], ordered[edges[block] : edges[block + 1]]
+        if not held_out or len(set(outcomes(earlier).tolist())) < 2:
+            continue
+        booster = fit_booster(earlier)
+        raw_scores.extend(np.asarray(booster.booster_.predict(feature_matrix(held_out), raw_score=True)).tolist())
+        scored.extend(held_out)
+    return scored, np.array(raw_scores, dtype=np.float64)
+
+
+def train_model(rows: Sequence[LabeledListing]) -> StudentModel:
+    """
+    Fits LightGBM on every row. The Platt scaling and the operating threshold come from the out of sample
+    scores of `walk_forward_raw_scores`, which cover about 80% of the rows rather than a small newest slice:
+    with a few hundred calibration rows, approving at least MIN_SAMPLE of them forced the threshold low.
+    """
+    ordered = sorted(rows, key=lambda row: (row.decided_at, row.listing_id))
+    calibration_rows, raw = walk_forward_raw_scores(ordered)
     model = StudentModel(
-        booster=booster, platt_slope=1.0, platt_intercept=0.0, threshold=0.5, calibration_rows=len(calibration_rows)
+        booster=fit_booster(ordered),
+        platt_slope=1.0,
+        platt_intercept=0.0,
+        threshold=0.5,
+        calibration_rows=len(calibration_rows),
     )
 
     calibration_y = outcomes(calibration_rows)
     if len(set(calibration_y.tolist())) == 2:
-        raw = model.raw_scores(feature_matrix(calibration_rows)).reshape(-1, 1)
-        platt = LogisticRegression(C=np.inf, solver="lbfgs").fit(raw, calibration_y)
+        platt = LogisticRegression(C=np.inf, solver="lbfgs").fit(raw.reshape(-1, 1), calibration_y)
         model.platt_slope = float(platt.coef_[0][0])
         model.platt_intercept = float(platt.intercept_[0])
+    probabilities = 1.0 / (1.0 + np.exp(-(model.platt_slope * raw + model.platt_intercept)))
     margins = np.array([row.net_margin_cents for row in calibration_rows], dtype=np.float64)
-    model.threshold = choose_threshold(model.predict(feature_matrix(calibration_rows)), margins)
+    model.threshold = choose_threshold(probabilities, margins)
     return model
 
 
@@ -623,7 +656,8 @@ def train_student(inputs: TrainingInputs) -> TrainingResult:
         "features": {"version": FEATURE_VERSION, "names": list(FEATURE_NAMES)},
         "model": {
             "params": MODEL_PARAMS,
-            "calibration_share": CALIBRATION_SHARE,
+            "calibration_blocks": CALIBRATION_BLOCKS,
+            "calibration_rows": model.calibration_rows if model else None,
             "platt_slope": model.platt_slope if model else None,
             "platt_intercept": model.platt_intercept if model else None,
             "threshold": model.threshold if model else None,
