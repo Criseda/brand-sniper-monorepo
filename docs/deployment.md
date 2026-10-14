@@ -224,6 +224,8 @@ additional environment variables from the compose file for Docker-internal netwo
 | `LLM_API_KEY` | Bearer token for the endpoint; omit only with `LLM_ALLOW_NO_AUTH=true` for a local endpoint that permits unauthenticated access |
 | `LLM_FALLBACK_MODELS` | Optional comma-separated fallback models used after quota exhaustion (e.g. `openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.6-27b`) |
 | `LLM_REQUEST_TIMEOUT_SECONDS` | Optional request timeout, default `60` |
+| `LLM_MAX_TOKENS` | Optional cap on tokens per response, default `8192`. A reasoning model's thinking counts toward it |
+| `LLM_REASONING_EFFORT` | Optional reasoning effort, sent only when set. Accepted values depend on the model (e.g. `low`, `medium`, `high`) |
 | `SKINPORT_CLIENT_ID` | [Skinport API](https://docs.skinport.com/) dashboard. Not used yet: the listener calls only public endpoints, without credentials (#275). Kept for the account API |
 | `SKINPORT_CLIENT_SECRET` | [Skinport API](https://docs.skinport.com/) dashboard. Not used yet, as above |
 | `WAXPEER_API_KEY` | https://waxpeer.com/profile/user. Sent with the Waxpeer feed connection (`apps/listener/.env`). The key can also buy items and move money, so keep the Waxpeer balance at zero |

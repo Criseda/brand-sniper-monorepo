@@ -8,6 +8,8 @@ def _mock_llm_config(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setenv("LLM_FALLBACK_MODELS", "openai/gpt-oss-20b,qwen/qwen3.6-27b")
     monkeypatch.setenv("LLM_API_KEY", "MOCK_API_KEY")
+    monkeypatch.delenv("LLM_MAX_TOKENS", raising=False)
+    monkeypatch.delenv("LLM_REASONING_EFFORT", raising=False)
     monkeypatch.setenv("BACKEND_API_KEY", "analytics-test-key-that-is-at-least-32-characters")
     import evaluate_performance
 

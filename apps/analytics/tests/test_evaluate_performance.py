@@ -16,6 +16,7 @@ from evaluate_performance import (
     evaluate_trade,
     get_experiment_id,
 )
+from llm_config import DEFAULT_MAX_TOKENS
 from mlflow.exceptions import MlflowException
 from shared_utils.models import SimulatedTrade
 
@@ -287,6 +288,33 @@ async def test_tool_loop_exhausts_rounds_then_asks_no_tools(monkeypatch):
 
     assert mock_call.await_count == 3
     assert mock_call.await_args.kwargs["tool_choice"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_call_sends_configured_max_tokens_without_reasoning_effort(monkeypatch):
+    monkeypatch.setenv("LLM_MAX_TOKENS", "4096")
+    mock_client = MagicMock()
+    monkeypatch.setattr(evaluate_performance, "_get_openai_client", lambda: mock_client)
+
+    await evaluate_performance._call([], tool_choice="auto")
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["max_tokens"] == 4096
+    assert kwargs["tool_choice"] == "auto"
+    assert "extra_body" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_call_sends_reasoning_effort_in_request_body(monkeypatch):
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "max")
+    mock_client = MagicMock()
+    monkeypatch.setattr(evaluate_performance, "_get_openai_client", lambda: mock_client)
+
+    await evaluate_performance._call([])
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning_effort": "max"}
+    assert kwargs["max_tokens"] == DEFAULT_MAX_TOKENS
 
 
 # ---------------------------------------------------------------------------
