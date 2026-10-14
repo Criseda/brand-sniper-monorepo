@@ -12,6 +12,7 @@ from baseline_scorecard import DecisionLog, LoggedDecision, read_decision_log
 from label_outcomes import FinalLabels, LabelConfig
 from shared_utils import FEATURE_NAMES, FEATURE_VERSION
 from train_student import (
+    CALIBRATION_BLOCKS,
     LabeledListing,
     TrainingInputs,
     build_dataset,
@@ -20,6 +21,7 @@ from train_student import (
     check_onnx,
     choose_threshold,
     feature_matrix,
+    fit_booster,
     log_to_mlflow,
     mlflow_metrics,
     mlflow_params,
@@ -29,6 +31,7 @@ from train_student import (
     train_model,
     train_student_flow,
     walk_forward_folds,
+    walk_forward_raw_scores,
 )
 
 T0 = datetime(2026, 10, 1)
@@ -544,14 +547,53 @@ def test_onnx_routes_inputs_on_a_split_exactly_as_lightgbm(monkeypatch):
     assert check_onnx(to_onnx(model, {}), model, features) <= 1e-4
 
 
-def test_calibration_slice_with_one_outcome_keeps_the_raw_probabilities():
-    rows = [
-        _row(str(index), T0 + timedelta(minutes=index), profitable=index % 3 == 0 and index < 2000) for index in range(2500)
-    ]
+def test_calibration_rows_with_one_outcome_keep_the_raw_probabilities():
+    # Only the first block has profitable listings, so every out of sample score is of an unprofitable one.
+    rows = [_row(str(index), T0 + timedelta(minutes=index), profitable=index % 3 == 0 and index < 500) for index in range(2500)]
 
     model = train_model(rows)
 
+    assert model.calibration_rows == 2000
     assert (model.platt_slope, model.platt_intercept) == (1.0, 0.0)
+
+
+def test_calibration_scores_come_from_models_fitted_only_on_earlier_rows():
+    log, labels = synthetic(count=2000, days=20)
+    ordered = sorted(build_dataset(log, labels), key=lambda row: (row.decided_at, row.listing_id))
+
+    scored, raw = walk_forward_raw_scores(ordered)
+
+    # The first block has no earlier rows; each later block is scored once, in time order.
+    assert scored == ordered[len(ordered) // CALIBRATION_BLOCKS :]
+    assert len(raw) == len(scored)
+    # The second block's scores are those of a model fitted on the first block alone.
+    first_edge, second_edge = len(ordered) // CALIBRATION_BLOCKS, 2 * len(ordered) // CALIBRATION_BLOCKS
+    earlier_only = fit_booster(ordered[:first_edge])
+    expected = earlier_only.booster_.predict(feature_matrix(ordered[first_edge:second_edge]), raw_score=True)
+    np.testing.assert_allclose(raw[: second_edge - first_edge], expected)
+
+
+def test_a_block_with_one_earlier_outcome_is_not_scored():
+    rows = [_row(str(index), T0 + timedelta(minutes=index), profitable=index >= 600) for index in range(2000)]
+
+    scored, raw = walk_forward_raw_scores(rows)
+
+    # The rows before 400 are all unprofitable, so the 400 to 800 block has no score.
+    assert scored == rows[800:]
+    assert len(raw) == 1200
+
+
+def test_threshold_approves_at_least_the_minimum_on_the_calibration_rows():
+    log, labels = synthetic(count=2500, days=25)
+    rows = build_dataset(log, labels)
+
+    model = train_model(rows)
+
+    ordered = sorted(rows, key=lambda row: (row.decided_at, row.listing_id))
+    scored, raw = walk_forward_raw_scores(ordered)
+    probabilities = 1.0 / (1.0 + np.exp(-(model.platt_slope * raw + model.platt_intercept)))
+    assert model.calibration_rows == len(scored)
+    assert int((probabilities >= model.threshold).sum()) >= train_student.MIN_SAMPLE
 
 
 def test_onnx_check_rejects_a_wrong_signature():
