@@ -3,6 +3,7 @@ import importlib.util
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -636,6 +637,9 @@ def test_item_cache_is_not_updated_when_commit_fails(client, monkeypatch):
     class FakeSession:
         async def exec(self, _statement):
             return FakeResult()
+
+        def get_bind(self):
+            return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
 
     @asynccontextmanager
     async def fail_during_commit():

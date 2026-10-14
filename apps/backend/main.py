@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Response, Security, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from shared_utils import setup_service_environment
-from sqlalchemy import Integer, String, cast
+from sqlalchemy import Integer, String, cast, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -232,23 +232,12 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
         "received_at": utc_now_naive(),
     }
 
-    bind = session.get_bind()
-    if bind.dialect.name == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert as dialect_insert
-
-        stmt = (
-            dialect_insert(IngestionBatch)
-            .values(**values)
-            .on_conflict_do_nothing(index_elements=["batch_id"])
-            .returning(cast(IngestionBatch.batch_id, String))
-        )
-    else:
-        stmt = (
-            insert(IngestionBatch)
-            .values(**values)
-            .on_conflict_do_nothing(index_elements=["batch_id"])
-            .returning(cast(IngestionBatch.batch_id, String))
-        )
+    stmt = (
+        insert(IngestionBatch)
+        .values(**values)
+        .on_conflict_do_nothing(index_elements=["batch_id"])
+        .returning(cast(IngestionBatch.batch_id, String))
+    )
     result = await session.exec(stmt)
     if result.scalar_one_or_none() is not None:
         return True
@@ -262,6 +251,18 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
             detail="The batch_id has already been used with a different payload.",
         )
     return False
+
+
+async def lock_purchase(session: AsyncSession, venue: str, item_id: int, purchase_price_cents: int) -> None:
+    """Serializes buys of one item at one price on one venue until the transaction ends (PostgreSQL only).
+
+    Without it a REST snapshot's repeat check could run before a concurrent listing buy commits, and
+    both would be recorded. The in-memory SQLite test engine has a single writer, so it needs no lock.
+    """
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    key = f"purchase:{venue}:{item_id}:{purchase_price_cents}"
+    await session.exec(select(func.pg_advisory_xact_lock(func.hashtext(key))))
 
 
 async def snapshot_already_bought(
@@ -305,6 +306,7 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload, response: Respo
     async with session_scope() as session:
         item_id = await get_or_create_item_id(session, payload.market_hash_name, pending_items)
         trade_id: int | None = None
+        await lock_purchase(session, payload.venue, item_id, payload.purchase_price_cents)
         if payload.listing_id is not None or not await snapshot_already_bought(session, payload, item_id, bought_at):
             # The unique purchase indexes on simulated_trades decide; a repeat inserts nothing.
             stmt = (
