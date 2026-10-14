@@ -89,7 +89,7 @@ def compute_features(inputs: FeatureInputs) -> dict[str, float | int | None]:
         "avg_volume_30d": baseline.get("avg_volume_30d"),
         "float_value": inputs.float_value,
         "float_tier_boundary_distance": float_tier_boundary_distance(inputs.float_value),
-        "sticker_value_ratio": _ratio(inputs.sticker_value_cents, latest_price) if latest_price else None,
+        "sticker_value_ratio": _ratio(inputs.sticker_value_cents, latest_price),
         "listings_per_hour_item": inputs.listings_last_hour,
     }
 
