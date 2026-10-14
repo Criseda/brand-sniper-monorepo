@@ -10,34 +10,33 @@ A LightGBM model of whether a feed listing is profitable, trained on outcome lab
 - Labels: `v1` as of 2026-10-13T17:00:00 UTC, including labels that may still be revised.
 - Features: version 2, `price_to_window_mean`, `z_score`, `z_source`, `price_to_30d_avg`, `price_to_support_floor`, `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`, `listings_per_hour_item`.
 - Folds every 6 hours. A fold needs 1000 training listings and 100 of the rarer outcome; a metric needs 30 labeled trades.
-- Decision log sha256 `a0c0c45f08e8ae2c5a9cdb4feb56abf0eb98411ed92783134610ecc63990a330`, commit `dbf2233976cfdc5678a651c7d7fe8d0639f5d16a`.
+- Decision log sha256 `a0c0c45f08e8ae2c5a9cdb4feb56abf0eb98411ed92783134610ecc63990a330`, commit `85cdea575861f94ae1ac81db7359776e65f1cad2`.
 
 **Verdict:** not a candidate: exploratory run: labels overlap the validation windows and include revisable ones.
 
 ## Out of sample, all folds
 
-4525 listings. ROC-AUC 0.968, PR-AUC 0.565 (base rate 0.037), Brier score 0.0240.
+4525 listings. ROC-AUC 0.974, PR-AUC 0.575 (base rate 0.037), Brier score 0.0220.
 
 | Who decides | Trades | Labeled | Precision (95% CI) | Net P&L |
 |---|---|---|---|---|
 | Live rules | 83 | 83 | 55.4% (44.7% to 65.6%) | -$51.63, -$0.62 per trade (-$1.93 to $0.43) |
-| Model at its threshold | 273 | 273 | 44.0% (38.2% to 49.9%) | -$368.11, -$1.35 per trade (-$2.43 to -$0.46) |
-| Model at the rules' volume | 83 | 83 | 67.5% (56.8% to 76.6%) | $34.62, $0.42 per trade (-$0.08 to $0.86) |
+| Model at its threshold | 114 | 114 | 64.9% (55.8% to 73.1%) | $61.30, $0.54 per trade (-$0.05 to $1.30) |
+| Model at the rules' volume | 83 | 83 | 71.1% (60.6% to 79.7%) | $31.01, $0.37 per trade (-$0.22 to $0.90) |
 
 ### Calibration
 
 | Predicted | Listings | Mean predicted | Observed |
 |---|---|---|---|
-| 0.0 to 0.1 | 4019 | 0.014 | 0.004 |
-| 0.1 to 0.2 | 193 | 0.140 | 0.124 |
-| 0.2 to 0.3 | 90 | 0.247 | 0.256 |
-| 0.3 to 0.4 | 51 | 0.355 | 0.333 |
-| 0.4 to 0.5 | 23 | 0.454 | 0.348 |
-| 0.5 to 0.6 | 23 | 0.551 | 0.304 |
-| 0.6 to 0.7 | 44 | 0.654 | 0.386 |
-| 0.7 to 0.8 | 26 | 0.748 | 0.462 |
-| 0.8 to 0.9 | 55 | 0.836 | 0.782 |
-| 0.9 to 1.0 | 1 | 0.947 | 1.000 |
+| 0.0 to 0.1 | 4143 | 0.009 | 0.006 |
+| 0.1 to 0.2 | 138 | 0.139 | 0.203 |
+| 0.2 to 0.3 | 59 | 0.241 | 0.254 |
+| 0.3 to 0.4 | 32 | 0.351 | 0.438 |
+| 0.4 to 0.5 | 34 | 0.439 | 0.353 |
+| 0.5 to 0.6 | 21 | 0.554 | 0.095 |
+| 0.6 to 0.7 | 39 | 0.646 | 0.692 |
+| 0.7 to 0.8 | 34 | 0.758 | 0.735 |
+| 0.8 to 0.9 | 25 | 0.837 | 0.800 |
 
 ## Folds
 
@@ -45,5 +44,5 @@ A LightGBM model of whether a feed listing is profitable, trained on outcome lab
 |---|---|---|---|---|---|---|
 | 2026-09-26T23:00:00 | 1921 | 142 | | | | skipped: 73 listings of the rarer outcome, fewer than 100 |
 | 2026-09-28T11:00:00 | 2063 | 54 | | | | skipped: 90 listings of the rarer outcome, fewer than 100 |
-| 2026-09-28T17:00:00 | 2117 | 4158 | 0.969 | 81, 56.8% (45.9% to 67.0%) | 269, 43.5% (37.7% to 49.5%) | |
-| 2026-09-28T23:00:00 | 6275 | 367 | 0.954 | 2, insufficient data | 4, insufficient data | |
+| 2026-09-28T17:00:00 | 2117 | 4158 | 0.975 | 81, 56.8% (45.9% to 67.0%) | 110, 64.5% (55.3% to 72.9%) | |
+| 2026-09-28T23:00:00 | 6275 | 367 | 0.952 | 2, insufficient data | 4, insufficient data | |
