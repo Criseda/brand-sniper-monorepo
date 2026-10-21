@@ -37,6 +37,16 @@ The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/
 
 With `LISTENER_VENUE=waxpeer` the listener runs `WaxpeerScraper`, which reads Waxpeer's public Socket.IO feed directly over an aiohttp websocket (no sidecar) and has no REST poll. It records and scores only listings priced below the item's Skinport price, then follows them for price cuts and removal, and judges them against the Skinport baselines it loads. Set `WAXPEER_API_KEY` in `.env`. See [`docs/waxpeer_feed.md`](../../docs/waxpeer_feed.md).
 
+### Trade Alerts
+
+There is no automated buying, so when the DRE approves a listing the listener sends me a message on Discord, Telegram or both (`alerts.py`, #18). The message names the item with its float, pattern and stickers, gives the listing price and the estimated net margin after fees (the same estimate the paper trade records), says which rule approved it with the Z score and its source, and links to the listing. A Skinport feed listing links to the item page, because the feed sends no sale ID. A Waxpeer listing links to the listing itself. A REST snapshot names no listing, so its alert links to a Skinport market search for the item.
+
+A channel is on when its credentials are set in `.env`: `DISCORD_WEBHOOK_URL` for a channel webhook, or `TELEGRAM_BOT_TOKEN` with `TELEGRAM_CHAT_ID`. Setting `DISCORD_ALERTS_ENABLED` or `TELEGRAM_ALERTS_ENABLED` to `false` turns a channel off and keeps its credentials. With no credentials the listener sends nothing.
+
+Alerts never hold up tick processing. The anomaly worker hands an alert over without waiting, and each channel has its own small queue and a single sender. When a queue is full the alert is dropped and counted. Each sender stays under `ALERT_MAX_PER_MINUTE` messages (20, below Discord's webhook limit and Telegram's group limit), waits out the `retry_after` of a 429 and tries again, up to `ALERT_MAX_ATTEMPTS` requests. It gives up when it would have to wait longer than `ALERT_MAX_WAIT_SECONDS`. A listing is alerted once per listener process, like a paper trade, and so is the REST snapshot that shows it as the lowest ask later that day. Webhook URLs and bot tokens never appear in the logs.
+
+Every attempt, sent or not, goes to the backend and is stored in the `trade_alerts` table with the listing, venue, channel, outcome, estimate, rule and latency. I keep it in PostgreSQL rather than only in Prometheus because the point is to join alerts to `listing_outcomes` later and see whether the alerted listings were worth buying, and Prometheus cannot hold a listing ID per alert. `listener_alerts_total` counts outcomes per channel, including drops, and `listener_alert_latency_seconds` measures the time from building the tick to the channel accepting the message.
+
 ## Replay & Backtests
 
 `python -m backtest` replays recorded feed events and REST snapshots through the same decision code

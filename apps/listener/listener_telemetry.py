@@ -126,6 +126,31 @@ trade_submissions_total = Counter(
     labelnames=["outcome"],
 )
 
+# Trade alerts (#18). `channel` is discord or telegram; `outcome` is one of alerts.ALERT_OUTCOMES.
+alerts_total = Counter(
+    "listener_alerts_total",
+    "Trade alerts by channel and outcome (sent, rate_limited, failed, dropped)",
+    labelnames=["channel", "outcome"],
+)
+
+alerts_deduplicated_total = Counter(
+    "listener_alerts_deduplicated_total",
+    "Approvals not alerted because the same listing (or REST snapshot price that day) was alerted already",
+)
+
+alert_latency_seconds = Histogram(
+    "listener_alert_latency_seconds",
+    "Time from building the tick to the channel accepting its alert, in seconds",
+    labelnames=["channel"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0),
+)
+
+alert_records_total = Counter(
+    "listener_alert_records_total",
+    "Alert attempts sent to the backend's trade_alerts table, by outcome",
+    labelnames=["outcome"],
+)
+
 tick_queue_size = Gauge(
     "listener_tick_queue_size",
     "Current number of ticks waiting for listener processing",

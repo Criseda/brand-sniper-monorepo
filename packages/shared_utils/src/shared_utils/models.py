@@ -288,3 +288,35 @@ class ListingOutcome(SQLModel, table=True):
 
     # Training reads one label version up to a cutoff on label_available_at.
     __table_args__ = (Index("ix_listing_outcomes_version_available", "label_version", "label_available_at"),)
+
+
+class TradeAlertRecord(SQLModel, table=True):
+    """
+    One attempt to alert a person about an approved listing on one channel (#18), sent or not.
+
+    Joined to `listing_outcomes` on (`venue`, `listing_id`), it shows whether alerted listings were worth buying.
+    A listing is alerted once per listener process, so a restart can alert it again; both attempts are kept,
+    because both messages reached the person. Alerts dropped on the edge before any request (full queue) are
+    only counted in Prometheus (`listener_alerts_total`).
+    """
+
+    __tablename__: str = "trade_alerts"
+
+    id: int | None = Field(default=None, primary_key=True)
+    venue: str = Field(nullable=False, max_length=32)  # Venue the listing is on, e.g. skinport
+    listing_id: str | None = Field(default=None, max_length=64)  # NULL for a REST snapshot (an item's lowest ask)
+    market_hash_name: str = Field(nullable=False)  # Versioned name (phase included), as ticks carry it
+    price_cents: int = Field(nullable=False)
+    # The fee aware estimate the alert showed (shared_utils.pnl, net of fees); NULL without a baseline price.
+    estimated_net_margin_cents: int | None = Field(default=None)
+    decision_source: str = Field(nullable=False, max_length=32)  # rules (Z score plus DRE)
+    approval_reason: str = Field(nullable=False, max_length=32)  # The DRE rule, e.g. support_floor
+    z_source: str = Field(nullable=False, max_length=16)  # local, hybrid, or macro
+    z_score: float = Field(nullable=False)
+    channel: str = Field(nullable=False, max_length=16)  # discord or telegram
+    outcome: str = Field(nullable=False, max_length=16)  # sent, rate_limited, or failed
+    received_at: NaiveDatetime = Field(nullable=False)  # When the edge received the tick (UTC, whole seconds)
+    alerted_at: NaiveDatetime = Field(nullable=False, index=True)  # When the attempt ended on the edge (UTC)
+    latency_ms: int = Field(nullable=False)  # From building the tick to the end of the attempt
+
+    __table_args__ = (Index("ix_trade_alerts_venue_listing_id", "venue", "listing_id"),)

@@ -107,6 +107,49 @@ def test_ingest_simulated_trade_success(client):
     assert response.json()["status"] == "SUCCESS"
 
 
+def _alert_payload(**fields):
+    payload = {
+        "venue": "skinport",
+        "listing_id": "58903454",
+        "market_hash_name": "Alert Item (Field-Tested)",
+        "price_cents": 1000,
+        "estimated_net_margin_cents": 380,
+        "decision_source": "rules",
+        "approval_reason": "support_floor",
+        "z_source": "macro",
+        "z_score": -3.21,
+        "channel": "discord",
+        "outcome": "sent",
+        "received_at": 1_790_000_000,
+        "alerted_at_ms": 1_790_000_001_250,
+        "latency_ms": 1250,
+    }
+    payload.update(fields)
+    return payload
+
+
+def test_ingest_alert_records_every_attempt(client):
+    from shared_utils.models import TradeAlertRecord
+    from sqlmodel import select
+
+    assert client.post("/api/v1/ingest/alert", json=_alert_payload()).status_code == 201
+    # A repeat after a listener restart reached the person again, so it is kept too.
+    assert client.post("/api/v1/ingest/alert", json=_alert_payload(channel="telegram", outcome="failed")).status_code == 201
+
+    alerts = asyncio.run(_fetch_all(select(TradeAlertRecord).where(TradeAlertRecord.listing_id == "58903454")))
+    assert sorted((alert.channel, alert.outcome) for alert in alerts) == [("discord", "sent"), ("telegram", "failed")]
+    sent = next(alert for alert in alerts if alert.channel == "discord")
+    assert sent.received_at == datetime(2026, 9, 21, 14, 13, 20)
+    assert sent.alerted_at == datetime(2026, 9, 21, 14, 13, 21, 250000)
+    assert sent.estimated_net_margin_cents == 380
+    assert sent.latency_ms == 1250
+
+
+def test_ingest_alert_rejects_a_malformed_attempt(client):
+    assert client.post("/api/v1/ingest/alert", json=_alert_payload(price_cents=0)).status_code == 422
+    assert client.post("/api/v1/ingest/alert", json=_alert_payload(channel="x" * 17)).status_code == 422
+
+
 def test_ingest_simulated_trade_records_the_bought_listing(client):
     from shared_utils.models import SimulatedTrade
     from sqlmodel import select

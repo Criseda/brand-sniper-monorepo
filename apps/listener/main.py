@@ -12,6 +12,7 @@ from shared_utils import setup_service_environment
 # Load root .env (shared) first, then listener-specific overrides.
 setup_service_environment(__file__)
 
+from alerts import AlertDispatcher
 from baseline_loader import BaselineState, baselines_url, keep_baselines_loaded
 from batch_delivery import LEGACY_STREAM_VENUE, RedisBatchStore, StoredBatch, deliver_stored_batch
 from detection import (
@@ -227,6 +228,7 @@ async def tick_consumer(
     batch_pool: BoundedTaskPool,
     batch_store: RedisBatchStore,
     executor: ExecutionService,
+    alerts: AlertDispatcher | None = None,
 ) -> None:
     """Processes stream items: records every tick and raw feed event, and scores live offers for anomalies."""
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
@@ -283,7 +285,7 @@ async def tick_consumer(
                                 snapshots_unchanged_windowed_total.inc()
                                 await push_to_window(item, cache)
                         else:
-                            await update_window_and_detect(item, cache, anomaly_pool, executor)
+                            await update_window_and_detect(item, cache, anomaly_pool, executor, alerts)
                     batch_buffer_size.set(len(batch_buffer))
                 # Broad on purpose: one bad tick must not kill the consumer loop.
                 except Exception as item_err:
@@ -383,6 +385,7 @@ async def process_live_telemetry_stream(venue: str) -> None:
     fees_for(scraper.venue)
     fees_for(resale_venue)
     executor = PaperExecutor(BACKEND_BASE_URL)
+    alerts = AlertDispatcher.from_env(BACKEND_BASE_URL, shutdown_timeout=SHUTDOWN_GRACE_SECONDS)
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
     baseline_state = BaselineState(resale_venue)
@@ -404,6 +407,8 @@ async def process_live_telemetry_stream(venue: str) -> None:
     try:
         async with (
             RedisBatchStore.for_venue(edge_redis_url, password=redis_password, venue=scraper.venue) as batch_store,
+            # Entered before the anomaly pool, so it closes after it and still sends the last approvals' alerts.
+            alerts,
             BoundedTaskPool(
                 "anomaly",
                 workers=ANOMALY_WORKERS,
@@ -427,7 +432,7 @@ async def process_live_telemetry_stream(venue: str) -> None:
                 logger.info("[WINDOWS] Moved %d price windows to venue keyed names (#270).", migrated_windows)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
-                    tick_consumer(queue, scraper.venue, anomaly_pool, batch_pool, batch_store, executor),
+                    tick_consumer(queue, scraper.venue, anomaly_pool, batch_pool, batch_store, executor, alerts),
                     name="tick-consumer",
                 )
                 producer_tasks = [

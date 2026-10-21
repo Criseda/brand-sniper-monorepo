@@ -23,6 +23,29 @@ class SimulatedTradePayload(BaseModel):
     float_value: float | None = Field(default=None, ge=0, le=1, description="Float of the bought listing")
 
 
+class TradeAlertPayload(BaseModel):
+    """One attempt by an edge node to alert a person about an approved listing on one channel (#18)."""
+
+    venue: NonEmptyText = Field(..., max_length=32, description="Venue the listing is on, e.g. 'skinport' or 'waxpeer'")
+    listing_id: str | None = Field(
+        default=None, max_length=64, description="Venue identifier of the listing; null for a REST snapshot"
+    )
+    market_hash_name: NonEmptyText
+    price_cents: int = Field(..., gt=0)
+    estimated_net_margin_cents: int | None = Field(
+        ..., description="Fee aware margin estimate the alert showed; null when there was no baseline price"
+    )
+    decision_source: NonEmptyText = Field(..., max_length=32, description="What approved the listing, e.g. 'rules'")
+    approval_reason: NonEmptyText = Field(..., max_length=32, description="DRE rule that approved it")
+    z_source: NonEmptyText = Field(..., max_length=16, description="local, hybrid, or macro")
+    z_score: float
+    channel: NonEmptyText = Field(..., max_length=16, description="discord or telegram")
+    outcome: NonEmptyText = Field(..., max_length=16, description="sent, rate_limited, or failed")
+    received_at: int = Field(..., gt=0, description="Unix time the edge received the tick")
+    alerted_at_ms: int = Field(..., gt=0, description="Unix epoch milliseconds when the attempt ended on the edge")
+    latency_ms: int = Field(..., ge=0, description="From building the tick to the end of the attempt")
+
+
 class BulkPriceTick(BaseModel):
     """Schema for an individual item vector within a bulk operation snapshot."""
 

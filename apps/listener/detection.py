@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Any
 
+from alerts import AlertDispatcher, TradeAlert
 from executor import ExecutionService
 from listener_telemetry import (
     anomalies_confirmed_total,
@@ -328,8 +329,9 @@ async def evaluate_and_execute(
     executor: ExecutionService,
     baseline: dict | None = None,
     source: str = "local",
+    alerts: AlertDispatcher | None = None,
 ) -> None:
-    """Evaluates an anomaly locally on the edge and executes the trade if valid."""
+    """Evaluates an anomaly locally on the edge, alerts a person, and executes the trade if valid."""
     _dre_t0 = time.monotonic()
     approval_reason = await dre_approval_reason(tick, cache, baseline)
     rules_engine_latency_seconds.observe(time.monotonic() - _dre_t0)
@@ -349,12 +351,28 @@ async def evaluate_and_execute(
         if baseline is None:
             baseline_raw = await cache.hget(edge_baselines_key(resale_venue_for(tick.venue)), tick.market_hash_name)
             baseline = json.loads(baseline_raw) if baseline_raw else {}
+        estimated_profit_cents = estimate_net_profit_cents(tick, baseline)
+
+        if alerts is not None:
+            # Queued before the paper trade, which waits on the backend. Never raises into the decision path.
+            try:
+                alerts.submit(
+                    TradeAlert.from_tick(
+                        tick,
+                        estimated_net_margin_cents=estimated_profit_cents,
+                        approval_reason=approval_reason,
+                        z_source=source,
+                        z_score=z_score,
+                    )
+                )
+            except Exception:
+                logger.exception("[ALERT] Could not queue the alert for %s", tick.market_hash_name)
 
         await executor.execute(
             venue=tick.venue,
             market_hash_name=tick.market_hash_name,
             purchase_price_cents=tick.price_cents,
-            estimated_profit_cents=estimate_net_profit_cents(tick, baseline),
+            estimated_profit_cents=estimated_profit_cents,
             profit_estimate_basis=PROFIT_ESTIMATE_BASIS_NET,
             z_score=z_score,
             listing_id=tick.listing_id,
@@ -376,6 +394,7 @@ async def update_window_and_detect(
     cache: Redis,
     anomaly_pool: BoundedTaskPool,
     executor: ExecutionService,
+    alerts: AlertDispatcher | None = None,
 ) -> None:
     """Pushes a tick into the sliding price window and hands Z-score outliers to the Edge DRE."""
     await push_to_window(tick, cache)
@@ -405,5 +424,6 @@ async def update_window_and_detect(
             executor,
             score.baseline,
             score.source,
+            alerts,
         )
     )
