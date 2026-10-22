@@ -3,6 +3,7 @@ import logging
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+import alerts as alerts_module
 import pytest
 import pytest_asyncio
 from aiohttp import web
@@ -142,6 +143,7 @@ def test_alert_without_any_link_says_nothing_about_one():
 
     assert alert_link(alert) is None
     assert "Open listing" not in format_telegram(alert)
+    assert format_discord(alert).splitlines()[-1].startswith("Decision:")
 
 
 def test_sticker_summary_counts_repeats_and_names_only_the_first_few():
@@ -193,6 +195,35 @@ async def test_rate_limiter_gives_up_without_waiting_when_the_wait_is_too_long()
     clock.now += 100
     assert await limiter.acquire(max_wait_seconds=60)
     assert clock.slept == [20.0]
+
+
+@pytest.mark.parametrize(
+    ("body", "headers", "expected"),
+    [
+        ({"retry_after": 1.5}, {}, 1.5),
+        ({"retry_after": "soon"}, {"Retry-After": "3"}, 3.0),
+        ({"message": "You are being rate limited."}, {}, None),
+        (None, {"Retry-After": "2"}, 2.0),
+        ({"retry_after": True}, {"Retry-After": "-1"}, None),
+    ],
+    ids=["body", "unusable_body_falls_back_to_header", "neither", "header_only", "bool_and_negative"],
+)
+def test_discord_retry_after_reads_the_body_then_the_header(body, headers, expected):
+    assert DiscordWebhookChannel("https://discord.test/webhooks/1/x").retry_after_seconds(body, headers) == expected
+
+
+@pytest.mark.parametrize(
+    ("body", "headers", "expected"),
+    [
+        ({"ok": False, "parameters": {"retry_after": 7}}, {}, 7.0),
+        ({"ok": False, "parameters": {"migrate_to_chat_id": 1}}, {"Retry-After": "4"}, 4.0),
+        ({"ok": False}, {"Retry-After": "5"}, 5.0),
+        ({"ok": False, "parameters": {"retry_after": [1]}}, {}, None),
+    ],
+    ids=["parameters", "parameters_without_retry_after", "no_parameters", "unusable"],
+)
+def test_telegram_retry_after_reads_parameters_then_the_header(body, headers, expected):
+    assert TelegramBotChannel(BOT_TOKEN, "1").retry_after_seconds(body, headers) == expected
 
 
 # --- Dispatcher against fake providers --------------------------------------------------------------------------------
@@ -376,7 +407,8 @@ async def test_a_long_429_wait_fails_the_alert_and_holds_the_channel(providers):
 
 @pytest.mark.asyncio
 async def test_provider_errors_fail_the_alert_without_retrying(providers):
-    providers.replies["/webhooks"] = [web.Response(status=500)]
+    # An error page that is not JSON is read as no reply body.
+    providers.replies["/webhooks"] = [web.Response(status=500, text="<html>oops</html>", content_type="text/html")]
     providers.replies["/bot"] = [web.json_response({"ok": False, "description": "Bad Request: chat not found"}, status=400)]
     failed_before = _count("discord", OUTCOME_FAILED), _count("telegram", OUTCOME_FAILED)
 
@@ -530,3 +562,32 @@ def test_invalid_rate_is_refused(alert_env):
 
     with pytest.raises(ValueError, match="ALERT_MAX_PER_MINUTE"):
         AlertDispatcher.from_env("http://backend:8080", shutdown_timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_without_a_record_url_only_sends(providers):
+    async with providers.dispatcher([providers.discord()], record_url=None) as dispatcher:
+        dispatcher.submit(_alert())
+
+    assert len(providers.paths("/webhooks")) == 1
+    assert providers.paths("/api/") == []
+
+
+@pytest.mark.asyncio
+async def test_alert_memory_forgets_the_oldest_listing_first(providers, monkeypatch):
+    monkeypatch.setattr(alerts_module, "ALERTED_MEMORY_SIZE", 2)
+
+    async with providers.dispatcher([providers.discord()], record_url=None) as dispatcher:
+        for listing_id in ("1", "2", "1"):
+            dispatcher.submit(_alert(_skinport_listing(listing_id=listing_id)))
+
+    # A listing holds two keys (listing and snapshot), so the memory of two forgot listing 1 when 2 came.
+    assert len(providers.paths("/webhooks")) == 3
+
+
+@pytest.mark.asyncio
+async def test_sending_before_the_dispatcher_runs_is_an_error(providers):
+    dispatcher = providers.dispatcher([providers.discord()])
+
+    with pytest.raises(RuntimeError, match="not running"):
+        await dispatcher._send(providers.discord(), _alert())
