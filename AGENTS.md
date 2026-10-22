@@ -63,7 +63,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **21** | [#275](https://github.com/Criseda/brand-sniper-monorepo/issues/275) | `[PE-21]` Poll the lowest ask of tradable listings (`tradable=0` is trade locked only) | #267 |
 | **22** | [#308](https://github.com/Criseda/brand-sniper-monorepo/issues/308) | `[PE-22]` No approval on the macro Z score right after a restart | #269 |
 
-**Parked**: #237, #238, #239 (compiled Rust edge engine) are not scheduled. Do not start them; a dedicated decision session will review the #175 evidence first.
+**Not planned**: #237, #238, #239 (compiled Rust edge engine) were closed after the #175 benchmark ([`docs/benchmarks/ingress_latency.md`](docs/benchmarks/ingress_latency.md)): the Python listener decides on a listing in 1.2 ms at the median, and most of that is Redis round trips a compiled runtime would not remove. Reopen #238 only if #236 shows in-process ONNX scoring breaks the latency budget.
 
 ### Agent Instructions for Working on an Issue
 1. **Check Prerequisites**: Ensure preceding issues in the table are completed before starting downstream work.

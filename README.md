@@ -34,6 +34,19 @@ A **Deterministic Rules Engine (DRE)** on the hot path instantly paper-trades st
 
 ---
 
+## How Fast It Decides
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ingress_speed_dark.svg">
+  <img alt="Brand Sniper decides on a listing in 1.2 ms at the median and 2.1 ms at the 99th percentile, against a 100 ms blink, a 273 ms human reaction and 9.1 s for the fastest Skinport listing to sell" src="docs/images/ingress_speed_light.svg">
+</picture>
+
+From the moment a listing leaves Skinport's socket, the listener has decided on it in 1.2 ms at the median and 2.1 ms at the 99th percentile. When 100 listings arrive at once, the last of them is decided within about 73 ms. The fastest Skinport listing I have recorded sold 9.1 seconds after it appeared, so the decision is a tiny part of the race for a listing. How this is measured: [`docs/benchmarks/ingress_latency.md`](docs/benchmarks/ingress_latency.md).
+
+<sub>Sources: Brand Sniper times from the ingress latency benchmark ([#175](https://github.com/Criseda/brand-sniper-monorepo/issues/175); [single listing](docs/benchmarks/ingress_latency/python_reference.json), [100 listings](docs/benchmarks/ingress_latency/comparison.json)) on an Intel Core i9-12900K. Skinport sale times from 12,324 recorded listings that sold, 2026-09-24 to 2026-10-22. Median human reaction time from [Human Benchmark](https://humanbenchmark.com/tests/reactiontime). Blink duration from [BioNumbers BNID 100706](https://bionumbers.hms.harvard.edu/bionumber.aspx?id=100706) (Schiffman, Sensation and Perception, 2001). Chart drawn by [`scripts/ingress_speed_chart.py`](scripts/ingress_speed_chart.py).</sub>
+
+---
+
 ## Quick Start
 
 ```bash

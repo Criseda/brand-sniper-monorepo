@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="title description">
+<title id="title">How fast Brand Sniper decides on a listing</title>
+<desc id="description">Brand Sniper decision, median listing: 1.2 ms; Brand Sniper decision, 99th percentile: 2.1 ms; Brand Sniper, 100 listings at once (p99): 73 ms; Shortest blink of an eye: 100 ms; Median human reaction time: 273 ms; Fastest Skinport listing to sell: 9.1 s; Median Skinport listing to sell: 2.6 h. Log scale from 0.1 ms to 10,000 s.</desc>
+<text x="16.0" y="26.0" fill="#0b0b0b" font-size="16" font-weight="600" text-anchor="start">From the Skinport socket to the decision, against times people know</text>
+<text x="16.0" y="48.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="start">Log scale: each gridline is ten times the one before</text>
+<circle cx="630" cy="44" r="6" fill="#2a78d6"/>
+<text x="642.0" y="48.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="start">Brand Sniper, measured</text>
+<circle cx="790" cy="44" r="6" fill="#8a8984"/>
+<text x="802.0" y="48.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="start">For scale</text>
+<line x1="350.0" y1="72" x2="350.0" y2="316" stroke="#e4e3df"/>
+<text x="350.0" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">0.1 ms</text>
+<line x1="416.2" y1="72" x2="416.2" y2="316" stroke="#e4e3df"/>
+<text x="416.2" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">1 ms</text>
+<line x1="482.5" y1="72" x2="482.5" y2="316" stroke="#e4e3df"/>
+<text x="482.5" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">10 ms</text>
+<line x1="548.8" y1="72" x2="548.8" y2="316" stroke="#e4e3df"/>
+<text x="548.8" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">100 ms</text>
+<line x1="615.0" y1="72" x2="615.0" y2="316" stroke="#e4e3df"/>
+<text x="615.0" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">1 s</text>
+<line x1="681.2" y1="72" x2="681.2" y2="316" stroke="#e4e3df"/>
+<text x="681.2" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">10 s</text>
+<line x1="747.5" y1="72" x2="747.5" y2="316" stroke="#e4e3df"/>
+<text x="747.5" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">100 s</text>
+<line x1="813.8" y1="72" x2="813.8" y2="316" stroke="#e4e3df"/>
+<text x="813.8" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">1,000 s</text>
+<line x1="880.0" y1="72" x2="880.0" y2="316" stroke="#e4e3df"/>
+<text x="880.0" y="336.0" fill="#52514e" font-size="12" font-weight="400" text-anchor="middle">10,000 s</text>
+<text x="16.0" y="99.0" fill="#0b0b0b" font-size="13" font-weight="600" text-anchor="start">Brand Sniper decision, median listing</text>
+<text x="330.0" y="99.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">1.2 ms</text>
+<circle cx="421.8" cy="95.0" r="6" fill="#2a78d6"/>
+<text x="16.0" y="133.0" fill="#0b0b0b" font-size="13" font-weight="600" text-anchor="start">Brand Sniper decision, 99th percentile</text>
+<text x="330.0" y="133.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">2.1 ms</text>
+<circle cx="437.3" cy="129.0" r="6" fill="#2a78d6"/>
+<text x="16.0" y="167.0" fill="#0b0b0b" font-size="13" font-weight="600" text-anchor="start">Brand Sniper, 100 listings at once (p99)</text>
+<text x="330.0" y="167.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">73 ms</text>
+<circle cx="539.7" cy="163.0" r="6" fill="#2a78d6"/>
+<text x="16.0" y="201.0" fill="#0b0b0b" font-size="13" font-weight="400" text-anchor="start">Shortest blink of an eye</text>
+<text x="330.0" y="201.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">100 ms</text>
+<circle cx="548.8" cy="197.0" r="6" fill="#8a8984"/>
+<text x="16.0" y="235.0" fill="#0b0b0b" font-size="13" font-weight="400" text-anchor="start">Median human reaction time</text>
+<text x="330.0" y="235.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">273 ms</text>
+<circle cx="577.6" cy="231.0" r="6" fill="#8a8984"/>
+<text x="16.0" y="269.0" fill="#0b0b0b" font-size="13" font-weight="400" text-anchor="start">Fastest Skinport listing to sell</text>
+<text x="330.0" y="269.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">9.1 s</text>
+<circle cx="678.5" cy="265.0" r="6" fill="#8a8984"/>
+<text x="16.0" y="303.0" fill="#0b0b0b" font-size="13" font-weight="400" text-anchor="start">Median Skinport listing to sell</text>
+<text x="330.0" y="303.0" fill="#52514e" font-size="13" font-weight="400" text-anchor="end">2.6 h</text>
+<circle cx="878.3" cy="299.0" r="6" fill="#8a8984"/>
+</svg>
