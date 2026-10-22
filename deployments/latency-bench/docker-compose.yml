@@ -1,0 +1,62 @@
+# Ingress to decision latency benchmark (#175). A project of its own, with its own Redis and network: it never
+# touches the edge Redis or the backend. Results land in data/latency_bench at the repository root.
+#
+#   docker compose -f deployments/latency-bench/docker-compose.yml run --rm bench
+#   LATENCY_BENCH_CPUS=1 docker compose -f deployments/latency-bench/docker-compose.yml run --rm bench
+#
+# See docs/benchmarks/ingress_latency.md.
+name: latency-bench
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    # The same image and persistence settings as the edge Redis.
+    image: redis:8.10.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  bench:
+    build:
+      context: ../../
+      dockerfile: apps/listener/Dockerfile
+      args:
+        LISTENER_SYNC_FLAGS: ""
+    working_dir: /app/apps/listener
+    command:
+      - uv
+      - run
+      - --no-sync
+      - python
+      - -m
+      - latency_bench
+      - run
+      - --redis-url
+      - redis://redis:6379
+      - --out-dir
+      - /results/${LATENCY_BENCH_LABEL:-reference}
+    volumes:
+      - ../../data/latency_bench:/results
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          # The listener's own limit. LATENCY_BENCH_CPUS limits the CPUs for a constrained run (0: no limit).
+          memory: 1g
+          cpus: "${LATENCY_BENCH_CPUS:-0}"

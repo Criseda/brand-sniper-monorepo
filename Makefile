@@ -58,6 +58,12 @@ student:
 		--warmup-hours $(WARMUP_HOURS) --strategy zscore_dre_features --out $(CURDIR)/$(STUDENT_LOG)
 	cd apps/analytics && uv run python train_student.py --decisions $(CURDIR)/$(STUDENT_LOG) $(STUDENT_ARGS)
 
+LATENCY_BENCH = docker compose -f deployments/latency-bench/docker-compose.yml
+.PHONY: latency-bench  ## Ingress to decision latency benchmark (#175), own Redis: make latency-bench [LATENCY_BENCH_CPUS=1]
+latency-bench:
+	LATENCY_BENCH_LABEL=$(or $(LATENCY_BENCH_LABEL),reference) LATENCY_BENCH_CPUS=$(or $(LATENCY_BENCH_CPUS),0) $(LATENCY_BENCH) run --rm --build bench
+	$(LATENCY_BENCH) down
+
 STACK ?= server-stack
 .PHONY: docker-up  ## docker compose up -d for $(STACK) (use STACK=edge-stack for edge)
 docker-up:

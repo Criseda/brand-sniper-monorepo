@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const io = require('socket.io-client');
 const parser = require('socket.io-msgpack-parser');
@@ -9,6 +10,12 @@ require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 const cookie = process.env.CLOUDFLARE_COOKIE || '';
 let redisUrl = process.env.EDGE_REDIS_URL || 'redis://localhost:6380';
 const SALE_FEED_CHANNEL = 'skinport:sale_feed';
+// The latency benchmark (#175) points the sidecar at a local stand-in for Skinport.
+const feedUrl = process.env.SKINPORT_WS_URL || 'https://skinport.com';
+// Latency benchmark only: when set, each saleFeed event's timings are kept and written to this file
+// once the benchmark's feed server sends `benchFlush`. Times are process.hrtime.bigint() in nanoseconds.
+const timingFile = process.env.SIDECAR_TIMING_FILE || '';
+const timings = [];
 
 console.log('[SKINPORT WS] Sidecar initializing...');
 console.log(`[SKINPORT WS] Target Redis Endpoint: ${redisUrl}`);
@@ -29,7 +36,7 @@ async function main() {
     console.log('[SKINPORT WS] Connected to local Redis successfully.');
 
     // Connect to Skinport live sale feed
-    const socket = io('https://skinport.com', {
+    const socket = io(feedUrl, {
         transports: ['websocket'],
         parser: parser,
         extraHeaders: {
@@ -66,7 +73,24 @@ async function main() {
         console.error('[SKINPORT WS] WebSocket connection error:', error.message || error);
     });
 
+    if (timingFile) {
+        socket.on('benchFlush', () => {
+            const usage = process.resourceUsage();
+            const report = {
+                timings,
+                cpu_user_us: usage.userCPUTime,
+                cpu_system_us: usage.systemCPUTime,
+                max_rss_kb: usage.maxRSS,
+            };
+            fs.writeFileSync(timingFile, JSON.stringify(report));
+            socket.emit('benchFlushed', { events: timings.length });
+        });
+        // Exit normally when the benchmark stops the sidecar, so a --cpu-prof profile gets written.
+        process.on('SIGTERM', () => process.exit(0));
+    }
+
     socket.on('saleFeed', async (data) => {
+        const callbackAt = timingFile ? process.hrtime.bigint() : 0n;
         try {
             // Every event type is forwarded (listed, sold, ...): sold events are the market's own
             // ground truth for outcome labeling. The raw payload is wrapped untouched with a
@@ -76,7 +100,14 @@ async function main() {
             console.log(`[SKINPORT WS] Received ${eventType} event containing ${sales.length} items.`);
 
             const envelope = { receivedAt: Date.now(), payload: data };
-            await redisClient.publish(SALE_FEED_CHANNEL, JSON.stringify(envelope));
+            const message = JSON.stringify(envelope);
+            const publishAt = timingFile ? process.hrtime.bigint() : 0n;
+            await redisClient.publish(SALE_FEED_CHANNEL, message);
+            if (timingFile) {
+                // Keyed by the event's first productId, which the benchmark makes unique.
+                const key = sales.length > 0 ? String(sales[0].productId) : '';
+                timings.push([key, String(callbackAt), String(publishAt), String(process.hrtime.bigint())]);
+            }
         } catch (err) {
             console.error('[SKINPORT WS] Error handling saleFeed event:', err);
         }
