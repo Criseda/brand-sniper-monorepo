@@ -303,7 +303,10 @@ Batch IDs make replays idempotent at the backend. Reusing an ID with different
 content returns HTTP 409. The stream uses the existing volatile Edge Redis
 configuration, so it protects against listener/backend restarts but not an Edge
 Redis restart or host loss. Use persistent Redis if that durability boundary is
-not acceptable for a deployment.
+not acceptable for a deployment. Before a batch reaches the stream it waits in
+listener memory for at most `LISTENER_FLUSH_INTERVAL_SECONDS` (10 s by default,
+#252), so a hard kill of the listener loses at most that much of the feed
+([`skinport_feed.md`](skinport_feed.md)).
 
 ### Price windows keyed by venue
 

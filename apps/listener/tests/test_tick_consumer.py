@@ -45,8 +45,9 @@ def _cache_with_full_windows() -> MagicMock:
     return cache
 
 
-async def _run_consumer(monkeypatch, items: list) -> tuple[AsyncMock, list[dict]]:
-    """Drive tick_consumer over `items` and return the detection mock plus every flushed batch."""
+def _patch_consumer(monkeypatch) -> tuple[AsyncMock, list[dict], asyncio.Queue]:
+    """Stub the consumer's Redis, detection and flush; return the detection mock, every flushed batch, and a
+    queue that receives a None after each flush."""
     cache = _cache_with_full_windows()
     monkeypatch.setattr(listener_main.Redis, "from_url", lambda *_args, **_kwargs: cache)
 
@@ -54,19 +55,33 @@ async def _run_consumer(monkeypatch, items: list) -> tuple[AsyncMock, list[dict]
     monkeypatch.setattr(listener_main, "update_window_and_detect", detect)
 
     flushed: list[dict] = []
+    flush_signals: asyncio.Queue = asyncio.Queue()
 
     async def record_flush(source, buffer, *, batch_id, store, batch_pool, feed_event_buffer=None):
         flushed.append({"ticks": buffer.copy(), "feed_events": list(feed_event_buffer or [])})
         buffer.clear()
         if feed_event_buffer is not None:
             feed_event_buffer.clear()
+        flush_signals.put_nowait(None)
 
     monkeypatch.setattr(listener_main, "flush_batch_buffer", record_flush)
+    return detect, flushed, flush_signals
+
+
+def _start_consumer(queue: asyncio.Queue) -> asyncio.Task:
+    return asyncio.create_task(
+        listener_main.tick_consumer(queue, "skinport", AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    )
+
+
+async def _run_consumer(monkeypatch, items: list) -> tuple[AsyncMock, list[dict]]:
+    """Drive tick_consumer over `items` and return the detection mock plus every flushed batch."""
+    detect, flushed, _flush_signals = _patch_consumer(monkeypatch)
 
     queue: asyncio.Queue = asyncio.Queue()
     for item in [*items, None]:
         queue.put_nowait(item)
-    await listener_main.tick_consumer(queue, "skinport", AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock())
+    await _start_consumer(queue)
     return detect, flushed
 
 
@@ -139,3 +154,98 @@ async def test_feed_event_buffer_flushes_at_chunk_limit(monkeypatch):
 
     assert [len(batch["feed_events"]) for batch in flushed] == [2, 1]
     assert all(batch["ticks"] == [] for batch in flushed)
+
+
+@pytest.mark.asyncio
+async def test_quiet_feed_is_flushed_once_its_oldest_record_is_due(monkeypatch):
+    """A lone event is written without waiting for CHUNK_LIMIT or shutdown (#252)."""
+    monkeypatch.setattr(listener_main, "FLUSH_INTERVAL_SECONDS", 0.05)
+    _detect, flushed, flush_signals = _patch_consumer(monkeypatch)
+    feed_event = FeedEvent(event_type="sold", received_at_ms=1_790_000_000_000, payload={"eventType": "sold"})
+    sold = _tick(3.97, event_type="sold", listing_id="1")
+    queue: asyncio.Queue = asyncio.Queue()
+    queue.put_nowait(feed_event)
+    queue.put_nowait(sold)
+    consumer = _start_consumer(queue)
+
+    await asyncio.wait_for(flush_signals.get(), timeout=5)
+
+    assert not consumer.done()
+    assert flushed == [{"ticks": [sold.to_batch_record()], "feed_events": [feed_event.to_batch_record()]}]
+    queue.put_nowait(None)
+    await consumer
+    # Nothing was buffered after the timed flush, so shutdown writes no empty batch.
+    assert len(flushed) == 1
+
+
+@pytest.mark.asyncio
+async def test_consumer_without_buffered_records_waits_without_flushing(monkeypatch):
+    monkeypatch.setattr(listener_main, "FLUSH_INTERVAL_SECONDS", 0.01)
+    _detect, flushed, _flush_signals = _patch_consumer(monkeypatch)
+    queue: asyncio.Queue = asyncio.Queue()
+    consumer = _start_consumer(queue)
+
+    await asyncio.sleep(0.05)
+    queue.put_nowait(None)
+    await consumer
+
+    assert flushed == []
+
+
+@pytest.mark.asyncio
+async def test_busy_queue_still_flushes_by_age(monkeypatch):
+    """A queue that always has the next item never times out, so the age is also checked after each item.
+    With an interval of zero every record is due as soon as it is buffered."""
+    monkeypatch.setattr(listener_main, "FLUSH_INTERVAL_SECONDS", 0)
+    events = [FeedEvent(event_type="sold", received_at_ms=1_790_000_000_000 + n, payload={"n": n}) for n in range(3)]
+
+    _detect, flushed = await _run_consumer(monkeypatch, events)
+
+    assert [batch["feed_events"] for batch in flushed] == [[event.to_batch_record()] for event in events]
+
+
+@pytest.mark.asyncio
+async def test_flush_timing_never_changes_decisions(monkeypatch):
+    """The Z score and DRE see the same ticks in the same order whether batches are written often or rarely."""
+    ticks = [
+        _tick(3.97, event_type="listed", listing_id="1"),
+        _tick(3.97, event_type="sold", listing_id="1"),
+        _tick(4.10),
+        _tick(3.50, event_type="listed", listing_id="2"),
+        _tick(3.97, event_type="listed", listing_id="1"),
+    ]
+    runs = {}
+    for interval in (0, 3_600):
+        monkeypatch.setattr(listener_main, "FLUSH_INTERVAL_SECONDS", interval)
+        detect, flushed = await _run_consumer(monkeypatch, ticks)
+        recorded = [record for batch in flushed for record in batch["ticks"]]
+        runs[interval] = ([call.args[0] for call in detect.await_args_list], recorded, len(flushed))
+
+    often, rarely = runs[0], runs[3_600]
+    assert often[0] == rarely[0] == [ticks[0], ticks[2], ticks[3]]
+    assert often[1] == rarely[1] == [tick.to_batch_record() for tick in ticks]
+    assert (often[2], rarely[2]) == (5, 1)
+
+
+def _seconds(duration: str) -> int:
+    assert duration.endswith("s"), duration
+    return int(duration.removesuffix("s"))
+
+
+@pytest.mark.parametrize("stack", ["edge-stack", "server-stack"])
+def test_compose_gives_every_listener_time_to_drain(stack):
+    """Docker kills a container after stop_grace_period; the drain allows up to about three times
+    LISTENER_SHUTDOWN_GRACE_SECONDS (tick queue, anomaly pool, batch pool), so a redeploy must wait that long."""
+    import yaml
+
+    compose_file = Path(__file__).resolve().parents[3] / "deployments" / stack / "docker-compose.yml"
+    services = yaml.safe_load(compose_file.read_text(encoding="utf-8"))["services"]
+    listeners = {
+        name: service
+        for name, service in services.items()
+        if isinstance(service.get("build"), dict) and service["build"].get("dockerfile") == "apps/listener/Dockerfile"
+    }
+
+    assert listeners, f"no listener service found in {stack}"
+    for name, service in listeners.items():
+        assert _seconds(service["stop_grace_period"]) >= 3 * listener_main.SHUTDOWN_GRACE_SECONDS, name

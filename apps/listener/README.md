@@ -10,7 +10,7 @@ Because the ingestion node must never block, it routes incoming data ticks concu
    Maintains a rolling 5-minute mathematical window of current market floors and the venue's baselines, which the listener loads from the backend when it starts and refreshes every 15 minutes (see [`docs/data_sources.md`](../../docs/data_sources.md)). The **Deterministic Rules Engine (DRE)** queries this Edge Redis in `O(1)` time instantly to execute `SimulatedTrades` using the local `PaperExecutor`. Execution logs are then asynchronously POSTed over the network to the server backend to prevent blocking.
 
 2. **The Batched Ingestion (The Cold Path):**
-   Streams bulk batches of market ticks over the network to the server backend REST API (`/api/v1/ingest/bulk`) to be saved into the permanent SQL database. This historical data is later mined by the Analytics pipeline to train the AI baselines.
+   Streams bulk batches of market ticks over the network to the server backend REST API (`/api/v1/ingest/bulk`) to be saved into the permanent SQL database. This historical data is later mined by the Analytics pipeline to train the AI baselines. A batch is written to the edge Redis stream once it holds `CHUNK_LIMIT` records or its oldest record has waited `LISTENER_FLUSH_INTERVAL_SECONDS` (10 s by default), so a hard kill loses at most that much of the feed ([`docs/skinport_feed.md`](../../docs/skinport_feed.md)).
 
 Both paths run through bounded worker pools owned by `asyncio.TaskGroup`. The
 tick queue, anomaly queue, and batch-flush queue apply asynchronous backpressure
