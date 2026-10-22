@@ -77,11 +77,13 @@ flowchart LR
 
 **Parallelism:** after #232, the tracks #233, #248, #259 and #18 can run at the same time. In practice #259 goes first. The live baselines are Kaggle Steam prices from before the knife crash, and the edge has had none loaded since July 2026 (see [`data_sources.md`](data_sources.md)), so without it #249 would mostly measure broken baselines. New venues (#33, #261) wait for #259 and #260. #250 can run alongside #234 and #236.
 
-**Parked (not scheduled):** [#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237),
+**Not planned:** [#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237),
 [#238](https://github.com/Criseda/brand-sniper-monorepo/issues/238),
-[#239](https://github.com/Criseda/brand-sniper-monorepo/issues/239) (compiled Rust edge engine). Whether a
-compiled runtime is worth it will be decided in a dedicated session that reviews the #175 evidence and the
-#236 scoring cost. Do not start these issues before that decision.
+[#239](https://github.com/Criseda/brand-sniper-monorepo/issues/239) (compiled Rust edge engine) were closed
+after the #175 benchmark ([`benchmarks/ingress_latency.md`](benchmarks/ingress_latency.md)). The Python
+listener decides on a listing in 1.2 ms at the median and 2.1 ms at p99, and most of that time is Redis round
+trips that a compiled runtime would not remove. The #236 scoring cost is not measured yet: if in-process ONNX
+scoring in Python breaks the latency budget, #238 is reopened with those numbers.
 
 ---
 
@@ -256,4 +258,4 @@ When the scheduled issues are closed:
 2. **Update Core Architecture**: move the recording, labeling, replay, and promotion patterns, plus the scorecards, into [`docs/architecture.md`](architecture.md).
 3. **Trim `AGENTS.md`**: remove the active milestone table.
 4. **Update `README.md`**: report the baseline and model scorecards and the alerting workflow.
-5. **Parked issues**: #237, #238, #239 are resolved by the Rust decision session, independent of this milestone's closure.
+5. **Rust edge engine**: #237, #238, #239 were closed as not planned after #175; only #238 can come back, and only on #236's numbers.
