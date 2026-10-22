@@ -57,6 +57,9 @@ DRAIN_TIMEOUT_SECONDS = 120.0
 FLUSH_TIMEOUT_SECONDS = 120.0
 # Quiet time between the warm-up's last decision and the first measured event.
 WARMUP_SETTLE_SECONDS = 1.0
+# Where the environment of a run is read from on Linux.
+CPUINFO = Path("/proc/cpuinfo")
+CGROUP_CPU_MAX = Path("/sys/fs/cgroup/cpu.max")
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,9 +208,8 @@ def _sidecar_timings(path: Path) -> tuple[dict[str, SidecarTiming], dict[str, An
     return timings, usage
 
 
-def _cpu_model() -> str:
+def _cpu_model(cpuinfo: Path = CPUINFO) -> str:
     """The CPU model; platform.processor() is empty inside a Linux container."""
-    cpuinfo = Path("/proc/cpuinfo")
     if cpuinfo.exists():
         for line in cpuinfo.read_text(encoding="utf-8").splitlines():
             if line.startswith("model name"):
@@ -215,9 +217,8 @@ def _cpu_model() -> str:
     return platform.processor()
 
 
-def _cpu_limit() -> float | None:
+def _cpu_limit(cpu_max: Path = CGROUP_CPU_MAX) -> float | None:
     """The container's CPU limit from cgroup v2, None without one."""
-    cpu_max = Path("/sys/fs/cgroup/cpu.max")
     if not cpu_max.exists():
         return None
     quota, period = cpu_max.read_text(encoding="utf-8").split()
