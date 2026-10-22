@@ -58,7 +58,7 @@ one changed the price: 62% were cuts and 38% were rises. Sellers run repricing b
 
 ## Transport
 
-The listener speaks Engine.IO v4 over an aiohttp websocket itself, so it needs no Node.js sidecar and no
+The listener speaks Engine.IO v4 over an aiohttp websocket itself, as it does for Skinport, and needs no
 browser cookies. The exchange is:
 
 1. The server sends the open packet `0{"sid":...,"pingInterval":25000,"pingTimeout":20000,...}`.

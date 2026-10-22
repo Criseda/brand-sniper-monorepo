@@ -135,7 +135,7 @@ def _patched(target: Any, name: str, replacement: Callable[..., Any]) -> Iterato
 def install(recorder: StageRecorder) -> Iterator[None]:
     """Wrap the listener's stage functions for the duration of the block."""
     main = listener_main()
-    original_parse = skinport.parse_sale_feed_message
+    original_parse = skinport.parse_sale_feed_event
     original_detect = main.update_window_and_detect
     original_push = detection.push_to_window
     original_score = detection.score_window
@@ -144,9 +144,9 @@ def install(recorder: StageRecorder) -> Iterator[None]:
     original_dre = detection.dre_approval_reason
     full = recorder.level == "full"
 
-    def parse(message: str | bytes) -> tuple[FeedEvent, list[MarketTick]]:
+    def parse(payload: object, received_at_ms: int) -> tuple[FeedEvent, list[MarketTick]]:
         started = time.perf_counter_ns()
-        feed_event, ticks = original_parse(message)
+        feed_event, ticks = original_parse(payload, received_at_ms)
         ended = time.perf_counter_ns()
         for tick in ticks:
             times = recorder.times(tick.listing_id)
@@ -222,7 +222,7 @@ def install(recorder: StageRecorder) -> Iterator[None]:
             yield
             return
         with (
-            _patched(skinport, "parse_sale_feed_message", parse),
+            _patched(skinport, "parse_sale_feed_event", parse),
             _patched(detection, "push_to_window", push_to_window),
             _patched(detection, "score_window", score_window),
             _patched(detection, "calculate_z_score", calculate_z_score),

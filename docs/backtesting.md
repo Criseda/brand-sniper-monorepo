@@ -54,8 +54,8 @@ minutes of warm-up, which is what the live listener did over that period (no pap
 
 ## Input
 
-**Feed events** come from `feed_events` and go through the live sidecar-message parser
-(`scrapers.skinport.parse_sale_feed_message`), so replay normalizes exactly as the listener does.
+**Feed events** come from `feed_events` and go through the live sale feed parser
+(`scrapers.skinport.parse_sale_feed_event`), so replay normalizes exactly as the listener does.
 Stored rows that are exact duplicates (same type, receive time, and payload) are dropped; a re-sent event
 with its own receive time is kept, because the live listener saw it too.
 

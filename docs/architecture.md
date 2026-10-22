@@ -61,7 +61,7 @@ not on all the time. [`data_sources.md`](data_sources.md) explains what that mea
 It ingests real-time market data ticks via:
 
 - **REST polling** — Skinport asset directory stream
-- **WebSocket sidecar** — Node.js process (`scrapers/skinport_websocket/`) for push-based Socket.IO feeds
+- **Live feeds** — each venue's Socket.IO feed, read directly over an aiohttp websocket (`scrapers/skinport_socket.py`, `scrapers/waxpeer.py`)
 
 Incoming prices are written concurrently to an edge-local Redis hot-cache (sliding window, port **6380**).
 Each venue has its own window per item (`price_window:<venue>:<item>`) and its own dedup state, so prices
@@ -76,7 +76,7 @@ the cached price history. On a confirmed anomaly:
 2. The local `PaperExecutor` executes a simulated trade synchronously
 3. The trade log is POSTed asynchronously to the backend
 
-**Hot path latency: 1.3 ms at the median, 2.7 ms at p99 for a single listing**, from the Skinport socket to
+**Hot path latency: 1.2 ms at the median, 2.1 ms at p99 for a single listing**, from the Skinport socket to
 the DRE's decision, measured on the reference machine (#175, [ingress latency](benchmarks/ingress_latency.md)).
 Listings that arrive together are decided one after another, so the slowest listing of a 100 listing event
 waits about 80 ms. No network call to the server node is required for the trade decision.

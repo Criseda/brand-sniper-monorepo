@@ -1,10 +1,9 @@
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
 import scrapers.skinport as skinport
-from models import FeedEvent, MarketTick
+from models import MarketTick
 from redis.exceptions import ConnectionError as RedisConnectionError
 from scrapers.skinport import NEXT_ITEMS_REQUEST_KEY, NextRequestStore, SkinportScraper, parse_retry_after
 
@@ -393,113 +392,3 @@ async def test_poll_opens_the_edge_redis_store_and_close_releases_it(monkeypatch
     cache.set.assert_awaited_once()
     cache.aclose.assert_awaited_once()
     assert scraper._next_request_store is None
-
-
-# ---------------------------------------------------------------------------
-# listen_websocket_stream message parsing
-# ---------------------------------------------------------------------------
-
-
-def _pubsub_for(messages):
-    pubsub = MagicMock()
-    pubsub.subscribe = AsyncMock()
-    pubsub.unsubscribe = AsyncMock()
-
-    async def listen():
-        for message in messages:
-            yield message
-
-    pubsub.listen = MagicMock(return_value=listen())
-    return pubsub
-
-
-def _redis_for(pubsub):
-    cache = MagicMock()
-    cache.aclose = AsyncMock()
-    cache.pubsub.return_value = pubsub
-    return cache
-
-
-def _envelope(payload: dict, received_at_ms: int = 1_790_000_000_000) -> str:
-    return json.dumps({"receivedAt": received_at_ms, "payload": payload})
-
-
-async def _drain(stream, count: int) -> list:
-    items = [await anext(stream) for _ in range(count)]
-    await stream.aclose()
-    return items
-
-
-@pytest.mark.asyncio
-async def test_websocket_yields_raw_event_then_parsed_sales(monkeypatch):
-    scraper = SkinportScraper()
-    payload = {
-        "eventType": "listed",
-        "sales": [
-            {
-                "marketHashName": "AK-47 | Redline",
-                "salePrice": 155000,
-                "wear": 0.31,
-                "stickers": [{"name": "Titan | Katowice 2014"}],
-                "version": "Factory New",
-            }
-        ],
-    }
-    pubsub = _pubsub_for([{"type": "subscribe"}, {"type": "message", "data": _envelope(payload)}])
-    cache = _redis_for(pubsub)
-    monkeypatch.setenv("EDGE_REDIS_URL", "redis://localhost:6380")
-    with patch("scrapers.skinport.Redis.from_url", return_value=cache):
-        feed_event, tick = await _drain(scraper.listen_websocket_stream(), 2)
-
-    pubsub.subscribe.assert_awaited_once_with("skinport:sale_feed")
-    assert isinstance(feed_event, FeedEvent)
-    assert feed_event.event_type == "listed"
-    assert feed_event.payload == payload
-    assert tick.market_hash_name == "AK-47 | Redline (Factory New)"
-    assert tick.price_usd == 1550.0
-    assert tick.float_value == 0.31
-    assert tick.stickers == [{"name": "Titan | Katowice 2014"}]
-    assert tick.event_type == "listed"
-
-
-@pytest.mark.asyncio
-async def test_websocket_skips_sales_without_required_fields(monkeypatch):
-    scraper = SkinportScraper()
-    payload = {
-        "eventType": "listed",
-        "sales": [
-            {"marketHashName": "No Price"},
-            {"salePrice": 10000},
-            {"marketHashName": "Zero Price", "salePrice": 0},
-            {"marketHashName": "Good One", "salePrice": 10000},
-        ],
-    }
-    pubsub = _pubsub_for([{"type": "message", "data": _envelope(payload)}])
-    cache = _redis_for(pubsub)
-    monkeypatch.setenv("EDGE_REDIS_URL", "redis://localhost:6380")
-    with patch("scrapers.skinport.Redis.from_url", return_value=cache):
-        feed_event, tick = await _drain(scraper.listen_websocket_stream(), 2)
-
-    # The raw event keeps every sale, including the ones that could not become ticks.
-    assert len(feed_event.payload["sales"]) == 4
-    assert tick.market_hash_name == "Good One"
-
-
-@pytest.mark.asyncio
-async def test_websocket_survives_malformed_message(monkeypatch):
-    scraper = SkinportScraper()
-    good_payload = {"eventType": "sold", "sales": [{"marketHashName": "Good One", "salePrice": 10000}]}
-    pubsub = _pubsub_for(
-        [
-            {"type": "message", "data": "{not valid json"},
-            {"type": "message", "data": json.dumps({"sales": []})},
-            {"type": "message", "data": _envelope(good_payload)},
-        ]
-    )
-    cache = _redis_for(pubsub)
-    monkeypatch.setenv("EDGE_REDIS_URL", "redis://localhost:6380")
-    with patch("scrapers.skinport.Redis.from_url", return_value=cache):
-        feed_event, tick = await _drain(scraper.listen_websocket_stream(), 2)
-
-    assert feed_event.event_type == "sold"
-    assert tick.market_hash_name == "Good One"

@@ -37,7 +37,13 @@ from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from rules_engine import STICKER_PREMIUM_MAX_PERCENT, STICKER_VALUE_MIN_CENTS
-from scrapers.base import BaseScraper, edge_redis_from_env, optional_non_negative_int, optional_wear
+from scrapers.base import (
+    BaseScraper,
+    FeedConnectionLost,
+    edge_redis_from_env,
+    optional_non_negative_int,
+    optional_wear,
+)
 from shared_utils import (
     applied_sticker_name,
     build_versioned_name,
@@ -391,10 +397,6 @@ class RawEventBatch:
             received_at_ms=events[0]["received_at_ms"],
             payload={"venue": VENUE, "channel": GAME_CHANNEL, "events": events},
         )
-
-
-class FeedConnectionLost(ConnectionError):
-    """The live feed connection ended; the listener's producer loop reconnects after a pause."""
 
 
 class WaxpeerScraper(BaseScraper):

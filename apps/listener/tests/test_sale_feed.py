@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from models import MarketTick, TickKind
 from pydantic import ValidationError
-from scrapers.skinport import parse_sale_feed_message
+from scrapers.skinport import parse_sale_feed_event
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -13,15 +13,15 @@ def _load_fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _envelope(payload: dict, received_at_ms: int = 1_790_000_000_000) -> str:
-    return json.dumps({"receivedAt": received_at_ms, "payload": payload})
+def _parse(payload: object, received_at_ms: int = 1_790_000_000_000):
+    return parse_sale_feed_event(payload, received_at_ms)
 
 
 def test_sold_event_from_captured_feed_parses_every_sale():
     """Real (sanitized) sold event: saleId is null, productId joins the listing to its outcome."""
     envelope = _load_fixture("skinport_sold_event.json")
 
-    feed_event, ticks = parse_sale_feed_message(json.dumps(envelope))
+    feed_event, ticks = parse_sale_feed_event(envelope["payload"], envelope["receivedAt"])
 
     assert feed_event.event_type == "sold"
     assert feed_event.received_at_ms == envelope["receivedAt"]
@@ -56,7 +56,7 @@ def test_listed_event_from_captured_feed_feeds_the_price_window():
     """Real (sanitized) listed event: same sale schema as sold, saleId also null."""
     envelope = _load_fixture("skinport_listed_event.json")
 
-    feed_event, ticks = parse_sale_feed_message(json.dumps(envelope))
+    feed_event, ticks = parse_sale_feed_event(envelope["payload"], envelope["receivedAt"])
 
     assert feed_event.event_type == "listed"
     assert feed_event.payload == envelope["payload"]
@@ -88,7 +88,7 @@ def test_sale_id_upgrades_the_deep_link_when_the_feed_provides_one():
         "version": "default",
     }
 
-    feed_event, (tick,) = parse_sale_feed_message(_envelope({"eventType": "listed", "sales": [sale]}))
+    feed_event, (tick,) = _parse({"eventType": "listed", "sales": [sale]})
 
     assert feed_event.event_type == "listed"
     assert tick.event_type == "listed"
@@ -100,15 +100,24 @@ def test_sale_id_upgrades_the_deep_link_when_the_feed_provides_one():
 def test_unknown_event_type_is_kept_raw_and_never_feeds_the_price_window():
     payload = {"eventType": "priceChanged", "sales": [{"marketHashName": "Item", "salePrice": 500}]}
 
-    feed_event, (tick,) = parse_sale_feed_message(_envelope(payload))
+    feed_event, (tick,) = _parse(payload)
 
     assert feed_event.event_type == "priceChanged"
     assert tick.kind == TickKind.OTHER_FEED_EVENT
     assert not tick.feeds_price_window
 
 
+def test_sales_without_a_name_or_a_price_become_no_tick():
+    payload = {"eventType": "listed", "sales": [{"marketHashName": "No Price"}, {"salePrice": 10000}]}
+
+    feed_event, ticks = _parse(payload)
+
+    assert feed_event.payload == payload
+    assert ticks == []
+
+
 def test_event_without_type_or_sales_is_still_recorded():
-    feed_event, ticks = parse_sale_feed_message(_envelope({"sales": None}))
+    feed_event, ticks = _parse({"sales": None})
 
     assert feed_event.event_type == "unknown"
     assert ticks == []
@@ -120,24 +129,25 @@ def test_malformed_sales_are_skipped_without_losing_the_event():
         "sales": ["not-an-object", {"marketHashName": "Negative", "salePrice": -5}, {"marketHashName": "Ok", "salePrice": 1}],
     }
 
-    feed_event, ticks = parse_sale_feed_message(_envelope(payload))
+    feed_event, ticks = _parse(payload)
 
     assert feed_event.payload == payload
     assert [tick.market_hash_name for tick in ticks] == ["Ok"]
 
 
 @pytest.mark.parametrize(
-    "message",
+    ("payload", "received_at_ms"),
     [
-        pytest.param("[]", id="not_an_object"),
-        pytest.param(json.dumps({"receivedAt": 1, "payload": []}), id="payload_not_object"),
-        pytest.param(json.dumps({"payload": {"eventType": "sold"}}), id="missing_received_at"),
-        pytest.param(json.dumps({"receivedAt": "soon", "payload": {}}), id="non_integer_received_at"),
+        pytest.param([], 1, id="payload_not_object"),
+        pytest.param(None, 1, id="no_payload"),
+        pytest.param({"eventType": "sold"}, 0, id="zero_received_at"),
+        pytest.param({"eventType": "sold"}, "soon", id="non_integer_received_at"),
+        pytest.param({"eventType": "sold"}, True, id="boolean_received_at"),
     ],
 )
-def test_unusable_envelopes_are_rejected(message):
+def test_unusable_events_are_rejected(payload, received_at_ms):
     with pytest.raises(ValueError):
-        parse_sale_feed_message(message)
+        parse_sale_feed_event(payload, received_at_ms)
 
 
 def test_rest_snapshot_ticks_keep_the_legacy_batch_record():
@@ -240,7 +250,7 @@ def test_out_of_range_optional_fields_are_dropped_but_the_price_is_kept():
         "finish": True,
     }
 
-    _feed_event, (tick,) = parse_sale_feed_message(_envelope({"eventType": "listed", "sales": [sale]}))
+    _feed_event, (tick,) = _parse({"eventType": "listed", "sales": [sale]})
 
     assert tick.price_cents == 250
     assert (tick.float_value, tick.pattern, tick.paint_index) == (None, None, None)
@@ -249,9 +259,7 @@ def test_out_of_range_optional_fields_are_dropped_but_the_price_is_kept():
 def test_overlong_event_type_is_clamped_and_kept_raw():
     event_type = "x" * 40
 
-    feed_event, (tick,) = parse_sale_feed_message(
-        _envelope({"eventType": event_type, "sales": [{"marketHashName": "Item", "salePrice": 1}]})
-    )
+    feed_event, (tick,) = _parse({"eventType": event_type, "sales": [{"marketHashName": "Item", "salePrice": 1}]})
 
     assert feed_event.event_type == tick.event_type == "x" * 32
     assert feed_event.payload["eventType"] == event_type
@@ -260,7 +268,7 @@ def test_overlong_event_type_is_clamped_and_kept_raw():
 def test_overlong_listing_url_is_dropped_rather_than_truncated():
     sale = {"marketHashName": "Item", "salePrice": 1, "url": "s" * 600}
 
-    _feed_event, (tick,) = parse_sale_feed_message(_envelope({"eventType": "listed", "sales": [sale]}))
+    _feed_event, (tick,) = _parse({"eventType": "listed", "sales": [sale]})
 
     assert tick.listing_url is None
 

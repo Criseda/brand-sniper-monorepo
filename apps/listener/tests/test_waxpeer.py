@@ -570,16 +570,16 @@ def test_factory_builds_the_waxpeer_scraper():
     assert isinstance(ScraperFactory.get_scraper("waxpeer"), WaxpeerScraper)
 
 
-def test_feed_metrics_are_exported_only_by_a_listener_that_reads_a_feed():
+def test_filter_metrics_are_exported_only_by_a_listener_with_a_recording_filter():
     from listener_telemetry import export_feed_metrics
-    from prometheus_client import CollectorRegistry, generate_latest
+    from prometheus_client import REGISTRY, CollectorRegistry, generate_latest
 
     registry = CollectorRegistry()
-    assert b"listener_feed_connected" not in generate_latest(registry)
+    assert b"listener_feed_events_filtered_total" not in generate_latest(registry)
 
     export_feed_metrics(registry)
     export_feed_metrics(registry)  # a second call is harmless
 
-    exposition = generate_latest(registry)
-    assert b"listener_feed_connected" in exposition
-    assert b"listener_feed_events_filtered_total" in exposition
+    assert b"listener_feed_events_filtered_total" in generate_latest(registry)
+    # The connection metrics are every venue's, so the default registry always exports them.
+    assert b"listener_feed_connected" in generate_latest(REGISTRY)

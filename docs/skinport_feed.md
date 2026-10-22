@@ -17,7 +17,7 @@ the docs, this note records what the feed actually sends.
 
 | Page | What it covers | Used by |
 |---|---|---|
-| [WebSocket: Sale Feed](https://docs.skinport.com/websocket/sale-feed) | Socket.IO + msgpack `saleFeed`: `saleFeedJoin` parameters, event types, sale fields | Listener sidecar, `parse_sale_feed_message` (#232) |
+| [WebSocket: Sale Feed](https://docs.skinport.com/websocket/sale-feed) | Socket.IO + msgpack `saleFeed`: `saleFeedJoin` parameters, event types, sale fields | Listener feed client (`scrapers/skinport_socket.py`), `parse_sale_feed_event` (#232, #175) |
 | [Items](https://docs.skinport.com/items) | `GET /v1/items`: per-item `min_price`, `max_price`, `mean_price`, `median_price`, `suggested_price`, `quantity`, `item_page`, `market_page`, plus an undocumented `version` (phase). No auth, 8 requests / 5 min, cached 5 min, `Accept-Encoding: br` required. `tradable=0` returns **only** trade locked listings; see [REST lowest asks](#rest-lowest-asks-v1items) | Listener REST snapshots (`poll_market_stream`) |
 | [Sales](https://docs.skinport.com/category/sales) | Index of the sales endpoints (history, out of stock) | - |
 | [Sales History](https://docs.skinport.com/sales/history) | `GET /v1/sales/history`: min/max/avg/median price and sale **volume** over 24 h, 7 d, 30 d, 90 d per item. No auth, 8 requests / 5 min, cached 5 min | Candidate liquidity source for outcome labels (#233) |
@@ -111,7 +111,7 @@ logs `[SKINPORT] Next /v1/items request in N seconds`.
 | `sold` | Offers that just sold. This is the market's own ground truth for outcome labels | Yes. Steady |
 | `price_changed`, `canceled` | Documented as unsupported (never emitted) | No |
 
-No other `eventType` values were seen. The sidecar still forwards any unknown type. The listener stores it
+No other `eventType` values were seen. The listener still takes any unknown type. The listener stores it
 raw and never lets it into the Z-score/DRE path (see [Recording pipeline](#recording-pipeline)).
 
 One event carries 1 to 37 sales (the median is 1). A `sold` event can batch several sales of the same item,
@@ -177,10 +177,11 @@ Trimmed, sanitized `sold` sale:
 
 ## Recording pipeline
 
-1. **Sidecar** (`scrapers/skinport_websocket/sidecar.js`) forwards every `saleFeed` event without changing
-   it. It wraps each event as `{"receivedAt": <epoch ms>, "payload": <event>}` and publishes it to the edge
-   Redis channel `skinport:sale_feed`.
-2. **Listener** (`parse_sale_feed_message` in `scrapers/skinport.py`) turns each message into:
+1. **Feed client** (`scrapers/skinport_socket.py`) speaks Engine.IO v4 over an aiohttp websocket, decodes the
+   MessagePack Socket.IO packets, joins the CS2 USD feed and hands on every `saleFeed` payload unchanged, with
+   the time it arrived. Until #175 a Node.js sidecar did this and relayed each event through Redis Pub/Sub,
+   which lost events without notice when the listener fell far behind (#326).
+2. **Listener** (`parse_sale_feed_event` in `scrapers/skinport.py`) turns each event into:
    - one `FeedEvent` holding the raw payload, and
    - one listing-level `MarketTick` per well-formed sale. A malformed sale is skipped, but the raw event still
      keeps it.

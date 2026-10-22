@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from models import FeedEvent, MarketTick, TickKind
-from scrapers.skinport import VENUE, parse_sale_feed_message
+from scrapers.skinport import VENUE, parse_sale_feed_event
 
 # Sale fields the listener parser and the outcome labeler read. Fixtures keep only these, which drops
 # personal data carried by the live feed (for example the seller's `steamid`) and unused bulk.
@@ -168,12 +168,11 @@ def expand_event(event: RecordedEvent) -> list[StreamItem]:
     """
     The stream items the live listener's producers put on its queue for this recorded event.
 
-    Feed events go through the real sidecar-message parser (the raw FeedEvent, then one tick per
-    sale). Snapshots become the MarketTick the REST poller yields.
+    Feed events go through the live sale feed parser (the raw FeedEvent, then one tick per sale).
+    Snapshots become the MarketTick the REST poller yields.
     """
     if isinstance(event, RecordedFeedEvent):
-        envelope = json.dumps({"receivedAt": event.received_at_ms, "payload": event.payload})
-        feed_event, ticks = parse_sale_feed_message(envelope)
+        feed_event, ticks = parse_sale_feed_event(event.payload, event.received_at_ms)
         return [feed_event, *ticks]
     return [
         MarketTick(

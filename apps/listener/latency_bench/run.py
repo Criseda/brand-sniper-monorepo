@@ -1,12 +1,12 @@
 """
 One benchmark run: one scenario played once through the current ingress path, in fresh processes.
 
-    feed server process --websocket--> Node.js sidecar --Redis Pub/Sub--> this process:
-    SkinportScraper.listen_websocket_stream -> tick queue -> main.tick_consumer -> price window, Z score -> DRE
+    feed server process --websocket--> this process: SkinportScraper.listen_websocket_stream -> tick queue
+    -> main.tick_consumer -> price window, Z score -> DRE
 
-Everything after the feed server is the listener's own code (main.websocket_subscriber_producer,
-main.tick_consumer and main.start_sidecar_process), with two stand-ins: batches are acknowledged instead of
-being sent to the backend, and the executor notes the order instead of posting it.
+Everything after the feed server is the listener's own code (main.websocket_subscriber_producer and
+main.tick_consumer), with two stand-ins: batches are acknowledged instead of being sent to the backend, and the
+executor notes the order instead of posting it.
 """
 
 import asyncio
@@ -17,7 +17,6 @@ import json
 import os
 import platform
 import pstats
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -34,14 +33,13 @@ from latency_bench.listener import listener_main
 from latency_bench.resources import LoopLagMonitor, ResourceSampler, redis_cpu_seconds, redis_memory
 from latency_bench.scenarios import Scenario, ScenarioBuilder, ScheduledEvent, listed_count
 from latency_bench.stats import (
-    SidecarTiming,
     clock_order_violations,
     distribution_ms,
     listing_stages,
     stage_breakdown,
 )
 from redis.asyncio import Redis
-from scrapers.skinport import SALE_FEED_CHANNEL, VENUE, SkinportScraper
+from scrapers.skinport import VENUE, SkinportScraper
 from shared_utils import edge_baselines_key, edge_sticker_prices_key, get_logger
 from task_supervisor import BoundedTaskPool
 
@@ -53,8 +51,6 @@ CLOCK_PROBES = 50
 # How long the client gets to connect and subscribe, and the drain allowed after the last scheduled event.
 CONNECT_TIMEOUT_SECONDS = 60.0
 DRAIN_TIMEOUT_SECONDS = 120.0
-# How long the sidecar gets to write its timings; with --cpu-prof on a loaded machine it can take a while.
-FLUSH_TIMEOUT_SECONDS = 120.0
 # Quiet time between the warm-up's last decision and the first measured event.
 WARMUP_SETTLE_SECONDS = 1.0
 # Where the environment of a run is read from on Linux.
@@ -156,16 +152,6 @@ async def wait_for_decisions(recorder: probes.StageRecorder, count: int, timeout
         await asyncio.sleep(0.05)
 
 
-async def wait_for_subscriber(cache: Redis, timeout: float) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        subscribers = dict(await cache.pubsub_numsub(SALE_FEED_CHANNEL))
-        if subscribers.get(SALE_FEED_CHANNEL, 0) >= 1:
-            return
-        await asyncio.sleep(0.05)
-    raise TimeoutError("the listener never subscribed to the sale feed channel")
-
-
 async def clock_offsets(server: FeedServerProcess) -> dict[str, Any]:
     """
     Reads the feed server's perf_counter between two of ours, CLOCK_PROBES times. On one monotonic clock its
@@ -185,29 +171,6 @@ async def clock_offsets(server: FeedServerProcess) -> dict[str, Any]:
     return {"probes": CLOCK_PROBES, "outside_bracket": outside, "narrowest_bracket_ms": (narrowest_ns or 0) / 1e6}
 
 
-def _sidecar_pid() -> int | None:
-    """The Node.js sidecar among this process's children (Node names its process MainThread, so match the script)."""
-    for child in psutil.Process().children(recursive=True):
-        try:
-            if any(argument.endswith("sidecar.js") for argument in child.cmdline()):
-                return child.pid
-        except psutil.Error:
-            continue
-    return None
-
-
-def _sidecar_timings(path: Path) -> tuple[dict[str, SidecarTiming], dict[str, Any]]:
-    if not path.exists():
-        return {}, {}
-    report = json.loads(path.read_text(encoding="utf-8"))
-    timings = {
-        key: SidecarTiming(callback=int(callback), publish=int(publish), published=int(published))
-        for key, callback, publish, published in report.get("timings", [])
-    }
-    usage = {key: value for key, value in report.items() if key != "timings"}
-    return timings, usage
-
-
 def _cpu_model(cpuinfo: Path = CPUINFO) -> str:
     """The CPU model; platform.processor() is empty inside a Linux container."""
     if cpuinfo.exists():
@@ -225,13 +188,6 @@ def _cpu_limit(cpu_max: Path = CGROUP_CPU_MAX) -> float | None:
     return None if quota == "max" else int(quota) / int(period)
 
 
-def _node_version() -> str:
-    try:
-        return subprocess.run(["node", "--version"], capture_output=True, text=True, check=False).stdout.strip()
-    except OSError:
-        return ""
-
-
 def environment() -> dict[str, Any]:
     return {
         "platform": platform.platform(),
@@ -241,7 +197,6 @@ def environment() -> dict[str, Any]:
         "cpu_count": os.cpu_count(),
         "memory_bytes": psutil.virtual_memory().total,
         "python": sys.version.split()[0],
-        "node": _node_version(),
         "in_container": Path("/.dockerenv").exists(),
     }
 
@@ -254,7 +209,6 @@ async def run_once(config: RunConfig) -> dict[str, Any]:
     schedule_path = run_dir / "schedule.jsonl"
     write_schedule(schedule_path, events)
     emit_path = run_dir / "emitted.json"
-    sidecar_path = run_dir / "sidecar_timings.json"
 
     main = listener_main()
     # main loaded the .env files on import, and apps/listener/.env overrides; the benchmark's settings win.
@@ -264,11 +218,8 @@ async def run_once(config: RunConfig) -> dict[str, Any]:
             "REDIS_PASSWORD": "",
             "CLOUDFLARE_COOKIE": "",
             "DEBUG_TELEMETRY": "false",
-            "SIDECAR_TIMING_FILE": str(sidecar_path),
         }
     )
-    if config.profile:
-        os.environ["NODE_OPTIONS"] = f"--cpu-prof --cpu-prof-dir={run_dir / 'node_profile'}"
 
     cache = Redis.from_url(config.redis_url, decode_responses=True)
     await prepare_redis(cache, fixture.baselines)
@@ -308,14 +259,9 @@ async def run_once(config: RunConfig) -> dict[str, Any]:
                     main.tick_consumer(queue, VENUE, anomaly_pool, batch_pool, batch_store, executor)
                 )
                 producer = asyncio.create_task(main.websocket_subscriber_producer(scraper, queue))
-                sidecar = asyncio.create_task(main.start_sidecar_process(scraper))
-                tasks = [producer, sidecar, asyncio.create_task(lag.run())]
+                tasks = [producer, asyncio.create_task(lag.run())]
                 try:
                     await server.expect("JOINED", CONNECT_TIMEOUT_SECONDS)
-                    await wait_for_subscriber(cache, CONNECT_TIMEOUT_SECONDS)
-                    sidecar_pid = _sidecar_pid()
-                    if sidecar_pid is not None:
-                        sampler.watch("sidecar", sidecar_pid)
                     sampler.start()
                     clock = await clock_offsets(server)
 
@@ -350,8 +296,6 @@ async def run_once(config: RunConfig) -> dict[str, Any]:
                     redis_cpu_after = await redis_cpu_seconds(cache)
 
                     await server.expect("PLAYED", DRAIN_TIMEOUT_SECONDS)
-                    await server.send("FLUSH")
-                    await server.expect("FLUSHED", FLUSH_TIMEOUT_SECONDS)
                     await server.send("STOP")
                     await server.expect("DONE", 30.0)
 
@@ -378,15 +322,7 @@ async def run_once(config: RunConfig) -> dict[str, Any]:
         await cache.aclose()
 
     emitted = {key: emitted_ns for key, emitted_ns in json.loads(emit_path.read_text(encoding="utf-8"))["emitted"]}
-    sidecar_timings, sidecar_usage = _sidecar_timings(sidecar_path)
-    summary = summarize(
-        config=config,
-        events=events,
-        recorder=recorder,
-        emitted=emitted,
-        sidecar_timings=sidecar_timings,
-        run_dir=run_dir,
-    )
+    summary = summarize(config=config, events=events, recorder=recorder, emitted=emitted, run_dir=run_dir)
     summary.update(
         {
             "timed_out": timed_out,
@@ -397,7 +333,6 @@ async def run_once(config: RunConfig) -> dict[str, Any]:
             "redis_cpu_seconds_measured": redis_cpu_after - redis_cpu_before,
             "system_cpu_percent_measured": sampler.system_cpu(measured_started, measured_ended),
             "resources": resources,
-            "sidecar_usage": sidecar_usage,
             "redis_memory": redis_memory_info,
             "orders_placed": executor.orders,
         }
@@ -437,7 +372,6 @@ def summarize(
     events: list[ScheduledEvent],
     recorder: probes.StageRecorder,
     emitted: dict[str, int],
-    sidecar_timings: dict[str, SidecarTiming],
     run_dir: Path,
 ) -> dict[str, Any]:
     """Per listing stages (written to stages.jsonl.gz) and their distributions over the measured listings."""
@@ -454,7 +388,6 @@ def summarize(
         if event.event_type != LISTED:
             continue
         emitted_ns = emitted.get(event.key)
-        sidecar = sidecar_timings.get(event.key)
         for product_id in event.product_ids:
             times = recorder.listings.get(product_id)
             if times is None or times.decided is None:
@@ -462,12 +395,12 @@ def summarize(
                 continue
             duplicates += max(0, times.decisions - 1)
             approvals += int(times.executed is not None)
-            violations += clock_order_violations(times, emitted_ns, sidecar)
+            violations += clock_order_violations(times, emitted_ns)
             if emitted_ns is not None:
                 first_emitted = emitted_ns if first_emitted is None else min(first_emitted, emitted_ns)
             first_decided = times.decided if first_decided is None else min(first_decided, times.decided)
             last_decided = times.decided if last_decided is None else max(last_decided, times.decided)
-            stages = listing_stages(times, emitted_ns, sidecar)
+            stages = listing_stages(times, emitted_ns)
             rows.append({"listing": product_id, "triggered": times.triggered, "dre_reason": times.dre_reason, **stages})
 
     with gzip.open(run_dir / "stages.jsonl.gz", "wt", encoding="utf-8") as raw:
@@ -484,7 +417,8 @@ def summarize(
     ]
     return {
         "format": RESULT_FORMAT_VERSION,
-        "pipeline": "current",
+        # The ingress measured: "python" since #175 removed the Node.js sidecar and Redis Pub/Sub ("current" before).
+        "pipeline": "python",
         "scenario": config.scenario.name,
         "scenario_description": config.scenario.description,
         "probe_level": config.probe_level,

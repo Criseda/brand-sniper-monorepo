@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
         command.add_argument("--seed", type=int, default=DEFAULT_SEED)
         command.add_argument("--listings", type=int, help="Measured listings per scenario (default: the scenario's own)")
-        command.add_argument("--profile", action="store_true", help="Also profile Python (cProfile) and Node (--cpu-prof)")
+        command.add_argument("--profile", action="store_true", help="Also profile the listener with cProfile")
     run.add_argument("--scenarios", default=",".join(_scenario_names()), help="Comma separated scenario names")
     run.add_argument("--runs", type=int, default=3)
     run.add_argument("--probes", default=",".join(PROBE_LEVELS), help="Comma separated probe levels: e2e, full")
@@ -220,10 +220,7 @@ def aggregate(out_dir: Path) -> dict[str, Any]:
 
 # Stages in path order, as listing_stages names them.
 STAGE_ORDER = (
-    "socket_to_sidecar_callback",
-    "sidecar_handler",
-    "sidecar_publish_to_python",
-    "socket_to_python",
+    "socket_to_parse",
     "parse",
     "parse_to_enqueue",
     "queue_wait",
@@ -235,7 +232,6 @@ STAGE_ORDER = (
     "anomaly_pool_wait",
     "dre",
     "dre_to_order",
-    "sidecar_publish_ack",
     "python_ingress_to_decision",
     "end_to_end",
 )
@@ -255,8 +251,8 @@ def markdown_report(results: dict[str, Any]) -> str:
     scenarios = list(dict.fromkeys(group["scenario"] for group in groups.values()))
     lines = [
         "| Scenario | Listings | Dropped | p50 ms | p95 ms | p99 ms | Max ms | Decided/s | Loop lag p99 ms "
-        "| Listener CPU | Sidecar CPU | Redis CPU | Peak RSS listener / sidecar MB |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Listener CPU | Redis CPU | Peak RSS listener MB |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for scenario in scenarios:
         group = groups.get(f"{scenario}/e2e") or groups[f"{scenario}/full"]
@@ -268,13 +264,13 @@ def markdown_report(results: dict[str, Any]) -> str:
             return f"{100 * (_mean(shares) or 0.0):.0f}%"
 
         redis_share = _mean([run["redis_cpu_seconds_measured"] / run["measured_seconds"] for run in runs]) or 0.0
-        rss = [max(run["peak_rss_bytes"].get(name, 0) for run in runs) / 2**20 for name in ("listener", "sidecar")]
+        rss = max(run["peak_rss_bytes"].get("listener", 0) for run in runs) / 2**20
         throughput = _mean([run.get("decision_rate_listings_per_second") or 0.0 for run in runs])
         lag = max(run["loop_lag_ms"].get("p99", 0.0) for run in runs)
         lines.append(
             f"| {scenario} | {end_to_end['count']} | {sum(run['dropped'] for run in runs)} | {_ms(end_to_end['p50'])} "
             f"| {_ms(end_to_end['p95'])} | {_ms(end_to_end['p99'])} | {_ms(end_to_end['max'])} | {throughput:.0f} | {_ms(lag)} "
-            f"| {cpu_share('listener')} | {cpu_share('sidecar')} | {100 * redis_share:.0f}% | {rss[0]:.0f} / {rss[1]:.0f} |"
+            f"| {cpu_share('listener')} | {100 * redis_share:.0f}% | {rss:.0f} |"
         )
 
     lines += ["", "| Scenario | e2e probes p50 / p99 ms | full probes p50 / p99 ms | Runs p50 ms (full) | Runs p99 ms (full) |"]

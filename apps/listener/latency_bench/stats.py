@@ -2,7 +2,6 @@
 
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from latency_bench.probes import ListingTimes
@@ -30,37 +29,25 @@ def distribution_ms(values_ns: Iterable[int]) -> dict[str, Any]:
     return summary
 
 
-@dataclass(frozen=True, slots=True)
-class SidecarTiming:
-    callback: int  # saleFeed callback entered (socket read, Engine.IO and MessagePack decoding done)
-    publish: int  # Envelope built and logged; publish starts
-    published: int  # Redis acknowledged the publish
-
-
 def _span(start: int | None, end: int | None) -> int | None:
     return end - start if start is not None and end is not None else None
 
 
-def listing_stages(times: ListingTimes, emitted: int | None, sidecar: SidecarTiming | None) -> dict[str, int | None]:
+def listing_stages(times: ListingTimes, emitted: int | None) -> dict[str, int | None]:
     """
     Each stage's duration for one listing, in nanoseconds (None when it did not happen or was not probed).
 
     The stages tile the path from the feed server's write to the decision, so for a listing with every boundary
-    they add up to `end_to_end`. Times from the sidecar are Node's process.hrtime, which reads the same monotonic
-    clock as Python's perf_counter on Linux and Windows; the run checks that the boundaries are in order.
+    they add up to `end_to_end`. The feed server's times are its perf_counter, which reads the same monotonic clock
+    as the listener's; the run checks that the boundaries are in order.
     """
     decided = times.decided
     stages: dict[str, int | None] = {
         "end_to_end": _span(emitted, decided),
         "python_ingress_to_decision": _span(times.parse_start, decided),
+        # The websocket read, Engine.IO framing and MessagePack decoding, up to the sale feed parser.
+        "socket_to_parse": _span(emitted, times.parse_start),
     }
-    if sidecar is not None:
-        stages["socket_to_sidecar_callback"] = _span(emitted, sidecar.callback)
-        stages["sidecar_handler"] = sidecar.publish - sidecar.callback
-        stages["sidecar_publish_to_python"] = _span(sidecar.publish, times.parse_start)
-        stages["sidecar_publish_ack"] = sidecar.published - sidecar.publish
-    else:
-        stages["socket_to_python"] = _span(emitted, times.parse_start)
     stages["parse"] = _span(times.parse_start, times.parse_end)
     stages["parse_to_enqueue"] = _span(times.parse_end, times.enqueued)
     stages["queue_wait"] = _span(times.enqueued, times.dequeued)
@@ -87,11 +74,8 @@ def stage_breakdown(rows: Iterable[Mapping[str, int | None]]) -> dict[str, dict[
     return {stage: distribution_ms(values) for stage, values in collected.items()}
 
 
-def clock_order_violations(times: ListingTimes, emitted: int | None, sidecar: SidecarTiming | None) -> int:
+def clock_order_violations(times: ListingTimes, emitted: int | None) -> int:
     """How many boundaries of one listing are out of order across processes (should always be 0)."""
-    chain = [emitted]
-    if sidecar is not None:
-        chain += [sidecar.callback, sidecar.publish]
-    chain += [times.parse_start, times.decided]
+    chain = [emitted, times.parse_start, times.decided]
     known = [value for value in chain if value is not None]
     return sum(1 for earlier, later in zip(known, known[1:], strict=False) if later < earlier)

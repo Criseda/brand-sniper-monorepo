@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 import aiohttp
-import psutil
 import pytest
 from aiohttp import WSMsgType
 from aiohttp.test_utils import TestClient, TestServer
@@ -45,16 +44,12 @@ from latency_bench.run import (
     RunConfig,
     _cpu_limit,
     _cpu_model,
-    _node_version,
-    _sidecar_pid,
-    _sidecar_timings,
     clock_offsets,
     decision_rate,
     prepare_redis,
     run_once,
     summarize,
     wait_for_decisions,
-    wait_for_subscriber,
     write_schedule,
 )
 from latency_bench.scenarios import (
@@ -67,7 +62,6 @@ from latency_bench.scenarios import (
     listed_count,
 )
 from latency_bench.stats import (
-    SidecarTiming,
     clock_order_violations,
     distribution_ms,
     listing_stages,
@@ -250,7 +244,7 @@ def _schedule_record(offset_ms: float, product_id: int, measured: bool) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_feed_server_handshake_play_and_flush():
+async def test_feed_server_handshake_and_play():
     frames = prepare_frames([_schedule_record(0, 1, False), _schedule_record(0, 2, True), _schedule_record(5, 3, True)])
     server = FeedServer(frames)
     async with TestClient(TestServer(server.app())) as client:
@@ -270,12 +264,6 @@ async def test_feed_server_handshake_play_and_flush():
         received = [decode_packet(await socket.receive_bytes())["data"][1]["sales"][0]["productId"] for _ in range(3)]
         assert received == [1, 2, 3]
         assert [key for key, _ in server.emitted] == ["1", "2", "3"]
-
-        flush = asyncio.create_task(server.flush())
-        assert decode_packet(await socket.receive_bytes())["data"] == ["benchFlush"]
-        await socket.send_bytes(encode_event("benchFlushed", {"events": 3}))
-        await asyncio.wait_for(flush, 1)
-        assert server.flush_reply == {"events": 3}
         await socket.close()
         assert socket.closed
 
@@ -285,12 +273,10 @@ async def test_feed_server_needs_a_client():
     server = FeedServer([])
     with pytest.raises(RuntimeError):
         await server.play(measured=True)
-    with pytest.raises(RuntimeError):
-        await server.flush()
 
 
 def test_ws_message_type_is_binary():
-    # The sidecar's parser only accepts binary frames; encode_event must produce bytes.
+    # The listener only reads Socket.IO packets from binary frames; encode_event must produce bytes.
     assert isinstance(encode_event("saleFeed", {}), bytes)
     assert WSMsgType.BINARY != WSMsgType.TEXT
 
@@ -373,11 +359,11 @@ def test_install_restores_the_listener_functions(level):
     from scrapers import skinport
 
     main = listener_main()
-    originals = (main.update_window_and_detect, detection.dre_approval_reason, skinport.parse_sale_feed_message)
+    originals = (main.update_window_and_detect, detection.dre_approval_reason, skinport.parse_sale_feed_event)
     with probes.install(probes.StageRecorder(level=level)):
         assert main.update_window_and_detect is not originals[0]
-        assert (skinport.parse_sale_feed_message is not originals[2]) == (level == "full")
-    assert (main.update_window_and_detect, detection.dre_approval_reason, skinport.parse_sale_feed_message) == originals
+        assert (skinport.parse_sale_feed_event is not originals[2]) == (level == "full")
+    assert (main.update_window_and_detect, detection.dre_approval_reason, skinport.parse_sale_feed_event) == originals
 
 
 @pytest.mark.asyncio
@@ -400,9 +386,9 @@ async def test_probes_time_every_stage_of_a_scored_listing():
 
     recorder = probes.StageRecorder(level="full", expected=1)
     executor = probes.BenchExecutor(recorder)
-    message = json.dumps({"receivedAt": 1_790_000_000_000, "payload": {"eventType": "listed", "sales": [_sale(AK, 42, 500)]}})
+    payload = {"eventType": "listed", "sales": [_sale(AK, 42, 500)]}
     with probes.install(recorder):
-        _, ticks = skinport.parse_sale_feed_message(message)
+        _, ticks = skinport.parse_sale_feed_event(payload, 1_790_000_000_000)
         await listener_main().update_window_and_detect(ticks[0], cache, Pool(), executor)
 
     times = recorder.listings["42"]
@@ -410,7 +396,7 @@ async def test_probes_time_every_stage_of_a_scored_listing():
     assert times.dre_reason == "support_floor"
     assert executor.orders == 1
     assert recorder.all_decided.is_set()
-    stages = listing_stages(times, emitted=times.parse_start, sidecar=None)
+    stages = listing_stages(times, emitted=times.parse_start)
     for stage in (
         "parse",
         "window_write",
@@ -461,13 +447,10 @@ def test_listing_stages_tile_the_path():
         executed=82,
         decided=80,
     )
-    sidecar = SidecarTiming(callback=20, publish=25, published=30)
-    stages = listing_stages(times, emitted=10, sidecar=sidecar)
+    stages = listing_stages(times, emitted=10)
     assert stages["end_to_end"] == 70
     tiled = (
-        "socket_to_sidecar_callback",
-        "sidecar_handler",
-        "sidecar_publish_to_python",
+        "socket_to_parse",
         "parse",
         "parse_to_enqueue",
         "queue_wait",
@@ -480,14 +463,13 @@ def test_listing_stages_tile_the_path():
     )
     assert sum(stages[stage] or 0 for stage in tiled) == stages["end_to_end"]
     assert stages["dre_to_order"] == 2
-    assert stages["sidecar_publish_ack"] == 5
-    assert clock_order_violations(times, 10, sidecar) == 0
-    assert clock_order_violations(times, 30, sidecar) == 1
+    assert clock_order_violations(times, 10) == 0
+    assert clock_order_violations(times, 50) == 1
 
 
-def test_listing_stages_without_sidecar_or_dre():
-    stages = listing_stages(_times(parse_start=15, decided=30), emitted=10, sidecar=None)
-    assert stages["socket_to_python"] == 5
+def test_listing_stages_without_the_dre():
+    stages = listing_stages(_times(parse_start=15, decided=30), emitted=10)
+    assert stages["socket_to_parse"] == 5
     assert "dre" not in stages
     assert stages["queue_wait"] is None
     assert stage_breakdown([stages])["end_to_end"]["count"] == 1
@@ -545,7 +527,6 @@ async def test_clock_offsets_count_readings_outside_the_bracket():
             pass
 
         async def expect(self, prefix: str, timeout: float) -> str:
-            import time
 
             reading = next(self.readings, None)
             return f"CLOCK {time.perf_counter_ns() if reading is None else reading}"
@@ -553,15 +534,6 @@ async def test_clock_offsets_count_readings_outside_the_bracket():
     clock = await clock_offsets(Server())
     assert clock["probes"] == 50
     assert clock["outside_bracket"] == 1
-
-
-def test_sidecar_timings_file(tmp_path: Path):
-    path = tmp_path / "timings.json"
-    assert _sidecar_timings(path) == ({}, {})
-    path.write_text(json.dumps({"timings": [["5", "1", "2", "3"]], "max_rss_kb": 10}), encoding="utf-8")
-    timings, usage = _sidecar_timings(path)
-    assert timings == {"5": SidecarTiming(1, 2, 3)}
-    assert usage == {"max_rss_kb": 10}
 
 
 def test_summarize_counts_drops_repeats_and_approvals(tmp_path: Path):
@@ -587,7 +559,7 @@ def test_summarize_counts_drops_repeats_and_approvals(tmp_path: Path):
         scenario=SCENARIOS["single"], fixture_dir=tmp_path, redis_url="redis://x", out_dir=tmp_path, seed=3, run_index=0
     )
 
-    summary = summarize(config=config, events=events, recorder=recorder, emitted=emitted, sidecar_timings={}, run_dir=tmp_path)
+    summary = summarize(config=config, events=events, recorder=recorder, emitted=emitted, run_dir=tmp_path)
     assert summary["measured_listings"] == 4
     assert summary["decided"] == 3
     assert summary["dropped"] == 1
@@ -710,10 +682,6 @@ async def test_serve_follows_the_orchestrator(tmp_path, monkeypatch):
         await commands.put("GO")
         assert await asyncio.wait_for(replies.get(), 5) == "PLAYED"
         received = [decode_packet(await socket.receive_bytes())["data"][1]["sales"][0]["productId"] for _ in range(2)]
-        await commands.put("FLUSH")
-        assert decode_packet(await socket.receive_bytes())["data"] == ["benchFlush"]
-        await socket.send_bytes(encode_event("benchFlushed"))
-        assert await asyncio.wait_for(replies.get(), 5) == "FLUSHED"
         await commands.put("UNKNOWN")  # Ignored
         await commands.put("STOP")
         assert await asyncio.wait_for(replies.get(), 5) == "DONE"
@@ -754,13 +722,12 @@ async def test_feed_server_process_skips_other_lines_and_notices_an_exit():
 
 
 class BenchRedis(FakeRedis):
-    """The benchmark's own Redis as run_once uses it: empty, the listener subscribed, emptied at the end."""
+    """The benchmark's own Redis as run_once uses it: empty at the start, emptied at the end."""
 
     instances: list["BenchRedis"] = []
 
-    def __init__(self, subscribers: int = 1) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.subscribers = subscribers
         self.flushed = False
         self.closed = False
         BenchRedis.instances.append(self)
@@ -768,9 +735,6 @@ class BenchRedis(FakeRedis):
     @classmethod
     def from_url(cls, url: str, **kwargs: object) -> "BenchRedis":
         return cls()
-
-    async def pubsub_numsub(self, channel: str) -> list[tuple[str, int]]:
-        return [(channel, self.subscribers)]
 
     async def info(self, section: str) -> dict[str, str]:
         return {"used_cpu_user": "1.5", "used_cpu_sys": "0.5", "used_memory_peak": "2048"}
@@ -794,58 +758,15 @@ class FakeBatchStore:
         return None
 
 
-class FakeScraper:
-    async def close(self) -> None:
-        return None
-
-
-@pytest.mark.asyncio
-async def test_wait_for_subscriber():
-    await wait_for_subscriber(BenchRedis(subscribers=1), 1.0)
-    with pytest.raises(TimeoutError, match="never subscribed"):
-        await wait_for_subscriber(BenchRedis(subscribers=0), 0.1)
-
-
-def _stand_in_listener(monkeypatch, fixture, skip_listing=None):
+def _stand_in_consumer(monkeypatch, fixture, skip_listing=None):
     """
-    Stand-ins for the parts of the listener that need Node.js or a Redis server: the sidecar is a Python
-    Socket.IO client of the feed server, Pub/Sub is an asyncio queue, and the consumer loop scores against the edge
-    Redis kept in memory. The probes still wrap the listener's own parse, window, Z score and DRE functions.
+    The consumer loop needs a Redis server, so this stand-in scores against the edge Redis kept in memory. The
+    listener's own websocket client and producer read the feed, and the probes still wrap the listener's own parse,
+    window, Z score and DRE functions.
     """
     from backtest.store import InMemoryEdgeStore
-    from scrapers import skinport
 
     main = listener_main()
-    relay = asyncio.Queue()
-
-    async def start_sidecar_process(scraper):
-        timings = []
-        url = os.environ["SKINPORT_WS_URL"]
-        async with aiohttp.ClientSession() as session, session.ws_connect(f"{url}/socket.io/") as socket:
-            await socket.receive_str()
-            await socket.send_bytes(encode_packet(CONNECT, None))
-            await socket.receive_bytes()
-            await socket.send_bytes(encode_event("saleFeedJoin", {"currency": "USD"}))
-            async for message in socket:
-                if message.type != WSMsgType.BINARY:
-                    continue
-                name, *args = decode_packet(message.data)["data"]
-                if name == "saleFeed":
-                    callback = time.perf_counter_ns()
-                    key = str(args[0]["sales"][0]["productId"])
-                    timings.append([key, str(callback), str(callback), str(time.perf_counter_ns())])
-                    await relay.put(json.dumps({"receivedAt": int(time.time() * 1000), "payload": args[0]}))
-                elif name == "benchFlush":
-                    report = {"timings": timings, "max_rss_kb": 1}
-                    Path(os.environ["SIDECAR_TIMING_FILE"]).write_text(json.dumps(report), encoding="utf-8")
-                    await socket.send_bytes(encode_event("benchFlushed"))
-
-    async def websocket_subscriber_producer(scraper, queue):
-        while True:
-            feed_event, ticks = skinport.parse_sale_feed_message(await relay.get())
-            await queue.put(feed_event)
-            for tick in ticks:
-                await queue.put(tick)
 
     async def tick_consumer(queue, venue, anomaly_pool, batch_pool, batch_store, executor):
         cache = InMemoryEdgeStore()
@@ -860,8 +781,6 @@ def _stand_in_listener(monkeypatch, fixture, skip_listing=None):
             finally:
                 queue.task_done()
 
-    monkeypatch.setattr(main, "start_sidecar_process", start_sidecar_process)
-    monkeypatch.setattr(main, "websocket_subscriber_producer", websocket_subscriber_producer)
     monkeypatch.setattr(main, "tick_consumer", tick_consumer)
 
 
@@ -876,27 +795,15 @@ async def test_run_once_plays_a_scenario_through_the_listener(tmp_path, monkeypa
     fixture_dir.mkdir()
     write_fixture(fixture_dir, fixture.listed_sales, fixture.sold_sales, fixture.baselines, fixture.event_sizes, {})
     # run_once points these at the benchmark; setting them here restores them after the test.
-    for name in (
-        "EDGE_REDIS_URL",
-        "REDIS_PASSWORD",
-        "CLOUDFLARE_COOKIE",
-        "DEBUG_TELEMETRY",
-        "SIDECAR_TIMING_FILE",
-        "SKINPORT_WS_URL",
-        "NODE_OPTIONS",
-    ):
+    for name in ("EDGE_REDIS_URL", "REDIS_PASSWORD", "CLOUDFLARE_COOKIE", "DEBUG_TELEMETRY", "SKINPORT_WS_URL"):
         monkeypatch.setenv(name, "")
     monkeypatch.setattr(BenchRedis, "instances", [])
     monkeypatch.setattr("latency_bench.run.Redis", BenchRedis)
     monkeypatch.setattr("latency_bench.run.RedisBatchStore", FakeBatchStore)
-    monkeypatch.setattr("latency_bench.run.SkinportScraper", FakeScraper)
     monkeypatch.setattr("latency_bench.run.WARMUP_SETTLE_SECONDS", 0.0)
     monkeypatch.setattr("latency_bench.run.DRAIN_TIMEOUT_SECONDS", 3.0)
     monkeypatch.setattr("latency_bench.resources.SAMPLE_INTERVAL_SECONDS", 0.01)
-    if profile:
-        # There is no Node.js sidecar here; stand this process in for it so its usage is sampled too.
-        monkeypatch.setattr("latency_bench.run._sidecar_pid", os.getpid)
-    _stand_in_listener(monkeypatch, fixture, skip_listing)
+    _stand_in_consumer(monkeypatch, fixture, skip_listing)
     scenario = _scenario(measured_listings=6, sales_per_event=2, events_per_burst=1, burst_gap_ms=5.0)
     config = RunConfig(
         scenario=scenario,
@@ -919,11 +826,12 @@ async def test_run_once_plays_a_scenario_through_the_listener(tmp_path, monkeypa
     assert summary["clock"]["probes"] == 50
     assert summary["clock"]["outside_bracket"] == 0
     assert summary["clock_order_violations"] == 0
-    assert summary["stages_ms"]["socket_to_sidecar_callback"]["count"] == 6 - dropped
-    assert summary["sidecar_usage"] == {"max_rss_kb": 1}
+    assert summary["pipeline"] == "python"
+    assert summary["stages_ms"]["end_to_end"]["count"] == 6 - dropped
+    assert ("socket_to_parse" in summary["stages_ms"]) is (level == "full")
     assert summary["redis_memory"] == {"used_memory_peak_bytes": 2048}
     assert summary["redis_cpu_seconds_measured"] == 0.0
-    assert set(summary["cpu_seconds_measured"]) == {"listener", "feed_server"} | ({"sidecar"} if profile else set())
+    assert set(summary["cpu_seconds_measured"]) == {"listener", "feed_server"}
     run_dir = tmp_path / "out" / f"test-{level}-run0"
     assert json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))["decided"] == 6 - dropped
     assert ("python_profile_top" in summary) is profile
@@ -954,7 +862,7 @@ async def test_probes_ignore_ticks_without_a_listing_id(monkeypatch):
     monkeypatch.setattr(detection, "dre_approval_reason", nothing)
     monkeypatch.setattr(detection, "calculate_z_score", lambda *args, **kwargs: 0.0)
     monkeypatch.setattr(detection, "should_trigger_anomaly", lambda *args, **kwargs: False)
-    monkeypatch.setattr(skinport, "parse_sale_feed_message", lambda message: (None, [snapshot]))
+    monkeypatch.setattr(skinport, "parse_sale_feed_event", lambda payload, received_at_ms: (None, [snapshot]))
 
     recorder = probes.StageRecorder(level="full")
     queue = probes.InstrumentedQueue(recorder)
@@ -972,7 +880,7 @@ async def test_probes_ignore_ticks_without_a_listing_id(monkeypatch):
     )
     await probes.BenchExecutor(recorder).place_order(purchase)
     with probes.install(recorder):
-        skinport.parse_sale_feed_message("{}")
+        skinport.parse_sale_feed_event({}, 1)
         await detection.push_to_window(snapshot, None)
         await detection.score_window(snapshot, None)
         detection.calculate_z_score(1.0, 1.0, 1.0)
@@ -1005,30 +913,7 @@ def test_resource_sampler_skips_a_process_that_is_gone():
     assert sampler.system_cpu(0.0, 0.0) == {"samples": 0}
 
 
-def test_sidecar_pid_matches_the_script(monkeypatch):
-    class Child:
-        def __init__(self, pid, cmdline):
-            self.pid = pid
-            self._cmdline = cmdline
-
-        def cmdline(self):
-            if self._cmdline is None:
-                raise psutil.AccessDenied(self.pid)
-            return self._cmdline
-
-    children = [Child(1, None), Child(2, ["python", "serve"]), Child(3, ["node", "/app/sidecar.js"])]
-
-    class Process:
-        def children(self, recursive):
-            return children
-
-    monkeypatch.setattr("latency_bench.run.psutil.Process", Process)
-    assert _sidecar_pid() == 3
-    children.pop()
-    assert _sidecar_pid() is None
-
-
-def test_environment_reads_the_cpu_model_and_limit(tmp_path, monkeypatch):
+def test_environment_reads_the_cpu_model_and_limit(tmp_path):
     cpuinfo = tmp_path / "cpuinfo"
     cpuinfo.write_text("processor\t: 0\nmodel name\t: Test CPU\n", encoding="utf-8")
     assert _cpu_model(cpuinfo) == "Test CPU"
@@ -1042,12 +927,6 @@ def test_environment_reads_the_cpu_model_and_limit(tmp_path, monkeypatch):
     cpu_max.write_text("max 100000\n", encoding="utf-8")
     assert _cpu_limit(cpu_max) is None
     assert _cpu_limit(tmp_path / "missing") is None
-
-    def no_node(*args, **kwargs):
-        raise OSError("node is not installed")
-
-    monkeypatch.setattr("latency_bench.run.subprocess.run", no_node)
-    assert _node_version() == ""
 
 
 # --- CLI commands ---
