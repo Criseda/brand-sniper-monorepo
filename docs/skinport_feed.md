@@ -202,19 +202,26 @@ Trimmed, sanitized `sold` sale:
      and now fills the existing `float_value` and `paint_index`. On REST snapshot rows all listing columns
      stay NULL. On listing rows, `stickers` is `[]` when the item has none.
 
-Raw events get the same durability as ticks already had:
+Raw events and ticks share one path to the database, in three stages:
 
-- **In listener memory** until a flush. A flush happens when either buffer reaches `CHUNK_LIMIT` (each REST
-  poll triggers one, roughly every 5 minutes) and on graceful shutdown. A listener crash loses whatever is
-  still buffered. Both compose stacks give the listener `stop_grace_period: 120s`, so `docker stop` and
-  redeploys wait for the drain (up to about 3x `LISTENER_SHUTDOWN_GRACE_SECONDS`) instead of killing it
-  after Docker's 10 s default.
-- **In the edge Redis stream** after a flush, until the backend acknowledges the batch. This survives a
-  listener crash or restart, but **not a Redis restart**: the edge Redis runs with `--save '' --appendonly no`
-  (RAM only), so pending and dead-letter batches are lost with it.
+- **In listener memory** until a flush. A flush happens when either buffer reaches `CHUNK_LIMIT`, when the
+  oldest record in the buffers has waited `LISTENER_FLUSH_INTERVAL_SECONDS` (10 s by default, #252), and on
+  graceful shutdown. So a hard kill (`docker kill`, an OOM kill, the PC losing power) loses at most the last
+  10 seconds of the feed, plus anything still waiting in the tick queue, which is empty unless the listener
+  has fallen behind. Before #252 only `CHUNK_LIMIT` triggered a flush, in practice once per REST poll (about
+  every 5 minutes), so a crash could lose up to 5 minutes of the feed. Both compose stacks give
+  the listener `stop_grace_period: 120s`, so `docker stop` and redeploys wait for the drain (up to about 3x
+  `LISTENER_SHUTDOWN_GRACE_SECONDS`) instead of killing it after Docker's 10 s default; a test checks this.
+- **In the edge Redis stream** after a flush, until the backend acknowledges the batch, normally within a
+  second. This survives a listener crash or restart, but **not a Redis restart**: the edge Redis runs with
+  `--save '' --appendonly no` (RAM only), so pending and dead-letter batches are lost with it. I accept that
+  risk rather than persisting the edge Redis: with batches written every 10 seconds, the only batches it
+  holds for long are the ones waiting while the backend is down.
 - **In PostgreSQL** once the backend commits the batch.
 
-Tightening the in-memory window is tracked in #252.
+Writing every 10 seconds costs at most 8,640 batches a day per venue, one `ingestion_batches` row each, and
+none while the feed is quiet. Waxpeer's scraper already groups raw payloads for up to 10 seconds before they
+reach the consumer, so its bound is about 20 seconds.
 
 ## Volume
 

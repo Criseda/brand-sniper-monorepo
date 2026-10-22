@@ -69,6 +69,9 @@ def _positive_float_env(name: str, default: float) -> float:
 
 # Batch buffer chunk limit for bulk ingest dispatches
 CHUNK_LIMIT = int(os.getenv("CHUNK_LIMIT", "2500"))
+# The longest a tick or feed event waits in listener memory before its batch is written to the edge Redis
+# stream, so a hard kill loses at most this much of the feed (#252).
+FLUSH_INTERVAL_SECONDS = _positive_float_env("LISTENER_FLUSH_INTERVAL_SECONDS", 10)
 # End-to-end backpressure and bounded background-work settings.
 TICK_QUEUE_SIZE = _positive_int_env("LISTENER_TICK_QUEUE_SIZE", 10000)
 ANOMALY_WORKERS = _positive_int_env("LISTENER_ANOMALY_WORKERS", 4)
@@ -256,13 +259,37 @@ async def tick_consumer(
     batch_buffer: list[dict] = []
     feed_event_buffer: list[dict] = []
     batch_buffer_id: str | None = None
+    # Event loop time when the oldest record still in the buffers arrived; None while both are empty.
+    oldest_buffered_at: float | None = None
+    loop = asyncio.get_running_loop()
     dedup_cache = DedupCache()
+
+    async def flush() -> None:
+        nonlocal batch_buffer_id, oldest_buffered_at
+        batch_buffer_id = batch_buffer_id or str(uuid4())
+        await flush_batch_buffer(
+            venue,
+            batch_buffer,
+            batch_id=batch_buffer_id,
+            store=batch_store,
+            batch_pool=batch_pool,
+            feed_event_buffer=feed_event_buffer,
+        )
+        batch_buffer_id = None
+        oldest_buffered_at = None
 
     logger.info("Telemetry processing consumer loop is active (Redis: %s).", edge_redis_url)
 
     try:
         while True:
-            item = await queue.get()
+            flush_due_at = None if oldest_buffered_at is None else oldest_buffered_at + FLUSH_INTERVAL_SECONDS
+            try:
+                # While records are buffered, a quiet feed waits only until they are due to be written.
+                async with asyncio.timeout_at(flush_due_at):
+                    item = await queue.get()
+            except TimeoutError:
+                await flush()
+                continue
             tick_queue_size.set(queue.qsize())
             if item is None:
                 queue.task_done()
@@ -310,32 +337,23 @@ async def tick_consumer(
                     item_label = f"feed event {item.event_type}" if isinstance(item, FeedEvent) else item.market_hash_name
                     logger.error("Error processing tick for '%s': %s", item_label, item_err)
 
-                # Persist full buffers outside the per-item exception boundary.
-                if len(batch_buffer) >= CHUNK_LIMIT or len(feed_event_buffer) >= CHUNK_LIMIT:
-                    batch_buffer_id = batch_buffer_id or str(uuid4())
-                    await flush_batch_buffer(
-                        venue,
-                        batch_buffer,
-                        batch_id=batch_buffer_id,
-                        store=batch_store,
-                        batch_pool=batch_pool,
-                        feed_event_buffer=feed_event_buffer,
-                    )
-                    batch_buffer_id = None
+                # Persist full or old buffers outside the per-item exception boundary. The age is checked here
+                # too, because a busy queue hands over the next item without ever waiting for it.
+                if batch_buffer or feed_event_buffer:
+                    if oldest_buffered_at is None:
+                        oldest_buffered_at = loop.time()
+                    if (
+                        len(batch_buffer) >= CHUNK_LIMIT
+                        or len(feed_event_buffer) >= CHUNK_LIMIT
+                        or loop.time() - oldest_buffered_at >= FLUSH_INTERVAL_SECONDS
+                    ):
+                        await flush()
             finally:
                 queue.task_done()
     finally:
         try:
             if batch_buffer or feed_event_buffer:
-                batch_buffer_id = batch_buffer_id or str(uuid4())
-                await flush_batch_buffer(
-                    venue,
-                    batch_buffer,
-                    batch_id=batch_buffer_id,
-                    store=batch_store,
-                    batch_pool=batch_pool,
-                    feed_event_buffer=feed_event_buffer,
-                )
+                await flush()
         finally:
             await cache.aclose()
 
