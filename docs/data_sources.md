@@ -113,8 +113,8 @@ tradable listings only. The cutover shows in the data as the jump from about 10,
 about 25,000. Snapshots before it cannot stand in for prices I could buy at and resell, so replays, the
 scorecard (#249) and any training set must leave them out or report them apart.
 
-The sale feed runs through the Node.js sidecar in `apps/listener/scrapers/skinport_websocket/`. Since
-2026-09-24 21:58 UTC it records every `listed` and `sold` event, raw in `feed_events` and normalized in
+The listener reads the sale feed directly (`apps/listener/scrapers/skinport_socket.py`; a Node.js sidecar
+relayed it through Redis Pub/Sub until #175). Since 2026-09-24 21:58 UTC it records every `listed` and `sold` event, raw in `feed_events` and normalized in
 `live_market_ticks` with the listing ID, float, pattern, stickers and link. The receive times are exact.
 
 The sales history endpoint (`/v1/sales/history`) feeds the current baselines, described above.
@@ -157,7 +157,7 @@ sticker prices use the listing's naming.
 Fees for each venue live in `packages/shared_utils/src/shared_utils/pnl.py` (`VenueFees`, `fees_for`),
 described in section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport and Waxpeer
 (#261) are connected, and CSFloat (#33) comes next. When picking a venue I prefer an official API with a key
-over one that needs browser cookies or a JavaScript sidecar, which is what Skinport's feed needs.
+over a feed built for a website, which is what Skinport's is: it expects a browser's headers.
 
 Waxpeer publishes listings only, no sales, so it has no baselines of its own. Its listings are scored against
 the Skinport baselines and priced as bought on Waxpeer and resold on Skinport (`resale_venue_for`). The

@@ -116,7 +116,7 @@ class ScheduledEvent:
 
     @property
     def key(self) -> str:
-        """The event's first productId: unique, and what the sidecar keys its timings by."""
+        """The event's first productId: unique, and what the feed server keys its emit times by."""
         return str(self.payload["sales"][0]["productId"])
 
 

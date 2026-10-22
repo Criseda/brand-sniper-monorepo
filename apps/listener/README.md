@@ -1,6 +1,6 @@
 # Listener: Edge Node Ingestion Stream
 
-The Listener application is designed to run 24/7 on edge hardware (e.g., a Raspberry Pi, low-power VPS, or any edge device). Its sole responsibility is to consume massive firehoses of live market data from secondary marketplaces via REST polling and a **Node.js WebSocket sidecar** (for Socket.IO-based push feeds).
+The Listener application is designed to run 24/7 on edge hardware (e.g., a Raspberry Pi, low-power VPS, or any edge device). Its sole responsibility is to consume massive firehoses of live market data from secondary marketplaces via REST polling and each venue's Socket.IO push feed, read directly over an aiohttp websocket.
 
 ## The Edge Compute Architecture
 
@@ -29,13 +29,13 @@ timeouts, and connection failures therefore reach the worker supervisor and are
 reported through `listener_trade_submissions_total` and
 `listener_background_jobs_total` instead of becoming orphaned task failures.
 
-### Node.js WebSocket Sidecar
+### Skinport Sale Feed
 
-The `SkinportScraper` spawns a Node.js subprocess (`scrapers/skinport_websocket/sidecar.js`) that connects to Skinport's Socket.IO `saleFeed`. The sidecar forwards every event type (`listed`, `sold`, ...) untouched, wrapped with a receive timestamp, to the local Redis Pub/Sub channel `skinport:sale_feed`. The main Python process records each raw event (`feed_events`) and every sale as a listing-level tick; only `listed` sales (and REST snapshots) enter the anomaly detection pipeline. See [`docs/skinport_feed.md`](../../docs/skinport_feed.md) and the official [Sale Feed](https://docs.skinport.com/websocket/sale-feed) and [Items](https://docs.skinport.com/items) docs. (The subprocess stdout/stderr are captured solely for application logging).
+The `SkinportScraper` reads Skinport's Socket.IO `saleFeed` itself (`scrapers/skinport_socket.py`): Engine.IO v4 over an aiohttp websocket, with Socket.IO packets in MessagePack. Every event type (`listed`, `sold`, ...) is kept untouched with its receive time. The listener records each raw event (`feed_events`) and every sale as a listing-level tick; only `listed` sales (and REST snapshots) enter the anomaly detection pipeline. When the connection ends, the listener opens it again after 1 second, doubling the wait up to 30 seconds while it keeps failing; `listener_feed_connected` and `listener_feed_reconnects_total` show it. See [`docs/skinport_feed.md`](../../docs/skinport_feed.md) and the official [Sale Feed](https://docs.skinport.com/websocket/sale-feed) and [Items](https://docs.skinport.com/items) docs. Until #175 a Node.js sidecar read the feed and relayed it through Redis Pub/Sub; [`docs/benchmarks/ingress_latency.md`](../../docs/benchmarks/ingress_latency.md) explains why it went.
 
 ### Waxpeer Feed
 
-With `LISTENER_VENUE=waxpeer` the listener runs `WaxpeerScraper`, which reads Waxpeer's public Socket.IO feed directly over an aiohttp websocket (no sidecar) and has no REST poll. It records and scores only listings priced below the item's Skinport price, then follows them for price cuts and removal, and judges them against the Skinport baselines it loads. Set `WAXPEER_API_KEY` in `.env`. See [`docs/waxpeer_feed.md`](../../docs/waxpeer_feed.md).
+With `LISTENER_VENUE=waxpeer` the listener runs `WaxpeerScraper`, which reads Waxpeer's public Socket.IO feed directly over an aiohttp websocket and has no REST poll. It records and scores only listings priced below the item's Skinport price, then follows them for price cuts and removal, and judges them against the Skinport baselines it loads. Set `WAXPEER_API_KEY` in `.env`. See [`docs/waxpeer_feed.md`](../../docs/waxpeer_feed.md).
 
 ### Trade Alerts
 
@@ -64,8 +64,7 @@ cp .env.example .env
 The listener also requires the shared `BACKEND_API_KEY` from the repository root
 `.env`. It adds the key to ingestion requests automatically. Its Docker health
 probe uses the container-internal `127.0.0.1:9101/health` endpoint, which is
-served by the main asyncio event loop; an unexpected WebSocket sidecar exit is
-fatal so the container restart policy can recover it.
+served by the main asyncio event loop.
 
 ### 2. Run the Node
 Assuming the `edge-stack` or local Docker Compose databases are running:

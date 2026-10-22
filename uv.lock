@@ -2102,6 +2102,7 @@ source = { virtual = "apps/listener" }
 dependencies = [
     { name = "aiohttp" },
     { name = "brotli" },
+    { name = "msgpack" },
     { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -2111,7 +2112,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "msgpack" },
     { name = "psutil" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -2122,6 +2122,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "brotli", specifier = ">=1.1.0" },
+    { name = "msgpack", specifier = ">=1.2.3" },
     { name = "prometheus-client", specifier = ">=0.26.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
@@ -2131,7 +2132,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "msgpack", specifier = ">=1.2.3" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },

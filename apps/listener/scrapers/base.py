@@ -36,6 +36,10 @@ def optional_wear(value: object) -> float | None:
     return number if number is not None and 0 <= number <= 1 else None
 
 
+class FeedConnectionLost(ConnectionError):
+    """A venue's live feed connection ended; the listener's producer loop opens it again."""
+
+
 class BaseScraper(ABC):
     """Abstract Base Class establishing the programmatic contract for all market ingestion nodes."""
 
@@ -44,7 +48,6 @@ class BaseScraper(ABC):
 
     def __init__(self, venue: str):
         self.venue = venue
-        self.sidecar_script_path = None  # Override in subclass if a Node.js sidecar is needed
 
     @abstractmethod
     async def poll_market_stream(self) -> AsyncGenerator[MarketTick, None]:
@@ -60,9 +63,9 @@ class BaseScraper(ABC):
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick | FeedEvent, None]:
         """
-        Optional non-blocking generator that subscribes to the venue's
-        WebSocket feed (e.g. via Redis Pub/Sub relay) and yields MarketTick objects,
-        plus raw FeedEvent records where the venue feed is captured verbatim.
+        Optional non-blocking generator that reads the venue's live feed and yields MarketTick objects,
+        plus raw FeedEvent records where the venue feed is captured verbatim. Raises FeedConnectionLost
+        when the connection ends.
         """
         return
         yield  # pragma: no cover

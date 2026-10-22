@@ -12,8 +12,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # Uncomment for live-editing listener code from the host.
-    # If the Node sidecar needs local dependencies, run npm install in
-    # apps/listener/scrapers/skinport_websocket before mounting this directory.
     # volumes:
     #   - ../../apps/listener:/app/apps/listener
     #   - ../../packages/shared_utils:/app/packages/shared_utils

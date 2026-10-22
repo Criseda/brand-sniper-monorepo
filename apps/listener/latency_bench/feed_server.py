@@ -12,7 +12,6 @@ The orchestrator drives it over stdin and stdout, one command or reply per line:
     <- CLOCK              -> CLOCK <ns>   (clock comparison with the orchestrator)
     <- WARMUP             -> WARMED       (every warm-up event written)
     <- GO                 -> PLAYED       (every measured event written)
-    <- FLUSH              -> FLUSHED      (asks the sidecar to write its timings, waits for its reply)
     <- STOP               -> DONE         (emit times written to --emit-out)
 """
 
@@ -86,8 +85,6 @@ class FeedServer:
         self._measured = [frame for frame in frames if frame.measured]
         self._socket: web.WebSocketResponse | None = None
         self.joined = asyncio.Event()
-        self.flushed = asyncio.Event()
-        self.flush_reply: Any = None
         self.emitted: list[tuple[str, int]] = []
 
     def app(self) -> web.Application:
@@ -122,9 +119,6 @@ class FeedServer:
             name = packet["data"][0]
             if name == "saleFeedJoin":
                 self.joined.set()
-            elif name == "benchFlushed":
-                self.flush_reply = packet["data"][1] if len(packet["data"]) > 1 else None
-                self.flushed.set()
 
     async def play(self, measured: bool) -> None:
         """
@@ -142,12 +136,6 @@ class FeedServer:
             emitted_ns = time.perf_counter_ns()
             await socket.send_bytes(frame.frame)
             self.emitted.append((frame.key, emitted_ns))
-
-    async def flush(self) -> None:
-        if self._socket is None:
-            raise RuntimeError("no client is connected")
-        await self._socket.send_bytes(encode_event("benchFlush"))
-        await self.flushed.wait()
 
 
 async def _read_command() -> str:
@@ -181,9 +169,6 @@ async def serve(schedule_path: Path, emit_out: Path, port: int) -> None:
             elif command == "GO":
                 await server.play(measured=True)
                 _reply("PLAYED")
-            elif command == "FLUSH":
-                await server.flush()
-                _reply("FLUSHED")
             elif command in ("STOP", ""):
                 break
         emit_out.write_text(json.dumps({"emitted": server.emitted}), encoding="utf-8")

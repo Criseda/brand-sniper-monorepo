@@ -1,7 +1,6 @@
 import asyncio
 import os
 import signal
-import subprocess
 from functools import partial
 from uuid import uuid4
 
@@ -80,6 +79,9 @@ SHUTDOWN_GRACE_SECONDS = _positive_int_env("LISTENER_SHUTDOWN_GRACE_SECONDS", 30
 BATCH_MAX_ATTEMPTS = _positive_int_env("LISTENER_BATCH_MAX_ATTEMPTS", 5)
 BATCH_RETRY_BASE_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_BASE_SECONDS", 0.5)
 BATCH_RETRY_MAX_SECONDS = _positive_float_env("LISTENER_BATCH_RETRY_MAX_SECONDS", 8)
+# Waits before reopening the live feed connection: the first after a connection ends, doubling up to the maximum.
+FEED_RECONNECT_FIRST_DELAY_SECONDS = _positive_float_env("LISTENER_FEED_RECONNECT_FIRST_DELAY_SECONDS", 1)
+FEED_RECONNECT_MAX_DELAY_SECONDS = _positive_float_env("LISTENER_FEED_RECONNECT_MAX_DELAY_SECONDS", 30)
 LISTENER_HEALTH_PORT = _positive_int_env("LISTENER_HEALTH_PORT", 9101)
 
 # Shared aiohttp session (initialized at startup, closed at shutdown)
@@ -206,19 +208,35 @@ async def rest_poll_producer(scraper, queue: asyncio.Queue[StreamItem | None]) -
 
 
 async def websocket_subscriber_producer(scraper, queue: asyncio.Queue[StreamItem | None]) -> None:
-    """Listens to real-time events from the venue's live feed and puts them into the queue."""
+    """
+    Reads the venue's live feed into the queue, and opens the connection again whenever it ends. Nothing the
+    venue sends while the connection is down is received, so the first reconnect is quick; the wait doubles
+    while connections keep failing, and a connection that delivered anything resets it.
+    """
     if not hasattr(scraper, "listen_websocket_stream"):
         return
 
+    delay = FEED_RECONNECT_FIRST_DELAY_SECONDS
     while True:
+        delivered = False
         try:
             async for item in scraper.listen_websocket_stream():
+                delivered = True
                 await queue.put(item)
                 tick_queue_size.set(queue.qsize())
+            reason = "the feed ended"
         # Broad on purpose: supervisor loop must survive any transient failure and retry.
         except Exception as e:
-            logger.warning("Ingestion watchdog caught subscriber crash: %s. Reconnecting in 10 seconds...", e)
-            await asyncio.sleep(10)
+            reason = str(e) or type(e).__name__
+        if delivered:
+            delay = FEED_RECONNECT_FIRST_DELAY_SECONDS
+        logger.warning(
+            "[FEED] Live feed connection lost (%s); events sent until it is back are missed. Reconnecting in %.0f s.",
+            reason,
+            delay,
+        )
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, FEED_RECONNECT_MAX_DELAY_SECONDS)
 
 
 async def tick_consumer(
@@ -322,47 +340,6 @@ async def tick_consumer(
             await cache.aclose()
 
 
-async def start_sidecar_process(scraper) -> None:
-    """Spawns the Node.js WebSocket scraper sidecar as an async subprocess and handles its lifetime."""
-    sidecar_path = scraper.sidecar_script_path
-    if not sidecar_path:
-        return
-    if not sidecar_path.exists():
-        raise FileNotFoundError(f"Node.js sidecar script does not exist: {sidecar_path}")
-
-    logger.info("Spawning Node.js sidecar: %s", sidecar_path)
-    proc = None
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "node", str(sidecar_path), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-
-        async def log_stream(stream, prefix):
-            while True:
-                line = await stream.readline()
-                if not line:
-                    break
-                logger.info("%s%s", prefix, line.decode("utf-8").strip())
-
-        async with asyncio.TaskGroup() as task_group:
-            task_group.create_task(log_stream(proc.stdout, ""))
-            task_group.create_task(log_stream(proc.stderr, "[SKINPORT WS ERR] "))
-            await proc.wait()
-        logger.info("Node.js sidecar process exited with code %s", proc.returncode)
-        raise RuntimeError(f"Node.js sidecar exited unexpectedly with code {proc.returncode}")
-    except (OSError, subprocess.SubprocessError) as e:
-        logger.error("Error running Node.js sidecar: %s", e)
-        raise RuntimeError("Node.js sidecar failed") from e
-    finally:
-        if proc and proc.returncode is None:
-            logger.info("Terminating Node.js sidecar process...")
-            try:
-                proc.terminate()
-                await proc.wait()
-            except OSError as e:
-                logger.warning("Error terminating sidecar process: %s", e)
-
-
 async def process_live_telemetry_stream(venue: str) -> None:
     get_backend_api_key()
 
@@ -451,10 +428,6 @@ async def process_live_telemetry_stream(venue: str) -> None:
                     ),
                     name="baseline-loader",
                 )
-                sidecar_task = None
-                if scraper.sidecar_script_path:
-                    sidecar_task = task_group.create_task(start_sidecar_process(scraper), name="websocket-sidecar")
-
                 health_runner = await start_listener_health_server(LISTENER_HEALTH_PORT, baseline_state)
                 await shutdown_event.wait()
 
@@ -474,9 +447,6 @@ async def process_live_telemetry_stream(venue: str) -> None:
                 else:
                     await queue.put(None)
                     await consumer_task
-
-                if sidecar_task is not None:
-                    sidecar_task.cancel()
     finally:
         if health_runner is not None:
             await health_runner.cleanup()

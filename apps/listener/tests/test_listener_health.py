@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,7 +19,6 @@ def load_listener_main():
 
 listener_main = load_listener_main()
 create_listener_health_app = listener_main.create_listener_health_app
-start_sidecar_process = listener_main.start_sidecar_process
 
 
 @pytest.mark.asyncio
@@ -63,53 +63,51 @@ async def test_listener_health_reports_missing_or_stale_baselines():
         assert (await client.get("/health")).status == 503
 
 
-class _EmptyStream:
-    async def readline(self) -> bytes:
-        return b""
+class _Feed:
+    """A live feed whose connections go as scripted: each entry is what one connection yields, then how it ends."""
 
+    def __init__(self, connections):
+        self._connections = iter(connections)
 
-class _ExitedProcess:
-    def __init__(self, returncode: int):
-        self.returncode = returncode
-        self.stdout = _EmptyStream()
-        self.stderr = _EmptyStream()
-
-    async def wait(self) -> int:
-        return self.returncode
-
-
-@pytest.mark.asyncio
-async def test_sidecar_exit_is_fatal(monkeypatch, tmp_path):
-    sidecar_path = tmp_path / "sidecar.js"
-    sidecar_path.touch()
-    process = _ExitedProcess(returncode=7)
-
-    async def create_process(*_args, **_kwargs):
-        return process
-
-    monkeypatch.setattr(listener_main.asyncio, "create_subprocess_exec", create_process)
-
-    with pytest.raises(RuntimeError, match="exited unexpectedly with code 7"):
-        await start_sidecar_process(SimpleNamespace(sidecar_script_path=sidecar_path))
+    async def listen_websocket_stream(self):
+        items, error = next(self._connections)
+        for item in items:
+            yield item
+        if error is not None:
+            raise error
 
 
 @pytest.mark.asyncio
-async def test_missing_sidecar_script_is_fatal(tmp_path):
-    missing_path = tmp_path / "missing-sidecar.js"
+async def test_feed_reconnects_quickly_and_backs_off_while_connections_keep_failing(monkeypatch):
+    delays = []
 
-    with pytest.raises(FileNotFoundError, match="does not exist"):
-        await start_sidecar_process(SimpleNamespace(sidecar_script_path=missing_path))
+    async def sleep(seconds):
+        delays.append(seconds)
+        if len(delays) == 6:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    monkeypatch.setattr(listener_main, "FEED_RECONNECT_MAX_DELAY_SECONDS", 3.0)
+    feed = _Feed(
+        [
+            (["a"], ConnectionError("dropped")),
+            ([], ConnectionError("refused")),
+            ([], ConnectionError("refused")),
+            ([], ConnectionError()),
+            (["b"], None),  # The feed ended without an error
+            ([], ConnectionError("refused")),
+        ]
+    )
+    queue = asyncio.Queue()
+
+    with pytest.raises(asyncio.CancelledError):
+        await listener_main.websocket_subscriber_producer(feed, queue)
+
+    # Quick after a connection that delivered, doubling while they fail, capped, and reset by the next delivery.
+    assert delays == [1.0, 2.0, 3.0, 3.0, 1.0, 2.0]
+    assert [queue.get_nowait(), queue.get_nowait()] == ["a", "b"]
 
 
 @pytest.mark.asyncio
-async def test_sidecar_start_failure_is_fatal(monkeypatch, tmp_path):
-    sidecar_path = tmp_path / "sidecar.js"
-    sidecar_path.touch()
-
-    async def fail_to_create_process(*_args, **_kwargs):
-        raise OSError("node executable not found")
-
-    monkeypatch.setattr(listener_main.asyncio, "create_subprocess_exec", fail_to_create_process)
-
-    with pytest.raises(RuntimeError, match="sidecar failed"):
-        await start_sidecar_process(SimpleNamespace(sidecar_script_path=sidecar_path))
+async def test_a_venue_without_a_live_feed_starts_no_feed_producer():
+    await listener_main.websocket_subscriber_producer(SimpleNamespace(), asyncio.Queue())

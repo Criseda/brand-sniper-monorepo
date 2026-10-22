@@ -1,0 +1,185 @@
+{
+  "description": "#175: the Node.js sidecar ingress (main at 16d7049) and the Python ingress, run back to back in three interleaved rounds, end to end probes, one run each of single and large per round.",
+  "runs": [
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 128.642287,
+        "mean": 37.4298075233,
+        "p50": 36.826901,
+        "p95": 63.844377,
+        "p99": 73.620914
+      },
+      "ingress": "sidecar",
+      "round": 1,
+      "scenario": "large"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 77.999578,
+        "mean": 1.6422631528000002,
+        "p50": 1.512469,
+        "p95": 1.979346,
+        "p99": 2.314126
+      },
+      "ingress": "sidecar",
+      "round": 1,
+      "scenario": "single"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 112.181679,
+        "mean": 31.783357572800004,
+        "p50": 31.17374,
+        "p95": 58.963957,
+        "p99": 67.032397
+      },
+      "ingress": "python",
+      "round": 1,
+      "scenario": "large"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 79.105941,
+        "mean": 1.2267559716,
+        "p50": 1.088159,
+        "p95": 1.500689,
+        "p99": 1.837116
+      },
+      "ingress": "python",
+      "round": 1,
+      "scenario": "single"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 118.833637,
+        "mean": 37.2431389618,
+        "p50": 36.581523,
+        "p95": 64.665603,
+        "p99": 74.22058
+      },
+      "ingress": "sidecar",
+      "round": 2,
+      "scenario": "large"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 87.769447,
+        "mean": 1.7045474154,
+        "p50": 1.566332,
+        "p95": 2.000434,
+        "p99": 2.326399
+      },
+      "ingress": "sidecar",
+      "round": 2,
+      "scenario": "single"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 114.841813,
+        "mean": 31.9072508343,
+        "p50": 31.290224,
+        "p95": 59.596723,
+        "p99": 72.929769
+      },
+      "ingress": "python",
+      "round": 2,
+      "scenario": "large"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 75.232949,
+        "mean": 1.2650112739000001,
+        "p50": 1.144601,
+        "p95": 1.555638,
+        "p99": 1.855424
+      },
+      "ingress": "python",
+      "round": 2,
+      "scenario": "single"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 126.187672,
+        "mean": 39.4147863831,
+        "p50": 38.813425,
+        "p95": 68.70763,
+        "p99": 78.629683
+      },
+      "ingress": "sidecar",
+      "round": 3,
+      "scenario": "large"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 78.361882,
+        "mean": 1.7782322157,
+        "p50": 1.642901,
+        "p95": 2.119314,
+        "p99": 2.540544
+      },
+      "ingress": "sidecar",
+      "round": 3,
+      "scenario": "single"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 130.573342,
+        "mean": 34.176909320300005,
+        "p50": 33.171355,
+        "p95": 65.345871,
+        "p99": 77.575525
+      },
+      "ingress": "python",
+      "round": 3,
+      "scenario": "large"
+    },
+    {
+      "decided": 10000,
+      "dropped": 0,
+      "end_to_end_ms": {
+        "count": 10000,
+        "max": 80.651137,
+        "mean": 1.3264104497,
+        "p50": 1.181727,
+        "p95": 1.607993,
+        "p99": 1.922819
+      },
+      "ingress": "python",
+      "round": 3,
+      "scenario": "single"
+    }
+  ]
+}

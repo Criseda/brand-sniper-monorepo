@@ -1,24 +1,23 @@
 import asyncio
-import json
 import math
+import os
 import time
 from collections.abc import AsyncGenerator
 from datetime import UTC
 from email.utils import parsedate_to_datetime
-from pathlib import Path
 
 import aiohttp
+from listener_telemetry import feed_connected, feed_reconnects_total
 from models import MAX_EVENT_TYPE_LENGTH, MAX_LISTING_URL_LENGTH, FeedEvent, MarketTick, TickKind
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from scrapers.base import BaseScraper, edge_redis_from_env, optional_non_negative_int, optional_wear
+from scrapers.base import BaseScraper, FeedConnectionLost, edge_redis_from_env, optional_non_negative_int, optional_wear
+from scrapers.skinport_socket import DEFAULT_FEED_URL, FEED_URL_ENV, feed_headers, sale_feed_events, socket_url
 from shared_utils import build_versioned_name, get_logger
 
 logger = get_logger("listener.skinport")
 
-# Redis Pub/Sub channel the Node.js sidecar publishes every saleFeed event to.
-SALE_FEED_CHANNEL = "skinport:sale_feed"
 SKINPORT_ITEM_URL = "https://skinport.com/item"
 VENUE = "skinport"
 
@@ -148,21 +147,17 @@ def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTic
         return None
 
 
-def parse_sale_feed_message(message: str | bytes) -> tuple[FeedEvent, list[MarketTick]]:
+def parse_sale_feed_event(payload: object, received_at_ms: int) -> tuple[FeedEvent, list[MarketTick]]:
     """
-    Parse one sidecar envelope `{"receivedAt": <epoch ms>, "payload": <raw saleFeed event>}`.
+    Parse one raw `saleFeed` payload, received at `received_at_ms` (epoch milliseconds).
 
     Returns the raw event (always, so nothing the venue sent is lost) plus one normalized tick
-    per well-formed sale. Raises ValueError when the envelope itself is unusable.
+    per well-formed sale. Raises ValueError when the payload or the time is unusable.
     """
-    envelope = json.loads(message)
-    if not isinstance(envelope, dict) or not isinstance(envelope.get("payload"), dict):
-        raise ValueError("Sale feed envelope must be an object with an object 'payload'")
-
-    payload: dict = envelope["payload"]
-    received_at_ms = envelope.get("receivedAt")
-    if not isinstance(received_at_ms, int) or received_at_ms <= 0:
-        raise ValueError("Sale feed envelope must carry a positive integer 'receivedAt'")
+    if not isinstance(payload, dict):
+        raise ValueError("A saleFeed payload must be an object")
+    if isinstance(received_at_ms, bool) or not isinstance(received_at_ms, int) or received_at_ms <= 0:
+        raise ValueError("A saleFeed event needs a positive integer receive time")
 
     # Clamped so an unexpected, overlong type is still recorded; the payload keeps the original value.
     event_type = str(payload.get("eventType") or "unknown")[:MAX_EVENT_TYPE_LENGTH]
@@ -190,9 +185,6 @@ class SkinportScraper(BaseScraper):
     def __init__(self):
         super().__init__(venue=VENUE)
         self.api_url = "https://api.skinport.com/v1/items"
-
-        # Sidecar script path for the Node.js WebSocket relay
-        self.sidecar_script_path = Path(__file__).parent / "skinport_websocket" / "sidecar.js"
 
         # Shared session for API requests (lazy init)
         self._session: aiohttp.ClientSession | None = None
@@ -293,28 +285,30 @@ class SkinportScraper(BaseScraper):
 
     async def listen_websocket_stream(self) -> AsyncGenerator[MarketTick | FeedEvent, None]:
         """
-        Subscribes to the local Redis Pub/Sub channel relayed by the Node.js WebSocket sidecar.
-        For every saleFeed event it yields the raw FeedEvent first, then one MarketTick per sale.
+        Reads Skinport's sale feed directly (scrapers/skinport_socket.py). For every saleFeed event it yields the
+        raw FeedEvent first, then one MarketTick per sale. Raises FeedConnectionLost when the connection ends;
+        the listener's producer loop opens it again.
         """
-        cache = edge_redis_from_env()
-        pubsub = cache.pubsub()
-        await pubsub.subscribe(SALE_FEED_CHANNEL)
-        logger.info("Subscribed to Redis channel '%s'", SALE_FEED_CHANNEL)
-
+        url = socket_url(os.getenv(FEED_URL_ENV) or DEFAULT_FEED_URL)
+        headers = feed_headers(os.getenv("CLOUDFLARE_COOKIE", ""))
+        debug = os.getenv("DEBUG_TELEMETRY", "").lower() == "true"
         try:
-            async for message in pubsub.listen():
-                if message["type"] != "message":
-                    continue
-
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, connect=15)) as session:
                 try:
-                    feed_event, ticks = parse_sale_feed_message(message["data"])
-                except (ValueError, TypeError, ValidationError) as parse_err:
-                    logger.error("Error parsing sidecar sale feed message: %s", parse_err)
-                    continue
-
-                yield feed_event
-                for tick in ticks:
-                    yield tick
+                    async with session.ws_connect(url, headers=headers, heartbeat=None) as ws:
+                        async for payload, received_at_ms in sale_feed_events(ws, debug):
+                            feed_event, ticks = parse_sale_feed_event(payload, received_at_ms)
+                            sales = payload.get("sales")
+                            logger.info(
+                                "[SKINPORT WS] Received %s event containing %d items.",
+                                feed_event.event_type,
+                                len(sales) if isinstance(sales, list) else 0,
+                            )
+                            yield feed_event
+                            for tick in ticks:
+                                yield tick
+                except (aiohttp.ClientError, TimeoutError) as err:
+                    raise FeedConnectionLost(str(err) or type(err).__name__) from err
         finally:
-            await pubsub.unsubscribe(SALE_FEED_CHANNEL)
-            await cache.aclose()
+            feed_connected.set(0)
+            feed_reconnects_total.inc()

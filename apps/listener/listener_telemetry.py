@@ -168,31 +168,31 @@ baseline_build_age_seconds = Gauge(
     labelnames=["venue"],
 )
 
-# Venue feeds the listener reads directly (Waxpeer). Each listener process reads one venue; Prometheus tells
-# the processes apart by the `listener` target label. `event` is the venue's event name (new, update, removed)
-# and `outcome` is what the recording filter did with it (see scrapers/waxpeer.py: FEED_OUTCOMES).
+# The live feed connection, for every venue (both listeners read their venue's feed directly since #175). Each
+# listener process reads one venue; Prometheus tells the processes apart by the `listener` target label. Events
+# a venue sends while the connection is down are never received, so a reconnect is a gap in the record.
+feed_connected = Gauge(
+    "listener_feed_connected",
+    "1 while the live feed is connected and subscribed, else 0",
+)
+
+feed_reconnects_total = Counter(
+    "listener_feed_reconnects_total",
+    "Times the live feed connection ended and had to be opened again",
+)
+
+# The recording filter of a feed too busy to record in full (Waxpeer). `event` is the venue's event name (new,
+# update, removed) and `outcome` is what the filter did with it (see scrapers/waxpeer.py: FEED_OUTCOMES).
 #
-# These metrics live in their own registry, which only a listener that reads a feed directly adds to the ones it
-# exports (`export_feed_metrics`). Otherwise the Skinport listener would report a disconnected feed with no
-# resale prices, a feed it does not have.
+# These metrics live in their own registry, which only a listener with such a filter adds to the ones it exports
+# (`export_feed_metrics`). Otherwise the Skinport listener would report a filter with no resale prices, a filter it
+# does not have.
 feed_registry = CollectorRegistry(auto_describe=True)
 
 feed_events_filtered_total = Counter(
     "listener_feed_events_filtered_total",
     "Live feed events received, by what the recording filter did with them",
     labelnames=["event", "outcome"],
-    registry=feed_registry,
-)
-
-feed_connected = Gauge(
-    "listener_feed_connected",
-    "1 while the live feed is connected and subscribed, else 0",
-    registry=feed_registry,
-)
-
-feed_reconnects_total = Counter(
-    "listener_feed_reconnects_total",
-    "Times the live feed connection ended and had to be opened again",
     registry=feed_registry,
 )
 
