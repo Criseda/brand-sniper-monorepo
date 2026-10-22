@@ -76,7 +76,10 @@ the cached price history. On a confirmed anomaly:
 2. The local `PaperExecutor` executes a simulated trade synchronously
 3. The trade log is POSTed asynchronously to the backend
 
-**Average hot-path latency: <5ms.** No network call to the server node is required for the trade decision.
+**Hot path latency: 1.3 ms at the median, 2.7 ms at p99 for a single listing**, from the Skinport socket to
+the DRE's decision, measured on the reference machine (#175, [ingress latency](benchmarks/ingress_latency.md)).
+Listings that arrive together are decided one after another, so the slowest listing of a 100 listing event
+waits about 80 ms. No network call to the server node is required for the trade decision.
 
 ## Cold Path: Adversarial CFO Audit
 

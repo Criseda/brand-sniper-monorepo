@@ -11,7 +11,9 @@ COPY pyproject.toml uv.lock ./
 COPY packages/shared_utils/ packages/shared_utils/
 COPY apps/listener/pyproject.toml apps/listener/
 
-RUN uv sync --frozen --no-dev --package listener
+# The latency benchmark (deployments/latency-bench) builds with the dev group, which brings msgpack and psutil.
+ARG LISTENER_SYNC_FLAGS=--no-dev
+RUN uv sync --frozen ${LISTENER_SYNC_FLAGS} --package listener
 
 COPY apps/listener/ apps/listener/
 

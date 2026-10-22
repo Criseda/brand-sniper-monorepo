@@ -1,0 +1,2736 @@
+{
+  "as_of": "2026-10-13T12:14:27.582869",
+  "baselines": {
+    "3rd Commando Company | KSK": {
+      "avg_volume_30d": 11.366666666666667,
+      "coefficient_of_variation": 0.0649,
+      "drift_percent": -7.705479452054795,
+      "latest_price_cents": 959,
+      "rolling_30d_avg_cents": 1078,
+      "support_floor_cents": 988,
+      "volatility_cents": 70
+    },
+    "AK-47 | Breakthrough (Minimal Wear)": {
+      "avg_volume_30d": 3.6,
+      "coefficient_of_variation": 0.1201,
+      "drift_percent": -13.440860215053762,
+      "latest_price_cents": 469,
+      "rolling_30d_avg_cents": 483,
+      "support_floor_cents": 409,
+      "volatility_cents": 58
+    },
+    "AK-47 | Crane Flight (Factory New)": {
+      "avg_volume_30d": 2.1,
+      "coefficient_of_variation": 0.0498,
+      "drift_percent": -8.703312191684285,
+      "latest_price_cents": 5033,
+      "rolling_30d_avg_cents": 5182,
+      "support_floor_cents": 4851,
+      "volatility_cents": 258
+    },
+    "AK-47 | Crane Flight (Minimal Wear)": {
+      "avg_volume_30d": 19.166666666666668,
+      "coefficient_of_variation": 0.0785,
+      "drift_percent": -6.712433257055683,
+      "latest_price_cents": 2263,
+      "rolling_30d_avg_cents": 2446,
+      "support_floor_cents": 2200,
+      "volatility_cents": 192
+    },
+    "AK-47 | Ice Coaled (Field-Tested)": {
+      "avg_volume_30d": 9.933333333333334,
+      "coefficient_of_variation": 0.0796,
+      "drift_percent": -2.4271844660194173,
+      "latest_price_cents": 407,
+      "rolling_30d_avg_cents": 402,
+      "support_floor_cents": 361,
+      "volatility_cents": 32
+    },
+    "AK-47 | Jaguar (Well-Worn)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.0302,
+      "drift_percent": -1.4934289127837514,
+      "latest_price_cents": 6596,
+      "rolling_30d_avg_cents": 6596,
+      "support_floor_cents": 6341,
+      "volatility_cents": 199
+    },
+    "AK-47 | Neon Rider (Field-Tested)": {
+      "avg_volume_30d": 5.766666666666667,
+      "coefficient_of_variation": 0.0854,
+      "drift_percent": -5.583639705882353,
+      "latest_price_cents": 4239,
+      "rolling_30d_avg_cents": 4109,
+      "support_floor_cents": 3659,
+      "volatility_cents": 351
+    },
+    "AK-47 | Redline (Field-Tested)": {
+      "avg_volume_30d": 11.5,
+      "coefficient_of_variation": 0.0907,
+      "drift_percent": -7.851099830795262,
+      "latest_price_cents": 2811,
+      "rolling_30d_avg_cents": 2723,
+      "support_floor_cents": 2406,
+      "volatility_cents": 247
+    },
+    "AK-47 | Searing Rage (Field-Tested)": {
+      "avg_volume_30d": 6.666666666666667,
+      "coefficient_of_variation": 0.0789,
+      "drift_percent": -2.7906976744186047,
+      "latest_price_cents": 427,
+      "rolling_30d_avg_cents": 418,
+      "support_floor_cents": 376,
+      "volatility_cents": 33
+    },
+    "AK-47 | Slate (Battle-Scarred)": {
+      "avg_volume_30d": 2.4,
+      "coefficient_of_variation": 0.0957,
+      "drift_percent": -3.571428571428571,
+      "latest_price_cents": 330,
+      "rolling_30d_avg_cents": 324,
+      "support_floor_cents": 284,
+      "volatility_cents": 31
+    },
+    "AK-47 | Slate (Well-Worn)": {
+      "avg_volume_30d": 3.966666666666667,
+      "coefficient_of_variation": 0.0816,
+      "drift_percent": -6.760563380281689,
+      "latest_price_cents": 329,
+      "rolling_30d_avg_cents": 331,
+      "support_floor_cents": 296,
+      "volatility_cents": 27
+    },
+    "AK-47 | Uncharted (Field-Tested)": {
+      "avg_volume_30d": 1.2666666666666666,
+      "coefficient_of_variation": 0.1176,
+      "drift_percent": -7.2727272727272725,
+      "latest_price_cents": 35,
+      "rolling_30d_avg_cents": 51,
+      "support_floor_cents": 43,
+      "volatility_cents": 6
+    },
+    "AK-47 | Wintergreen (Field-Tested)": {
+      "avg_volume_30d": 2.1,
+      "coefficient_of_variation": 0.1346,
+      "drift_percent": -8.771929824561402,
+      "latest_price_cents": 50,
+      "rolling_30d_avg_cents": 52,
+      "support_floor_cents": 43,
+      "volatility_cents": 7
+    },
+    "AUG | Commando Company (Field-Tested)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.5,
+      "drift_percent": 0.0,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 2,
+      "support_floor_cents": 1,
+      "volatility_cents": 1
+    },
+    "AUG | Commando Company (Minimal Wear)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.5,
+      "drift_percent": 0.0,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 2,
+      "support_floor_cents": 1,
+      "volatility_cents": 1
+    },
+    "AUG | Tom Cat (Field-Tested)": {
+      "avg_volume_30d": 2.0,
+      "coefficient_of_variation": 0.0968,
+      "drift_percent": 6.896551724137931,
+      "latest_price_cents": 28,
+      "rolling_30d_avg_cents": 31,
+      "support_floor_cents": 27,
+      "volatility_cents": 3
+    },
+    "AWP | Arsenic Spill (Field-Tested)": {
+      "avg_volume_30d": 0.7,
+      "coefficient_of_variation": 0.069,
+      "drift_percent": -19.444444444444446,
+      "latest_price_cents": 29,
+      "rolling_30d_avg_cents": 29,
+      "support_floor_cents": 26,
+      "volatility_cents": 2
+    },
+    "AWP | Black Box (Minimal Wear)": {
+      "avg_volume_30d": 2.7333333333333334,
+      "coefficient_of_variation": 0.1015,
+      "drift_percent": -9.580838323353294,
+      "latest_price_cents": 841,
+      "rolling_30d_avg_cents": 906,
+      "support_floor_cents": 788,
+      "volatility_cents": 92
+    },
+    "AWP | Duality (Field-Tested)": {
+      "avg_volume_30d": 6.466666666666667,
+      "coefficient_of_variation": 0.1204,
+      "drift_percent": -9.393939393939393,
+      "latest_price_cents": 295,
+      "rolling_30d_avg_cents": 299,
+      "support_floor_cents": 253,
+      "volatility_cents": 36
+    },
+    "AWP | Green Energy (Factory New)": {
+      "avg_volume_30d": 0.9,
+      "coefficient_of_variation": 0.107,
+      "drift_percent": -30.04321128041847,
+      "latest_price_cents": 3187,
+      "rolling_30d_avg_cents": 3076,
+      "support_floor_cents": 2654,
+      "volatility_cents": 329
+    },
+    "AWP | Sun in Leo (Factory New)": {
+      "avg_volume_30d": 0.9666666666666667,
+      "coefficient_of_variation": 0.0809,
+      "drift_percent": -13.590415574691129,
+      "latest_price_cents": 6212,
+      "rolling_30d_avg_cents": 6924,
+      "support_floor_cents": 6206,
+      "volatility_cents": 560
+    },
+    "AWP | The End (Battle-Scarred)": {
+      "avg_volume_30d": 1.1333333333333333,
+      "coefficient_of_variation": 0.1061,
+      "drift_percent": -21.03825136612022,
+      "latest_price_cents": 869,
+      "rolling_30d_avg_cents": 867,
+      "support_floor_cents": 749,
+      "volatility_cents": 92
+    },
+    "AWP | The End (Minimal Wear)": {
+      "avg_volume_30d": 4.066666666666666,
+      "coefficient_of_variation": 0.0991,
+      "drift_percent": -18.401937046004843,
+      "latest_price_cents": 1726,
+      "rolling_30d_avg_cents": 1685,
+      "support_floor_cents": 1471,
+      "volatility_cents": 167
+    },
+    "Arno The Overgrown | Guerrilla Warfare": {
+      "avg_volume_30d": 2.5,
+      "coefficient_of_variation": 0.1147,
+      "drift_percent": -6.184291898577613,
+      "latest_price_cents": 1365,
+      "rolling_30d_avg_cents": 1517,
+      "support_floor_cents": 1294,
+      "volatility_cents": 174
+    },
+    "CS:GO Weapon Case": {
+      "avg_volume_30d": 4.166666666666667,
+      "coefficient_of_variation": 0.0401,
+      "drift_percent": -5.563661122458904,
+      "latest_price_cents": 9838,
+      "rolling_30d_avg_cents": 9709,
+      "support_floor_cents": 9210,
+      "volatility_cents": 389
+    },
+    "CS:GO Weapon Case 3": {
+      "avg_volume_30d": 2.3666666666666667,
+      "coefficient_of_variation": 0.084,
+      "drift_percent": -0.422654268808115,
+      "latest_price_cents": 1183,
+      "rolling_30d_avg_cents": 1178,
+      "support_floor_cents": 1051,
+      "volatility_cents": 99
+    },
+    "CZ75-Auto | Honey Paisley (Factory New)": {
+      "avg_volume_30d": 1.0333333333333334,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": -25.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Charm | Backsplash": {
+      "avg_volume_30d": 2.5,
+      "coefficient_of_variation": 0.1429,
+      "drift_percent": -12.5,
+      "latest_price_cents": 7,
+      "rolling_30d_avg_cents": 7,
+      "support_floor_cents": 6,
+      "volatility_cents": 1
+    },
+    "Charm | Die-cast AK": {
+      "avg_volume_30d": 9.233333333333333,
+      "coefficient_of_variation": 0.0683,
+      "drift_percent": -21.451104100946374,
+      "latest_price_cents": 250,
+      "rolling_30d_avg_cents": 249,
+      "support_floor_cents": 227,
+      "volatility_cents": 17
+    },
+    "Charm | Disco MAC": {
+      "avg_volume_30d": 0.9,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -26.53061224489796,
+      "latest_price_cents": 35,
+      "rolling_30d_avg_cents": 36,
+      "support_floor_cents": 32,
+      "volatility_cents": 3
+    },
+    "Charm | Glitter Bomb": {
+      "avg_volume_30d": 0.3,
+      "coefficient_of_variation": 0.0715,
+      "drift_percent": -6.738351254480286,
+      "latest_price_cents": 1301,
+      "rolling_30d_avg_cents": 1301,
+      "support_floor_cents": 1182,
+      "volatility_cents": 93
+    },
+    "Cmdr. Frank 'Wet Sox' Baroud | SEAL Frogman": {
+      "avg_volume_30d": 5.733333333333333,
+      "coefficient_of_variation": 0.0706,
+      "drift_percent": -6.63441603317208,
+      "latest_price_cents": 3878,
+      "rolling_30d_avg_cents": 4053,
+      "support_floor_cents": 3686,
+      "volatility_cents": 286
+    },
+    "Desert Eagle | Code Red (Battle-Scarred)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.0577,
+      "drift_percent": -6.142322097378277,
+      "latest_price_cents": 3759,
+      "rolling_30d_avg_cents": 3759,
+      "support_floor_cents": 3481,
+      "volatility_cents": 217
+    },
+    "Desert Eagle | Corinthian (Minimal Wear)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -13.043478260869565,
+      "latest_price_cents": 60,
+      "rolling_30d_avg_cents": 60,
+      "support_floor_cents": 54,
+      "volatility_cents": 5
+    },
+    "Desert Eagle | Eastern Enigma (Minimal Wear)": {
+      "avg_volume_30d": 2.466666666666667,
+      "coefficient_of_variation": 0.0458,
+      "drift_percent": -7.889490173739675,
+      "latest_price_cents": 3377,
+      "rolling_30d_avg_cents": 3234,
+      "support_floor_cents": 3044,
+      "volatility_cents": 148
+    },
+    "Desert Eagle | Heat Treated (Minimal Wear)": {
+      "avg_volume_30d": 4.733333333333333,
+      "coefficient_of_variation": 0.0558,
+      "drift_percent": -15.40880503144654,
+      "latest_price_cents": 257,
+      "rolling_30d_avg_cents": 269,
+      "support_floor_cents": 250,
+      "volatility_cents": 15
+    },
+    "Desert Eagle | Mecha Industries (Field-Tested)": {
+      "avg_volume_30d": 6.666666666666667,
+      "coefficient_of_variation": 0.0661,
+      "drift_percent": -7.763401109057301,
+      "latest_price_cents": 480,
+      "rolling_30d_avg_cents": 499,
+      "support_floor_cents": 457,
+      "volatility_cents": 33
+    },
+    "Desert Eagle | Meteorite (Factory New)": {
+      "avg_volume_30d": 2.7666666666666666,
+      "coefficient_of_variation": 0.1079,
+      "drift_percent": -20.114942528735632,
+      "latest_price_cents": 134,
+      "rolling_30d_avg_cents": 139,
+      "support_floor_cents": 120,
+      "volatility_cents": 15
+    },
+    "Desert Eagle | Midnight Storm (Field-Tested)": {
+      "avg_volume_30d": 0.36666666666666664,
+      "coefficient_of_variation": 0.0886,
+      "drift_percent": -17.87878787878788,
+      "latest_price_cents": 953,
+      "rolling_30d_avg_cents": 1084,
+      "support_floor_cents": 961,
+      "volatility_cents": 96
+    },
+    "Desert Eagle | Sputnik (Minimal Wear)": {
+      "avg_volume_30d": 2.066666666666667,
+      "coefficient_of_variation": 0.0956,
+      "drift_percent": -18.31831831831832,
+      "latest_price_cents": 251,
+      "rolling_30d_avg_cents": 272,
+      "support_floor_cents": 239,
+      "volatility_cents": 26
+    },
+    "Desert Eagle | Tilted (Field-Tested)": {
+      "avg_volume_30d": 3.2333333333333334,
+      "coefficient_of_variation": 0.0909,
+      "drift_percent": 0.0,
+      "latest_price_cents": 12,
+      "rolling_30d_avg_cents": 11,
+      "support_floor_cents": 10,
+      "volatility_cents": 1
+    },
+    "Dreams & Nightmares Case": {
+      "avg_volume_30d": 465.53333333333336,
+      "coefficient_of_variation": 0.1217,
+      "drift_percent": -2.5423728813559325,
+      "latest_price_cents": 115,
+      "rolling_30d_avg_cents": 115,
+      "support_floor_cents": 97,
+      "volatility_cents": 14
+    },
+    "Dual Berettas | Cobalt Quartz (Field-Tested)": {
+      "avg_volume_30d": 1.3333333333333333,
+      "coefficient_of_variation": 0.1429,
+      "drift_percent": -3.4482758620689653,
+      "latest_price_cents": 27,
+      "rolling_30d_avg_cents": 28,
+      "support_floor_cents": 23,
+      "volatility_cents": 4
+    },
+    "Dual Berettas | Contractor (Minimal Wear)": {
+      "avg_volume_30d": 0.3,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 50.0,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Dual Berettas | Hideout (Field-Tested)": {
+      "avg_volume_30d": 4.633333333333334,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": 0.0,
+      "latest_price_cents": 6,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "Dual Berettas | Melondrama (Field-Tested)": {
+      "avg_volume_30d": 4.4,
+      "coefficient_of_variation": 0.073,
+      "drift_percent": -3.9316239316239314,
+      "latest_price_cents": 516,
+      "rolling_30d_avg_cents": 562,
+      "support_floor_cents": 509,
+      "volatility_cents": 41
+    },
+    "Dual Berettas | Mystic Conjunction (Field-Tested)": {
+      "avg_volume_30d": 0.7666666666666667,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": -25.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Dual Berettas | Mystic Conjunction (Minimal Wear)": {
+      "avg_volume_30d": 2.4,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": 0.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "Dual Berettas | Rose Nacre (Field-Tested)": {
+      "avg_volume_30d": 0.4,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "FAMAS | Bad Trip (Battle-Scarred)": {
+      "avg_volume_30d": 0.4666666666666667,
+      "coefficient_of_variation": 0.0592,
+      "drift_percent": -0.6617647058823529,
+      "latest_price_cents": 4048,
+      "rolling_30d_avg_cents": 4053,
+      "support_floor_cents": 3745,
+      "volatility_cents": 240
+    },
+    "FAMAS | Bad Trip (Well-Worn)": {
+      "avg_volume_30d": 1.4666666666666666,
+      "coefficient_of_variation": 0.084,
+      "drift_percent": -1.0136847440446022,
+      "latest_price_cents": 4033,
+      "rolling_30d_avg_cents": 3906,
+      "support_floor_cents": 3486,
+      "volatility_cents": 328
+    },
+    "FAMAS | Commemoration (Field-Tested)": {
+      "avg_volume_30d": 0.9666666666666667,
+      "coefficient_of_variation": 0.0427,
+      "drift_percent": -4.301075268817205,
+      "latest_price_cents": 2672,
+      "rolling_30d_avg_cents": 2670,
+      "support_floor_cents": 2524,
+      "volatility_cents": 114
+    },
+    "FAMAS | Crypsis (Field-Tested)": {
+      "avg_volume_30d": 0.4,
+      "coefficient_of_variation": 0.1905,
+      "drift_percent": 0.0,
+      "latest_price_cents": 21,
+      "rolling_30d_avg_cents": 21,
+      "support_floor_cents": 16,
+      "volatility_cents": 4
+    },
+    "FAMAS | Palm (Factory New)": {
+      "avg_volume_30d": 0.5666666666666667,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": -50.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "FAMAS | Rapid Eye Movement (Field-Tested)": {
+      "avg_volume_30d": 4.966666666666667,
+      "coefficient_of_variation": 0.0771,
+      "drift_percent": -3.9586919104991396,
+      "latest_price_cents": 526,
+      "rolling_30d_avg_cents": 558,
+      "support_floor_cents": 503,
+      "volatility_cents": 43
+    },
+    "Five-SeveN | Boost Protocol (Field-Tested)": {
+      "avg_volume_30d": 1.2666666666666666,
+      "coefficient_of_variation": 0.1048,
+      "drift_percent": -7.624633431085044,
+      "latest_price_cents": 302,
+      "rolling_30d_avg_cents": 315,
+      "support_floor_cents": 273,
+      "volatility_cents": 33
+    },
+    "Five-SeveN | Case Hardened (Field-Tested)": {
+      "avg_volume_30d": 0.9,
+      "coefficient_of_variation": 0.0812,
+      "drift_percent": -14.119601328903656,
+      "latest_price_cents": 981,
+      "rolling_30d_avg_cents": 1034,
+      "support_floor_cents": 926,
+      "volatility_cents": 84
+    },
+    "Five-SeveN | Coolant (Factory New)": {
+      "avg_volume_30d": 0.8333333333333334,
+      "coefficient_of_variation": 0.2857,
+      "drift_percent": -12.5,
+      "latest_price_cents": 4,
+      "rolling_30d_avg_cents": 7,
+      "support_floor_cents": 4,
+      "volatility_cents": 2
+    },
+    "Five-SeveN | Desert Seal (Minimal Wear)": {
+      "avg_volume_30d": 2.2666666666666666,
+      "coefficient_of_variation": 0.3,
+      "drift_percent": 0.0,
+      "latest_price_cents": 10,
+      "rolling_30d_avg_cents": 10,
+      "support_floor_cents": 6,
+      "volatility_cents": 3
+    },
+    "Five-SeveN | Fraise Crane (Factory New)": {
+      "avg_volume_30d": 4.666666666666667,
+      "coefficient_of_variation": 0.096,
+      "drift_percent": -19.35483870967742,
+      "latest_price_cents": 213,
+      "rolling_30d_avg_cents": 250,
+      "support_floor_cents": 219,
+      "volatility_cents": 24
+    },
+    "Five-SeveN | Hybrid (Field-Tested)": {
+      "avg_volume_30d": 1.7333333333333334,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": -7.6923076923076925,
+      "latest_price_cents": 33,
+      "rolling_30d_avg_cents": 36,
+      "support_floor_cents": 28,
+      "volatility_cents": 6
+    },
+    "Five-SeveN | Hybrid (Well-Worn)": {
+      "avg_volume_30d": 2.1,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": -3.0303030303030303,
+      "latest_price_cents": 30,
+      "rolling_30d_avg_cents": 32,
+      "support_floor_cents": 27,
+      "volatility_cents": 4
+    },
+    "Five-SeveN | Monkey Business (Well-Worn)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.1059,
+      "drift_percent": 1.0054844606946984,
+      "latest_price_cents": 1105,
+      "rolling_30d_avg_cents": 1105,
+      "support_floor_cents": 955,
+      "volatility_cents": 117
+    },
+    "Five-SeveN | Orange Peel (Field-Tested)": {
+      "avg_volume_30d": 0.2,
+      "coefficient_of_variation": 0.5,
+      "drift_percent": 0.0,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 2,
+      "support_floor_cents": 1,
+      "volatility_cents": 1
+    },
+    "Five-SeveN | Scrawl (Minimal Wear)": {
+      "avg_volume_30d": 1.8,
+      "coefficient_of_variation": 0.1538,
+      "drift_percent": -31.57894736842105,
+      "latest_price_cents": 11,
+      "rolling_30d_avg_cents": 13,
+      "support_floor_cents": 10,
+      "volatility_cents": 2
+    },
+    "Five-SeveN | Sky Blue (Field-Tested)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "G3SG1 | Dream Glade (Field-Tested)": {
+      "avg_volume_30d": 1.6666666666666667,
+      "coefficient_of_variation": 0.0909,
+      "drift_percent": -5.172413793103448,
+      "latest_price_cents": 49,
+      "rolling_30d_avg_cents": 55,
+      "support_floor_cents": 49,
+      "volatility_cents": 5
+    },
+    "G3SG1 | Green Apple (Field-Tested)": {
+      "avg_volume_30d": 0.2,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": 0.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "Galil AR | Blue Titanium (Factory New)": {
+      "avg_volume_30d": 0.7666666666666667,
+      "coefficient_of_variation": 0.1267,
+      "drift_percent": -39.351259069568925,
+      "latest_price_cents": 1221,
+      "rolling_30d_avg_cents": 1421,
+      "support_floor_cents": 1190,
+      "volatility_cents": 180
+    },
+    "Galil AR | Destroyer (Field-Tested)": {
+      "avg_volume_30d": 1.1666666666666667,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": 14.285714285714285,
+      "latest_price_cents": 6,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 5,
+      "volatility_cents": 2
+    },
+    "Galil AR | Destroyer (Minimal Wear)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -20.0,
+      "latest_price_cents": 12,
+      "rolling_30d_avg_cents": 12,
+      "support_floor_cents": 11,
+      "volatility_cents": 1
+    },
+    "Galil AR | Galigator (Well-Worn)": {
+      "avg_volume_30d": 0.5,
+      "coefficient_of_variation": 0.0615,
+      "drift_percent": -2.9850746268656714,
+      "latest_price_cents": 65,
+      "rolling_30d_avg_cents": 65,
+      "support_floor_cents": 60,
+      "volatility_cents": 4
+    },
+    "Galil AR | Green Apple (Minimal Wear)": {
+      "avg_volume_30d": 1.1666666666666667,
+      "coefficient_of_variation": 0.2857,
+      "drift_percent": -22.22222222222222,
+      "latest_price_cents": 7,
+      "rolling_30d_avg_cents": 7,
+      "support_floor_cents": 4,
+      "volatility_cents": 2
+    },
+    "Galil AR | Robin's Egg (Factory New)": {
+      "avg_volume_30d": 1.7,
+      "coefficient_of_variation": 0.0476,
+      "drift_percent": -22.22222222222222,
+      "latest_price_cents": 19,
+      "rolling_30d_avg_cents": 21,
+      "support_floor_cents": 20,
+      "volatility_cents": 1
+    },
+    "Galil AR | Robin's Egg (Field-Tested)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.5,
+      "drift_percent": -33.33333333333333,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 2,
+      "support_floor_cents": 1,
+      "volatility_cents": 1
+    },
+    "Galil AR | Robin's Egg (Minimal Wear)": {
+      "avg_volume_30d": 0.9333333333333333,
+      "coefficient_of_variation": 0.2857,
+      "drift_percent": -12.5,
+      "latest_price_cents": 6,
+      "rolling_30d_avg_cents": 7,
+      "support_floor_cents": 4,
+      "volatility_cents": 2
+    },
+    "Galil AR | VariCamo (Field-Tested)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": -25.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Glock-18 | Coral Bloom (Minimal Wear)": {
+      "avg_volume_30d": 1.1666666666666667,
+      "coefficient_of_variation": 0.0588,
+      "drift_percent": -32.89473684210527,
+      "latest_price_cents": 45,
+      "rolling_30d_avg_cents": 51,
+      "support_floor_cents": 47,
+      "volatility_cents": 3
+    },
+    "Glock-18 | Gamma Doppler (Emerald) (Field-Tested)": {
+      "avg_volume_30d": 0.4,
+      "coefficient_of_variation": 0.0662,
+      "drift_percent": -10.53187210939071,
+      "latest_price_cents": 17846,
+      "rolling_30d_avg_cents": 17797,
+      "support_floor_cents": 16286,
+      "volatility_cents": 1179
+    },
+    "Glock-18 | High Beam (Factory New)": {
+      "avg_volume_30d": 11.0,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": -5.88235294117647,
+      "latest_price_cents": 13,
+      "rolling_30d_avg_cents": 16,
+      "support_floor_cents": 11,
+      "volatility_cents": 4
+    },
+    "Glock-18 | Ocean Topo (Field-Tested)": {
+      "avg_volume_30d": 1.4666666666666666,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": -14.285714285714285,
+      "latest_price_cents": 7,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "Glock-18 | Sacrifice (Field-Tested)": {
+      "avg_volume_30d": 0.4,
+      "coefficient_of_variation": 0.0606,
+      "drift_percent": 6.451612903225806,
+      "latest_price_cents": 36,
+      "rolling_30d_avg_cents": 33,
+      "support_floor_cents": 30,
+      "volatility_cents": 2
+    },
+    "Glock-18 | Shinobu (Factory New)": {
+      "avg_volume_30d": 1.8,
+      "coefficient_of_variation": 0.0774,
+      "drift_percent": -12.577417818008577,
+      "latest_price_cents": 1786,
+      "rolling_30d_avg_cents": 1835,
+      "support_floor_cents": 1653,
+      "volatility_cents": 142
+    },
+    "Glock-18 | Shinobu (Field-Tested)": {
+      "avg_volume_30d": 12.033333333333333,
+      "coefficient_of_variation": 0.0964,
+      "drift_percent": -5.508474576271186,
+      "latest_price_cents": 447,
+      "rolling_30d_avg_cents": 446,
+      "support_floor_cents": 391,
+      "volatility_cents": 43
+    },
+    "Glock-18 | Umbral Rabbit (Factory New)": {
+      "avg_volume_30d": 3.2333333333333334,
+      "coefficient_of_variation": 0.0898,
+      "drift_percent": -33.730158730158735,
+      "latest_price_cents": 167,
+      "rolling_30d_avg_cents": 167,
+      "support_floor_cents": 148,
+      "volatility_cents": 15
+    },
+    "Glock-18 | Umbral Rabbit (Field-Tested)": {
+      "avg_volume_30d": 3.3666666666666667,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -2.7027027027027026,
+      "latest_price_cents": 31,
+      "rolling_30d_avg_cents": 36,
+      "support_floor_cents": 32,
+      "volatility_cents": 3
+    },
+    "Glock-18 | Vogue (Field-Tested)": {
+      "avg_volume_30d": 8.033333333333333,
+      "coefficient_of_variation": 0.0818,
+      "drift_percent": -5.172413793103448,
+      "latest_price_cents": 324,
+      "rolling_30d_avg_cents": 330,
+      "support_floor_cents": 295,
+      "volatility_cents": 27
+    },
+    "Glock-18 | Water Elemental (Field-Tested)": {
+      "avg_volume_30d": 2.8666666666666667,
+      "coefficient_of_variation": 0.1045,
+      "drift_percent": -1.6552511415525113,
+      "latest_price_cents": 1711,
+      "rolling_30d_avg_cents": 1723,
+      "support_floor_cents": 1492,
+      "volatility_cents": 180
+    },
+    "Glove Case": {
+      "avg_volume_30d": 43.166666666666664,
+      "coefficient_of_variation": 0.049,
+      "drift_percent": -17.005545286506468,
+      "latest_price_cents": 849,
+      "rolling_30d_avg_cents": 898,
+      "support_floor_cents": 842,
+      "volatility_cents": 44
+    },
+    "Horizon Case": {
+      "avg_volume_30d": 161.2,
+      "coefficient_of_variation": 0.0602,
+      "drift_percent": -2.9197080291970803,
+      "latest_price_cents": 139,
+      "rolling_30d_avg_cents": 133,
+      "support_floor_cents": 123,
+      "volatility_cents": 8
+    },
+    "Lieutenant Rex Krikey | SEAL Frogman": {
+      "avg_volume_30d": 4.5,
+      "coefficient_of_variation": 0.0725,
+      "drift_percent": -13.308687615526802,
+      "latest_price_cents": 1609,
+      "rolling_30d_avg_cents": 1876,
+      "support_floor_cents": 1702,
+      "volatility_cents": 136
+    },
+    "M249 | O.S.I.P.R. (Factory New)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.12,
+      "drift_percent": -19.35483870967742,
+      "latest_price_cents": 51,
+      "rolling_30d_avg_cents": 50,
+      "support_floor_cents": 42,
+      "volatility_cents": 6
+    },
+    "M4A1-S | Basilisk (Field-Tested)": {
+      "avg_volume_30d": 3.066666666666667,
+      "coefficient_of_variation": 0.097,
+      "drift_percent": 0.48134777376654636,
+      "latest_price_cents": 803,
+      "rolling_30d_avg_cents": 835,
+      "support_floor_cents": 731,
+      "volatility_cents": 81
+    },
+    "M4A1-S | Cyrex (Minimal Wear)": {
+      "avg_volume_30d": 1.1333333333333333,
+      "coefficient_of_variation": 0.0252,
+      "drift_percent": -1.7205328872692514,
+      "latest_price_cents": 16007,
+      "rolling_30d_avg_cents": 16451,
+      "support_floor_cents": 15919,
+      "volatility_cents": 415
+    },
+    "M4A1-S | Decimator (Field-Tested)": {
+      "avg_volume_30d": 3.6333333333333333,
+      "coefficient_of_variation": 0.0836,
+      "drift_percent": -5.417024935511608,
+      "latest_price_cents": 1091,
+      "rolling_30d_avg_cents": 1100,
+      "support_floor_cents": 982,
+      "volatility_cents": 92
+    },
+    "M4A1-S | Electrum (Minimal Wear)": {
+      "avg_volume_30d": 9.133333333333333,
+      "coefficient_of_variation": 0.1142,
+      "drift_percent": -10.245901639344263,
+      "latest_price_cents": 208,
+      "rolling_30d_avg_cents": 219,
+      "support_floor_cents": 187,
+      "volatility_cents": 25
+    },
+    "M4A1-S | Emphorosaur-S (Battle-Scarred)": {
+      "avg_volume_30d": 0.4,
+      "coefficient_of_variation": 0.0556,
+      "drift_percent": -7.6923076923076925,
+      "latest_price_cents": 35,
+      "rolling_30d_avg_cents": 36,
+      "support_floor_cents": 33,
+      "volatility_cents": 2
+    },
+    "M4A1-S | Emphorosaur-S (Field-Tested)": {
+      "avg_volume_30d": 2.6333333333333333,
+      "coefficient_of_variation": 0.0811,
+      "drift_percent": -5.128205128205128,
+      "latest_price_cents": 37,
+      "rolling_30d_avg_cents": 37,
+      "support_floor_cents": 33,
+      "volatility_cents": 3
+    },
+    "M4A1-S | Fade (Factory New)": {
+      "avg_volume_30d": 11.966666666666667,
+      "coefficient_of_variation": 0.0618,
+      "drift_percent": -13.99254589794322,
+      "latest_price_cents": 18009,
+      "rolling_30d_avg_cents": 18692,
+      "support_floor_cents": 17212,
+      "volatility_cents": 1155
+    },
+    "M4A1-S | Fatal Glitch (Field-Tested)": {
+      "avg_volume_30d": 1.4333333333333333,
+      "coefficient_of_variation": 0.0648,
+      "drift_percent": 1.5398973401773215,
+      "latest_price_cents": 2202,
+      "rolling_30d_avg_cents": 2176,
+      "support_floor_cents": 1995,
+      "volatility_cents": 141
+    },
+    "M4A1-S | Fatal Glitch (Minimal Wear)": {
+      "avg_volume_30d": 1.2,
+      "coefficient_of_variation": 0.0812,
+      "drift_percent": -4.832029452369995,
+      "latest_price_cents": 3870,
+      "rolling_30d_avg_cents": 4136,
+      "support_floor_cents": 3705,
+      "volatility_cents": 336
+    },
+    "M4A1-S | Guardian (Minimal Wear)": {
+      "avg_volume_30d": 1.8666666666666667,
+      "coefficient_of_variation": 0.0741,
+      "drift_percent": -5.834419817470665,
+      "latest_price_cents": 2790,
+      "rolling_30d_avg_cents": 2889,
+      "support_floor_cents": 2615,
+      "volatility_cents": 214
+    },
+    "M4A1-S | Night Terror (Field-Tested)": {
+      "avg_volume_30d": 4.533333333333333,
+      "coefficient_of_variation": 0.1053,
+      "drift_percent": -3.389830508474576,
+      "latest_price_cents": 54,
+      "rolling_30d_avg_cents": 57,
+      "support_floor_cents": 49,
+      "volatility_cents": 6
+    },
+    "M4A1-S | Nitro (Field-Tested)": {
+      "avg_volume_30d": 2.6,
+      "coefficient_of_variation": 0.1026,
+      "drift_percent": 0.0,
+      "latest_price_cents": 33,
+      "rolling_30d_avg_cents": 39,
+      "support_floor_cents": 34,
+      "volatility_cents": 4
+    },
+    "M4A1-S | VariCamo (Minimal Wear)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": -5.263157894736842,
+      "latest_price_cents": 36,
+      "rolling_30d_avg_cents": 36,
+      "support_floor_cents": 31,
+      "volatility_cents": 4
+    },
+    "M4A4 | Desolate Space (Battle-Scarred)": {
+      "avg_volume_30d": 0.8333333333333334,
+      "coefficient_of_variation": 0.0516,
+      "drift_percent": -5.432780847145488,
+      "latest_price_cents": 1095,
+      "rolling_30d_avg_cents": 1027,
+      "support_floor_cents": 959,
+      "volatility_cents": 53
+    },
+    "M4A4 | Mainframe (Factory New)": {
+      "avg_volume_30d": 0.7666666666666667,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": -34.69387755102041,
+      "latest_price_cents": 26,
+      "rolling_30d_avg_cents": 32,
+      "support_floor_cents": 27,
+      "volatility_cents": 4
+    },
+    "M4A4 | Poly Mag (Field-Tested)": {
+      "avg_volume_30d": 0.2,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": 14.285714285714285,
+      "latest_price_cents": 8,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 5,
+      "volatility_cents": 2
+    },
+    "M4A4 | Spider Lily (Battle-Scarred)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.0774,
+      "drift_percent": -14.183123877917414,
+      "latest_price_cents": 478,
+      "rolling_30d_avg_cents": 478,
+      "support_floor_cents": 431,
+      "volatility_cents": 37
+    },
+    "M4A4 | Temukau (Battle-Scarred)": {
+      "avg_volume_30d": 1.0333333333333334,
+      "coefficient_of_variation": 0.0446,
+      "drift_percent": -3.8301415487094084,
+      "latest_price_cents": 2215,
+      "rolling_30d_avg_cents": 2310,
+      "support_floor_cents": 2178,
+      "volatility_cents": 103
+    },
+    "M4A4 | Zubastick (Minimal Wear)": {
+      "avg_volume_30d": 1.0,
+      "coefficient_of_variation": 0.05,
+      "drift_percent": -9.090909090909092,
+      "latest_price_cents": 20,
+      "rolling_30d_avg_cents": 20,
+      "support_floor_cents": 19,
+      "volatility_cents": 1
+    },
+    "M4A4 | 龍王 (Dragon King) (Minimal Wear)": {
+      "avg_volume_30d": 3.8666666666666667,
+      "coefficient_of_variation": 0.0669,
+      "drift_percent": -11.285882815572158,
+      "latest_price_cents": 2210,
+      "rolling_30d_avg_cents": 2256,
+      "support_floor_cents": 2062,
+      "volatility_cents": 151
+    },
+    "MAC-10 | Allure (Field-Tested)": {
+      "avg_volume_30d": 1.1666666666666667,
+      "coefficient_of_variation": 0.0811,
+      "drift_percent": -7.5,
+      "latest_price_cents": 37,
+      "rolling_30d_avg_cents": 37,
+      "support_floor_cents": 33,
+      "volatility_cents": 3
+    },
+    "MAC-10 | Cat Fight (Field-Tested)": {
+      "avg_volume_30d": 0.5,
+      "coefficient_of_variation": 0.1311,
+      "drift_percent": -11.594202898550725,
+      "latest_price_cents": 61,
+      "rolling_30d_avg_cents": 61,
+      "support_floor_cents": 51,
+      "volatility_cents": 8
+    },
+    "MAC-10 | Ensnared (Field-Tested)": {
+      "avg_volume_30d": 1.7,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": -14.285714285714285,
+      "latest_price_cents": 4,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "MAC-10 | Light Box (Minimal Wear)": {
+      "avg_volume_30d": 1.8333333333333333,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": -5.88235294117647,
+      "latest_price_cents": 16,
+      "rolling_30d_avg_cents": 16,
+      "support_floor_cents": 13,
+      "volatility_cents": 2
+    },
+    "MAC-10 | Monkeyflage (Field-Tested)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": 28.57142857142857,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "MAC-10 | Monkeyflage (Minimal Wear)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.2,
+      "drift_percent": -6.25,
+      "latest_price_cents": 15,
+      "rolling_30d_avg_cents": 15,
+      "support_floor_cents": 11,
+      "volatility_cents": 3
+    },
+    "MAC-10 | Sakkaku (Battle-Scarred)": {
+      "avg_volume_30d": 3.066666666666667,
+      "coefficient_of_variation": 0.1143,
+      "drift_percent": 6.0606060606060606,
+      "latest_price_cents": 32,
+      "rolling_30d_avg_cents": 35,
+      "support_floor_cents": 30,
+      "volatility_cents": 4
+    },
+    "MAC-10 | Sakkaku (Well-Worn)": {
+      "avg_volume_30d": 1.2333333333333334,
+      "coefficient_of_variation": 0.1212,
+      "drift_percent": -8.333333333333332,
+      "latest_price_cents": 35,
+      "rolling_30d_avg_cents": 33,
+      "support_floor_cents": 28,
+      "volatility_cents": 4
+    },
+    "MAG-7 | Insomnia (Field-Tested)": {
+      "avg_volume_30d": 0.9333333333333333,
+      "coefficient_of_variation": 0.2857,
+      "drift_percent": 0.0,
+      "latest_price_cents": 7,
+      "rolling_30d_avg_cents": 7,
+      "support_floor_cents": 4,
+      "volatility_cents": 2
+    },
+    "MAG-7 | Wildwood (Minimal Wear)": {
+      "avg_volume_30d": 0.6,
+      "coefficient_of_variation": 0.1429,
+      "drift_percent": -22.22222222222222,
+      "latest_price_cents": 7,
+      "rolling_30d_avg_cents": 7,
+      "support_floor_cents": 6,
+      "volatility_cents": 1
+    },
+    "MP5-SD | Liquidation (Minimal Wear)": {
+      "avg_volume_30d": 1.5,
+      "coefficient_of_variation": 0.0769,
+      "drift_percent": -18.75,
+      "latest_price_cents": 12,
+      "rolling_30d_avg_cents": 13,
+      "support_floor_cents": 12,
+      "volatility_cents": 1
+    },
+    "MP5-SD | Necro Jr. (Field-Tested)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": -14.285714285714285,
+      "latest_price_cents": 6,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "MP7 | Akoben (Minimal Wear)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.175,
+      "drift_percent": -23.076923076923077,
+      "latest_price_cents": 40,
+      "rolling_30d_avg_cents": 40,
+      "support_floor_cents": 31,
+      "volatility_cents": 7
+    },
+    "MP7 | Coral Paisley (Factory New)": {
+      "avg_volume_30d": 3.533333333333333,
+      "coefficient_of_variation": 0.2697,
+      "drift_percent": 39.0625,
+      "latest_price_cents": 67,
+      "rolling_30d_avg_cents": 89,
+      "support_floor_cents": 58,
+      "volatility_cents": 24
+    },
+    "MP7 | Fade (Factory New)": {
+      "avg_volume_30d": 5.266666666666667,
+      "coefficient_of_variation": 0.1247,
+      "drift_percent": -28.984651711924442,
+      "latest_price_cents": 1050,
+      "rolling_30d_avg_cents": 1203,
+      "support_floor_cents": 1011,
+      "volatility_cents": 150
+    },
+    "MP7 | Motherboard (Minimal Wear)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": 0.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "MP7 | Urban Hazard (Field-Tested)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": -18.181818181818183,
+      "latest_price_cents": 26,
+      "rolling_30d_avg_cents": 27,
+      "support_floor_cents": 23,
+      "volatility_cents": 3
+    },
+    "MP7 | Urban Hazard (Minimal Wear)": {
+      "avg_volume_30d": 0.6,
+      "coefficient_of_variation": 0.1304,
+      "drift_percent": 9.523809523809524,
+      "latest_price_cents": 46,
+      "rolling_30d_avg_cents": 46,
+      "support_floor_cents": 38,
+      "volatility_cents": 6
+    },
+    "MP9 | Airlock (Minimal Wear)": {
+      "avg_volume_30d": 0.8333333333333334,
+      "coefficient_of_variation": 0.0388,
+      "drift_percent": 2.572614107883817,
+      "latest_price_cents": 1236,
+      "rolling_30d_avg_cents": 1236,
+      "support_floor_cents": 1174,
+      "volatility_cents": 48
+    },
+    "MP9 | Bee-Tron (Minimal Wear)": {
+      "avg_volume_30d": 0.3,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "MP9 | Buff Blue (Factory New)": {
+      "avg_volume_30d": 6.733333333333333,
+      "coefficient_of_variation": 0.2,
+      "drift_percent": 81.81818181818183,
+      "latest_price_cents": 19,
+      "rolling_30d_avg_cents": 20,
+      "support_floor_cents": 15,
+      "volatility_cents": 4
+    },
+    "MP9 | Goo (Field-Tested)": {
+      "avg_volume_30d": 1.0333333333333334,
+      "coefficient_of_variation": 0.0729,
+      "drift_percent": -1.0309278350515463,
+      "latest_price_cents": 85,
+      "rolling_30d_avg_cents": 96,
+      "support_floor_cents": 87,
+      "volatility_cents": 7
+    },
+    "MP9 | Hydra (Minimal Wear)": {
+      "avg_volume_30d": 2.3666666666666667,
+      "coefficient_of_variation": 0.0636,
+      "drift_percent": -8.086469175340271,
+      "latest_price_cents": 1068,
+      "rolling_30d_avg_cents": 1148,
+      "support_floor_cents": 1054,
+      "volatility_cents": 73
+    },
+    "MP9 | Mount Fuji (Factory New)": {
+      "avg_volume_30d": 2.566666666666667,
+      "coefficient_of_variation": 0.0939,
+      "drift_percent": -17.875499714448885,
+      "latest_price_cents": 1397,
+      "rolling_30d_avg_cents": 1438,
+      "support_floor_cents": 1265,
+      "volatility_cents": 135
+    },
+    "MP9 | Urban Sovereign (Well-Worn)": {
+      "avg_volume_30d": 0.5,
+      "coefficient_of_variation": 0.0656,
+      "drift_percent": -11.594202898550725,
+      "latest_price_cents": 60,
+      "rolling_30d_avg_cents": 61,
+      "support_floor_cents": 56,
+      "volatility_cents": 4
+    },
+    "Music Kit | ALRT, DOPAMINE HIT": {
+      "avg_volume_30d": 13.5,
+      "coefficient_of_variation": 0.1267,
+      "drift_percent": -4.329004329004329,
+      "latest_price_cents": 393,
+      "rolling_30d_avg_cents": 442,
+      "support_floor_cents": 370,
+      "volatility_cents": 56
+    },
+    "Negev | Bulkhead (Minimal Wear)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": -10.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "Negev | Lionfish (Minimal Wear)": {
+      "avg_volume_30d": 0.43333333333333335,
+      "coefficient_of_variation": 0.0896,
+      "drift_percent": -1.4705882352941175,
+      "latest_price_cents": 68,
+      "rolling_30d_avg_cents": 67,
+      "support_floor_cents": 59,
+      "volatility_cents": 6
+    },
+    "Negev | Sour Grapes (Minimal Wear)": {
+      "avg_volume_30d": 1.2333333333333334,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": -10.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "Nova | Antique (Minimal Wear)": {
+      "avg_volume_30d": 0.9333333333333333,
+      "coefficient_of_variation": 0.0773,
+      "drift_percent": 2.8729281767955803,
+      "latest_price_cents": 931,
+      "rolling_30d_avg_cents": 931,
+      "support_floor_cents": 839,
+      "volatility_cents": 72
+    },
+    "Nova | Dark Sigil (Minimal Wear)": {
+      "avg_volume_30d": 1.4,
+      "coefficient_of_variation": 0.3,
+      "drift_percent": -23.076923076923077,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 10,
+      "support_floor_cents": 6,
+      "volatility_cents": 3
+    },
+    "Nova | Marsh Grass (Factory New)": {
+      "avg_volume_30d": 0.3,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Nova | Predator (Field-Tested)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.5,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 2,
+      "support_floor_cents": 1,
+      "volatility_cents": 1
+    },
+    "Nova | Windblown (Minimal Wear)": {
+      "avg_volume_30d": 0.2,
+      "coefficient_of_variation": 0.16,
+      "drift_percent": -10.714285714285714,
+      "latest_price_cents": 25,
+      "rolling_30d_avg_cents": 25,
+      "support_floor_cents": 20,
+      "volatility_cents": 4
+    },
+    "Nova | Wood Fired (Minimal Wear)": {
+      "avg_volume_30d": 2.7333333333333334,
+      "coefficient_of_variation": 0.1724,
+      "drift_percent": 1.7543859649122806,
+      "latest_price_cents": 206,
+      "rolling_30d_avg_cents": 58,
+      "support_floor_cents": 45,
+      "volatility_cents": 10
+    },
+    "Operation Bravo Case": {
+      "avg_volume_30d": 2.466666666666667,
+      "coefficient_of_variation": 0.0595,
+      "drift_percent": -7.581293386919985,
+      "latest_price_cents": 4640,
+      "rolling_30d_avg_cents": 5059,
+      "support_floor_cents": 4673,
+      "volatility_cents": 301
+    },
+    "Operation Breakout Weapon Case": {
+      "avg_volume_30d": 193.86666666666667,
+      "coefficient_of_variation": 0.0519,
+      "drift_percent": -3.9886039886039883,
+      "latest_price_cents": 674,
+      "rolling_30d_avg_cents": 674,
+      "support_floor_cents": 629,
+      "volatility_cents": 35
+    },
+    "Operator | FBI SWAT": {
+      "avg_volume_30d": 9.733333333333333,
+      "coefficient_of_variation": 0.058,
+      "drift_percent": -9.074074074074074,
+      "latest_price_cents": 870,
+      "rolling_30d_avg_cents": 982,
+      "support_floor_cents": 909,
+      "volatility_cents": 57
+    },
+    "P2000 | Ivory (Well-Worn)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.1212,
+      "drift_percent": 0.0,
+      "latest_price_cents": 33,
+      "rolling_30d_avg_cents": 33,
+      "support_floor_cents": 28,
+      "volatility_cents": 4
+    },
+    "P2000 | Lifted Spirits (Battle-Scarred)": {
+      "avg_volume_30d": 0.43333333333333335,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": -33.33333333333333,
+      "latest_price_cents": 6,
+      "rolling_30d_avg_cents": 4,
+      "support_floor_cents": 3,
+      "volatility_cents": 1
+    },
+    "P2000 | Marsh (Minimal Wear)": {
+      "avg_volume_30d": 0.6,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": -33.33333333333333,
+      "latest_price_cents": 4,
+      "rolling_30d_avg_cents": 4,
+      "support_floor_cents": 3,
+      "volatility_cents": 1
+    },
+    "P250 | Asiimov (Well-Worn)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.0388,
+      "drift_percent": -7.80532598714417,
+      "latest_price_cents": 1004,
+      "rolling_30d_avg_cents": 1004,
+      "support_floor_cents": 954,
+      "volatility_cents": 39
+    },
+    "P250 | Cassette (Factory New)": {
+      "avg_volume_30d": 1.4666666666666666,
+      "coefficient_of_variation": 0.2424,
+      "drift_percent": -34.0,
+      "latest_price_cents": 26,
+      "rolling_30d_avg_cents": 33,
+      "support_floor_cents": 23,
+      "volatility_cents": 8
+    },
+    "P250 | Cassette (Field-Tested)": {
+      "avg_volume_30d": 3.6333333333333333,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": 0.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 9,
+      "support_floor_cents": 8,
+      "volatility_cents": 1
+    },
+    "P250 | Cassette (Minimal Wear)": {
+      "avg_volume_30d": 0.4666666666666667,
+      "coefficient_of_variation": 0.0769,
+      "drift_percent": -23.52941176470588,
+      "latest_price_cents": 13,
+      "rolling_30d_avg_cents": 13,
+      "support_floor_cents": 12,
+      "volatility_cents": 1
+    },
+    "P250 | Constructivist (Factory New)": {
+      "avg_volume_30d": 3.033333333333333,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": 0.0,
+      "latest_price_cents": 15,
+      "rolling_30d_avg_cents": 16,
+      "support_floor_cents": 13,
+      "volatility_cents": 2
+    },
+    "P250 | Facility Draft (Minimal Wear)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.5,
+      "drift_percent": 0.0,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 2,
+      "support_floor_cents": 1,
+      "volatility_cents": 1
+    },
+    "P250 | Re.built (Field-Tested)": {
+      "avg_volume_30d": 2.2,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": 0.0,
+      "latest_price_cents": 7,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "P250 | Steel Disruption (Minimal Wear)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.0526,
+      "drift_percent": -0.4032258064516129,
+      "latest_price_cents": 247,
+      "rolling_30d_avg_cents": 247,
+      "support_floor_cents": 230,
+      "volatility_cents": 13
+    },
+    "P250 | Vino Primo (Minimal Wear)": {
+      "avg_volume_30d": 2.6666666666666665,
+      "coefficient_of_variation": 0.0524,
+      "drift_percent": -12.538226299694188,
+      "latest_price_cents": 277,
+      "rolling_30d_avg_cents": 286,
+      "support_floor_cents": 267,
+      "volatility_cents": 15
+    },
+    "P250 | Visions (Field-Tested)": {
+      "avg_volume_30d": 5.166666666666667,
+      "coefficient_of_variation": 0.1229,
+      "drift_percent": -7.668711656441718,
+      "latest_price_cents": 299,
+      "rolling_30d_avg_cents": 301,
+      "support_floor_cents": 254,
+      "volatility_cents": 37
+    },
+    "P90 | Asiimov (Minimal Wear)": {
+      "avg_volume_30d": 0.9666666666666667,
+      "coefficient_of_variation": 0.019,
+      "drift_percent": -2.5091056252529342,
+      "latest_price_cents": 16999,
+      "rolling_30d_avg_cents": 16863,
+      "support_floor_cents": 16452,
+      "volatility_cents": 321
+    },
+    "P90 | Deathgaze (Minimal Wear)": {
+      "avg_volume_30d": 2.966666666666667,
+      "coefficient_of_variation": 0.1024,
+      "drift_percent": -8.468468468468467,
+      "latest_price_cents": 1091,
+      "rolling_30d_avg_cents": 1016,
+      "support_floor_cents": 883,
+      "volatility_cents": 104
+    },
+    "PP-Bizon | Night Riot (Field-Tested)": {
+      "avg_volume_30d": 0.4666666666666667,
+      "coefficient_of_variation": 0.0769,
+      "drift_percent": 8.333333333333332,
+      "latest_price_cents": 13,
+      "rolling_30d_avg_cents": 13,
+      "support_floor_cents": 12,
+      "volatility_cents": 1
+    },
+    "PP-Bizon | Traitor (Field-Tested)": {
+      "avg_volume_30d": 0.8,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Prisma Case": {
+      "avg_volume_30d": 226.5,
+      "coefficient_of_variation": 0.2091,
+      "drift_percent": -4.3478260869565215,
+      "latest_price_cents": 110,
+      "rolling_30d_avg_cents": 110,
+      "support_floor_cents": 81,
+      "volatility_cents": 23
+    },
+    "R8 Revolver | Banana Cannon (Well-Worn)": {
+      "avg_volume_30d": 1.6666666666666667,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": -8.571428571428571,
+      "latest_price_cents": 32,
+      "rolling_30d_avg_cents": 32,
+      "support_floor_cents": 27,
+      "volatility_cents": 4
+    },
+    "SCAR-20 | Cardiac (Well-Worn)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.01,
+      "drift_percent": 4.724409448818897,
+      "latest_price_cents": 798,
+      "rolling_30d_avg_cents": 798,
+      "support_floor_cents": 788,
+      "volatility_cents": 8
+    },
+    "SCAR-20 | Short Ochre (Factory New)": {
+      "avg_volume_30d": 0.7,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": -50.0,
+      "latest_price_cents": 2,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "SCAR-20 | Sirocco Script (Field-Tested)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "SG 553 | Cyberforce (Field-Tested)": {
+      "avg_volume_30d": 2.5,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "SG 553 | Pulse (Minimal Wear)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.1229,
+      "drift_percent": -18.7779433681073,
+      "latest_price_cents": 502,
+      "rolling_30d_avg_cents": 545,
+      "support_floor_cents": 459,
+      "volatility_cents": 67
+    },
+    "SSG 08 | Abyss (Factory New)": {
+      "avg_volume_30d": 2.1333333333333333,
+      "coefficient_of_variation": 0.0998,
+      "drift_percent": -15.439856373429084,
+      "latest_price_cents": 392,
+      "rolling_30d_avg_cents": 471,
+      "support_floor_cents": 411,
+      "volatility_cents": 47
+    },
+    "SSG 08 | Acid Fade (Factory New)": {
+      "avg_volume_30d": 8.566666666666666,
+      "coefficient_of_variation": 0.1765,
+      "drift_percent": -28.421052631578945,
+      "latest_price_cents": 61,
+      "rolling_30d_avg_cents": 68,
+      "support_floor_cents": 53,
+      "volatility_cents": 12
+    },
+    "SSG 08 | Calligrafaux (Factory New)": {
+      "avg_volume_30d": 5.9,
+      "coefficient_of_variation": 0.1373,
+      "drift_percent": -17.741935483870968,
+      "latest_price_cents": 150,
+      "rolling_30d_avg_cents": 153,
+      "support_floor_cents": 126,
+      "volatility_cents": 21
+    },
+    "SSG 08 | Calligrafaux (Minimal Wear)": {
+      "avg_volume_30d": 4.5,
+      "coefficient_of_variation": 0.2564,
+      "drift_percent": 69.56521739130434,
+      "latest_price_cents": 65,
+      "rolling_30d_avg_cents": 39,
+      "support_floor_cents": 26,
+      "volatility_cents": 10
+    },
+    "SSG 08 | Memorial (Factory New)": {
+      "avg_volume_30d": 1.3,
+      "coefficient_of_variation": 0.08,
+      "drift_percent": -10.714285714285714,
+      "latest_price_cents": 94,
+      "rolling_30d_avg_cents": 100,
+      "support_floor_cents": 90,
+      "volatility_cents": 8
+    },
+    "SSG 08 | Memorial (Field-Tested)": {
+      "avg_volume_30d": 1.1666666666666667,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": 0.0,
+      "latest_price_cents": 8,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 7,
+      "volatility_cents": 1
+    },
+    "SSG 08 | Rapid Transit (Battle-Scarred)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.1392,
+      "drift_percent": -2.4691358024691357,
+      "latest_price_cents": 79,
+      "rolling_30d_avg_cents": 79,
+      "support_floor_cents": 65,
+      "volatility_cents": 11
+    },
+    "SSG 08 | Turbo Peek (Minimal Wear)": {
+      "avg_volume_30d": 2.1,
+      "coefficient_of_variation": 0.1525,
+      "drift_percent": -2.6076649545634134,
+      "latest_price_cents": 2378,
+      "rolling_30d_avg_cents": 2465,
+      "support_floor_cents": 1983,
+      "volatility_cents": 376
+    },
+    "Safecracker Voltzmann | The Professionals": {
+      "avg_volume_30d": 6.0,
+      "coefficient_of_variation": 0.1244,
+      "drift_percent": -4.684788895315211,
+      "latest_price_cents": 1480,
+      "rolling_30d_avg_cents": 1648,
+      "support_floor_cents": 1385,
+      "volatility_cents": 205
+    },
+    "Sawed-Off | Lunar Wyrm (Well-Worn)": {
+      "avg_volume_30d": 0.6333333333333333,
+      "coefficient_of_variation": 0.0952,
+      "drift_percent": 10.526315789473683,
+      "latest_price_cents": 21,
+      "rolling_30d_avg_cents": 21,
+      "support_floor_cents": 18,
+      "volatility_cents": 2
+    },
+    "Seal Team 6 Soldier | NSWC SEAL": {
+      "avg_volume_30d": 7.1,
+      "coefficient_of_variation": 0.1172,
+      "drift_percent": -5.308880308880308,
+      "latest_price_cents": 849,
+      "rolling_30d_avg_cents": 981,
+      "support_floor_cents": 834,
+      "volatility_cents": 115
+    },
+    "Sir Bloody Silent Darryl | The Professionals": {
+      "avg_volume_30d": 10.666666666666666,
+      "coefficient_of_variation": 0.0987,
+      "drift_percent": -5.06440281030445,
+      "latest_price_cents": 3063,
+      "rolling_30d_avg_cents": 3243,
+      "support_floor_cents": 2833,
+      "volatility_cents": 320
+    },
+    "Souvenir FAMAS | CaliCamo (Minimal Wear)": {
+      "avg_volume_30d": 0.5,
+      "coefficient_of_variation": 0.1286,
+      "drift_percent": -25.53191489361702,
+      "latest_price_cents": 69,
+      "rolling_30d_avg_cents": 70,
+      "support_floor_cents": 58,
+      "volatility_cents": 9
+    },
+    "Souvenir MP5-SD | Lab Rats (Minimal Wear)": {
+      "avg_volume_30d": 1.5666666666666667,
+      "coefficient_of_variation": 0.1,
+      "drift_percent": -6.25,
+      "latest_price_cents": 30,
+      "rolling_30d_avg_cents": 30,
+      "support_floor_cents": 26,
+      "volatility_cents": 3
+    },
+    "Souvenir SG 553 | Bleached (Minimal Wear)": {
+      "avg_volume_30d": 1.1666666666666667,
+      "coefficient_of_variation": 0.1538,
+      "drift_percent": -13.333333333333334,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 13,
+      "support_floor_cents": 10,
+      "volatility_cents": 2
+    },
+    "Special Agent Ava | FBI": {
+      "avg_volume_30d": 12.9,
+      "coefficient_of_variation": 0.0874,
+      "drift_percent": -8.035714285714286,
+      "latest_price_cents": 1590,
+      "rolling_30d_avg_cents": 1751,
+      "support_floor_cents": 1555,
+      "volatility_cents": 153
+    },
+    "StatTrak™ AK-47 | Frontside Misty (Field-Tested)": {
+      "avg_volume_30d": 0.5666666666666667,
+      "coefficient_of_variation": 0.0984,
+      "drift_percent": -3.927585148818656,
+      "latest_price_cents": 2936,
+      "rolling_30d_avg_cents": 3131,
+      "support_floor_cents": 2736,
+      "volatility_cents": 308
+    },
+    "StatTrak™ AK-47 | Inheritance (Field-Tested)": {
+      "avg_volume_30d": 2.3666666666666667,
+      "coefficient_of_variation": 0.0696,
+      "drift_percent": -7.1590454606052525,
+      "latest_price_cents": 6970,
+      "rolling_30d_avg_cents": 6964,
+      "support_floor_cents": 6342,
+      "volatility_cents": 485
+    },
+    "StatTrak™ AWP | Duality (Field-Tested)": {
+      "avg_volume_30d": 2.7333333333333334,
+      "coefficient_of_variation": 0.0993,
+      "drift_percent": -8.043478260869565,
+      "latest_price_cents": 410,
+      "rolling_30d_avg_cents": 423,
+      "support_floor_cents": 369,
+      "volatility_cents": 42
+    },
+    "StatTrak™ AWP | Duality (Minimal Wear)": {
+      "avg_volume_30d": 1.8333333333333333,
+      "coefficient_of_variation": 0.0898,
+      "drift_percent": -8.748615725359912,
+      "latest_price_cents": 843,
+      "rolling_30d_avg_cents": 824,
+      "support_floor_cents": 729,
+      "volatility_cents": 74
+    },
+    "StatTrak™ AWP | Exoskeleton (Field-Tested)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.0779,
+      "drift_percent": -9.899749373433583,
+      "latest_price_cents": 745,
+      "rolling_30d_avg_cents": 719,
+      "support_floor_cents": 647,
+      "volatility_cents": 56
+    },
+    "StatTrak™ AWP | Fever Dream (Field-Tested)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.2411,
+      "drift_percent": -3.7804246504401866,
+      "latest_price_cents": 1858,
+      "rolling_30d_avg_cents": 1858,
+      "support_floor_cents": 1284,
+      "volatility_cents": 448
+    },
+    "StatTrak™ AWP | Neo-Noir (Field-Tested)": {
+      "avg_volume_30d": 0.8333333333333334,
+      "coefficient_of_variation": 0.0379,
+      "drift_percent": -9.781729991915926,
+      "latest_price_cents": 4314,
+      "rolling_30d_avg_cents": 4464,
+      "support_floor_cents": 4247,
+      "volatility_cents": 169
+    },
+    "StatTrak™ Desert Eagle | Calligraffiti (Well-Worn)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.1111,
+      "drift_percent": -4.25531914893617,
+      "latest_price_cents": 48,
+      "rolling_30d_avg_cents": 45,
+      "support_floor_cents": 39,
+      "volatility_cents": 5
+    },
+    "StatTrak™ Desert Eagle | Printstream (Field-Tested)": {
+      "avg_volume_30d": 3.1666666666666665,
+      "coefficient_of_variation": 0.0886,
+      "drift_percent": -4.085917312661499,
+      "latest_price_cents": 5609,
+      "rolling_30d_avg_cents": 5939,
+      "support_floor_cents": 5265,
+      "volatility_cents": 526
+    },
+    "StatTrak™ Desert Eagle | Serpent Strike (Minimal Wear)": {
+      "avg_volume_30d": 3.7333333333333334,
+      "coefficient_of_variation": 0.1186,
+      "drift_percent": -9.693877551020408,
+      "latest_price_cents": 204,
+      "rolling_30d_avg_cents": 177,
+      "support_floor_cents": 150,
+      "volatility_cents": 21
+    },
+    "StatTrak™ Dual Berettas | Melondrama (Well-Worn)": {
+      "avg_volume_30d": 0.4666666666666667,
+      "coefficient_of_variation": 0.0275,
+      "drift_percent": -7.269155206286837,
+      "latest_price_cents": 489,
+      "rolling_30d_avg_cents": 472,
+      "support_floor_cents": 455,
+      "volatility_cents": 13
+    },
+    "StatTrak™ FAMAS | Meow 36 (Field-Tested)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": -11.11111111111111,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 7,
+      "volatility_cents": 1
+    },
+    "StatTrak™ FAMAS | Pulse (Minimal Wear)": {
+      "avg_volume_30d": 0.36666666666666664,
+      "coefficient_of_variation": 0.0814,
+      "drift_percent": -12.845990063875087,
+      "latest_price_cents": 1228,
+      "rolling_30d_avg_cents": 1228,
+      "support_floor_cents": 1100,
+      "volatility_cents": 100
+    },
+    "StatTrak™ FAMAS | Survivor Z (Minimal Wear)": {
+      "avg_volume_30d": 0.8,
+      "coefficient_of_variation": 0.0733,
+      "drift_percent": -17.12707182320442,
+      "latest_price_cents": 151,
+      "rolling_30d_avg_cents": 150,
+      "support_floor_cents": 136,
+      "volatility_cents": 11
+    },
+    "StatTrak™ Five-SeveN | Hybrid (Field-Tested)": {
+      "avg_volume_30d": 0.9333333333333333,
+      "coefficient_of_variation": 0.1486,
+      "drift_percent": -13.953488372093023,
+      "latest_price_cents": 70,
+      "rolling_30d_avg_cents": 74,
+      "support_floor_cents": 60,
+      "volatility_cents": 11
+    },
+    "StatTrak™ Five-SeveN | Scrawl (Well-Worn)": {
+      "avg_volume_30d": 2.0,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": 0.0,
+      "latest_price_cents": 8,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 7,
+      "volatility_cents": 1
+    },
+    "StatTrak™ Galil AR | Black Sand (Field-Tested)": {
+      "avg_volume_30d": 0.2,
+      "coefficient_of_variation": 0.0513,
+      "drift_percent": -7.142857142857142,
+      "latest_price_cents": 39,
+      "rolling_30d_avg_cents": 39,
+      "support_floor_cents": 36,
+      "volatility_cents": 2
+    },
+    "StatTrak™ Glock-18 | Block-18 (Factory New)": {
+      "avg_volume_30d": 1.5,
+      "coefficient_of_variation": 0.0546,
+      "drift_percent": -20.113851992409867,
+      "latest_price_cents": 449,
+      "rolling_30d_avg_cents": 421,
+      "support_floor_cents": 392,
+      "volatility_cents": 23
+    },
+    "StatTrak™ Glock-18 | Clear Polymer (Field-Tested)": {
+      "avg_volume_30d": 0.43333333333333335,
+      "coefficient_of_variation": 0.1159,
+      "drift_percent": -2.8169014084507045,
+      "latest_price_cents": 73,
+      "rolling_30d_avg_cents": 69,
+      "support_floor_cents": 59,
+      "volatility_cents": 8
+    },
+    "StatTrak™ M4A1-S | Night Terror (Field-Tested)": {
+      "avg_volume_30d": 3.1,
+      "coefficient_of_variation": 0.1068,
+      "drift_percent": -5.5045871559633035,
+      "latest_price_cents": 100,
+      "rolling_30d_avg_cents": 103,
+      "support_floor_cents": 89,
+      "volatility_cents": 11
+    },
+    "StatTrak™ M4A4 | Choppa (Battle-Scarred)": {
+      "avg_volume_30d": 0.43333333333333335,
+      "coefficient_of_variation": 0.0909,
+      "drift_percent": 22.22222222222222,
+      "latest_price_cents": 11,
+      "rolling_30d_avg_cents": 11,
+      "support_floor_cents": 10,
+      "volatility_cents": 1
+    },
+    "StatTrak™ M4A4 | Choppa (Field-Tested)": {
+      "avg_volume_30d": 0.43333333333333335,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -7.6923076923076925,
+      "latest_price_cents": 12,
+      "rolling_30d_avg_cents": 12,
+      "support_floor_cents": 11,
+      "volatility_cents": 1
+    },
+    "StatTrak™ M4A4 | Evil Daimyo (Minimal Wear)": {
+      "avg_volume_30d": 0.9,
+      "coefficient_of_variation": 0.0791,
+      "drift_percent": -6.746031746031746,
+      "latest_price_cents": 1117,
+      "rolling_30d_avg_cents": 1175,
+      "support_floor_cents": 1056,
+      "volatility_cents": 93
+    },
+    "StatTrak™ MP5-SD | Necro Jr. (Minimal Wear)": {
+      "avg_volume_30d": 0.7,
+      "coefficient_of_variation": 0.1538,
+      "drift_percent": -35.0,
+      "latest_price_cents": 15,
+      "rolling_30d_avg_cents": 13,
+      "support_floor_cents": 10,
+      "volatility_cents": 2
+    },
+    "StatTrak™ MP7 | Armor Core (Field-Tested)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.102,
+      "drift_percent": -20.967741935483872,
+      "latest_price_cents": 49,
+      "rolling_30d_avg_cents": 49,
+      "support_floor_cents": 43,
+      "volatility_cents": 5
+    },
+    "StatTrak™ Negev | Prototype (Field-Tested)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": 23.076923076923077,
+      "latest_price_cents": 16,
+      "rolling_30d_avg_cents": 16,
+      "support_floor_cents": 13,
+      "volatility_cents": 2
+    },
+    "StatTrak™ Nova | Toy Soldier (Minimal Wear)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.152,
+      "drift_percent": -16.10738255033557,
+      "latest_price_cents": 267,
+      "rolling_30d_avg_cents": 375,
+      "support_floor_cents": 302,
+      "volatility_cents": 57
+    },
+    "StatTrak™ P250 | Cassette (Minimal Wear)": {
+      "avg_volume_30d": 1.2333333333333334,
+      "coefficient_of_variation": 0.1818,
+      "drift_percent": 0.0,
+      "latest_price_cents": 19,
+      "rolling_30d_avg_cents": 22,
+      "support_floor_cents": 17,
+      "volatility_cents": 4
+    },
+    "StatTrak™ P90 | Chopper (Minimal Wear)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.0359,
+      "drift_percent": -17.40740740740741,
+      "latest_price_cents": 228,
+      "rolling_30d_avg_cents": 223,
+      "support_floor_cents": 213,
+      "volatility_cents": 8
+    },
+    "StatTrak™ P90 | Deathgaze (Minimal Wear)": {
+      "avg_volume_30d": 0.8666666666666667,
+      "coefficient_of_variation": 0.071,
+      "drift_percent": -6.36297903109183,
+      "latest_price_cents": 1265,
+      "rolling_30d_avg_cents": 1295,
+      "support_floor_cents": 1177,
+      "volatility_cents": 92
+    },
+    "StatTrak™ P90 | Neoqueen (Field-Tested)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.0909,
+      "drift_percent": -15.384615384615385,
+      "latest_price_cents": 33,
+      "rolling_30d_avg_cents": 33,
+      "support_floor_cents": 29,
+      "volatility_cents": 3
+    },
+    "StatTrak™ P90 | Neoqueen (Minimal Wear)": {
+      "avg_volume_30d": 0.8666666666666667,
+      "coefficient_of_variation": 0.0789,
+      "drift_percent": 2.7027027027027026,
+      "latest_price_cents": 66,
+      "rolling_30d_avg_cents": 76,
+      "support_floor_cents": 68,
+      "volatility_cents": 6
+    },
+    "StatTrak™ SG 553 | Darkwing (Minimal Wear)": {
+      "avg_volume_30d": 0.7666666666666667,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -8.108108108108109,
+      "latest_price_cents": 203,
+      "rolling_30d_avg_cents": 204,
+      "support_floor_cents": 182,
+      "volatility_cents": 17
+    },
+    "StatTrak™ SSG 08 | Memorial (Minimal Wear)": {
+      "avg_volume_30d": 1.6333333333333333,
+      "coefficient_of_variation": 0.1296,
+      "drift_percent": 0.0,
+      "latest_price_cents": 54,
+      "rolling_30d_avg_cents": 54,
+      "support_floor_cents": 45,
+      "volatility_cents": 7
+    },
+    "StatTrak™ Tec-9 | Isaac (Field-Tested)": {
+      "avg_volume_30d": 1.1,
+      "coefficient_of_variation": 0.0764,
+      "drift_percent": -5.263157894736842,
+      "latest_price_cents": 426,
+      "rolling_30d_avg_cents": 432,
+      "support_floor_cents": 390,
+      "volatility_cents": 33
+    },
+    "StatTrak™ USP-S | Flashback (Field-Tested)": {
+      "avg_volume_30d": 0.7333333333333333,
+      "coefficient_of_variation": 0.1488,
+      "drift_percent": 0.0,
+      "latest_price_cents": 121,
+      "rolling_30d_avg_cents": 121,
+      "support_floor_cents": 98,
+      "volatility_cents": 18
+    },
+    "StatTrak™ USP-S | PC-GRN (Minimal Wear)": {
+      "avg_volume_30d": 1.9666666666666666,
+      "coefficient_of_variation": 0.0984,
+      "drift_percent": -4.6875,
+      "latest_price_cents": 61,
+      "rolling_30d_avg_cents": 61,
+      "support_floor_cents": 53,
+      "volatility_cents": 6
+    },
+    "StatTrak™ USP-S | Printstream (Minimal Wear)": {
+      "avg_volume_30d": 1.2333333333333334,
+      "coefficient_of_variation": 0.0321,
+      "drift_percent": -1.7204301075268817,
+      "latest_price_cents": 10653,
+      "rolling_30d_avg_cents": 10968,
+      "support_floor_cents": 10517,
+      "volatility_cents": 352
+    },
+    "StatTrak™ XM1014 | Oxide Blaze (Field-Tested)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.375,
+      "drift_percent": -11.11111111111111,
+      "latest_price_cents": 8,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 4,
+      "volatility_cents": 3
+    },
+    "Sticker Capsule 2": {
+      "avg_volume_30d": 4.266666666666667,
+      "coefficient_of_variation": 0.0709,
+      "drift_percent": 0.7042253521126761,
+      "latest_price_cents": 1012,
+      "rolling_30d_avg_cents": 1001,
+      "support_floor_cents": 910,
+      "volatility_cents": 71
+    },
+    "Sticker | Chrome Dome (Holo)": {
+      "avg_volume_30d": 4.266666666666667,
+      "coefficient_of_variation": 0.0882,
+      "drift_percent": 8.12720848056537,
+      "latest_price_cents": 248,
+      "rolling_30d_avg_cents": 306,
+      "support_floor_cents": 271,
+      "volatility_cents": 27
+    },
+    "Sticker | G2 Esports (Holo) | Antwerp 2022": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.059,
+      "drift_percent": -18.906605922551254,
+      "latest_price_cents": 410,
+      "rolling_30d_avg_cents": 356,
+      "support_floor_cents": 329,
+      "volatility_cents": 21
+    },
+    "Tec-9 | Bamboo Forest (Minimal Wear)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.0813,
+      "drift_percent": -22.878228782287824,
+      "latest_price_cents": 836,
+      "rolling_30d_avg_cents": 836,
+      "support_floor_cents": 749,
+      "volatility_cents": 68
+    },
+    "Tec-9 | Brother (Well-Worn)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.0909,
+      "drift_percent": 0.0,
+      "latest_price_cents": 27,
+      "rolling_30d_avg_cents": 33,
+      "support_floor_cents": 29,
+      "volatility_cents": 3
+    },
+    "Tec-9 | Citric Acid (Factory New)": {
+      "avg_volume_30d": 1.3333333333333333,
+      "coefficient_of_variation": 0.0667,
+      "drift_percent": -25.0,
+      "latest_price_cents": 12,
+      "rolling_30d_avg_cents": 15,
+      "support_floor_cents": 14,
+      "volatility_cents": 1
+    },
+    "Tec-9 | Citric Acid (Minimal Wear)": {
+      "avg_volume_30d": 0.6,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": -33.33333333333333,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 4,
+      "support_floor_cents": 3,
+      "volatility_cents": 1
+    },
+    "Tec-9 | Fuel Injector (Field-Tested)": {
+      "avg_volume_30d": 2.1666666666666665,
+      "coefficient_of_variation": 0.0518,
+      "drift_percent": -0.3686635944700461,
+      "latest_price_cents": 1060,
+      "rolling_30d_avg_cents": 1081,
+      "support_floor_cents": 1009,
+      "volatility_cents": 56
+    },
+    "Tec-9 | Re-Entry (Factory New)": {
+      "avg_volume_30d": 0.6,
+      "coefficient_of_variation": 0.1036,
+      "drift_percent": -23.341232227488153,
+      "latest_price_cents": 577,
+      "rolling_30d_avg_cents": 647,
+      "support_floor_cents": 561,
+      "volatility_cents": 67
+    },
+    "Tec-9 | Red Quartz (Minimal Wear)": {
+      "avg_volume_30d": 2.8666666666666667,
+      "coefficient_of_variation": 0.1429,
+      "drift_percent": 0.0,
+      "latest_price_cents": 29,
+      "rolling_30d_avg_cents": 28,
+      "support_floor_cents": 23,
+      "volatility_cents": 4
+    },
+    "Tec-9 | Slag (Minimal Wear)": {
+      "avg_volume_30d": 1.8333333333333333,
+      "coefficient_of_variation": 0.0833,
+      "drift_percent": -7.6923076923076925,
+      "latest_price_cents": 11,
+      "rolling_30d_avg_cents": 12,
+      "support_floor_cents": 11,
+      "volatility_cents": 1
+    },
+    "UMP-45 | Blaze (Factory New)": {
+      "avg_volume_30d": 1.3,
+      "coefficient_of_variation": 0.0462,
+      "drift_percent": -20.37735849056604,
+      "latest_price_cents": 1611,
+      "rolling_30d_avg_cents": 1688,
+      "support_floor_cents": 1588,
+      "volatility_cents": 78
+    },
+    "UMP-45 | K.O. Factory (Minimal Wear)": {
+      "avg_volume_30d": 1.5,
+      "coefficient_of_variation": 0.0659,
+      "drift_percent": -7.30050933786078,
+      "latest_price_cents": 542,
+      "rolling_30d_avg_cents": 546,
+      "support_floor_cents": 500,
+      "volatility_cents": 36
+    },
+    "USP-S | Caiman (Minimal Wear)": {
+      "avg_volume_30d": 0.36666666666666664,
+      "coefficient_of_variation": 0.0642,
+      "drift_percent": -13.996789727126806,
+      "latest_price_cents": 2679,
+      "rolling_30d_avg_cents": 2679,
+      "support_floor_cents": 2459,
+      "volatility_cents": 172
+    },
+    "USP-S | Forest Leaves (Field-Tested)": {
+      "avg_volume_30d": 0.4,
+      "coefficient_of_variation": 0.25,
+      "drift_percent": -42.857142857142854,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 4,
+      "support_floor_cents": 3,
+      "volatility_cents": 1
+    },
+    "USP-S | Forest Leaves (Minimal Wear)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.0625,
+      "drift_percent": -5.88235294117647,
+      "latest_price_cents": 16,
+      "rolling_30d_avg_cents": 16,
+      "support_floor_cents": 15,
+      "volatility_cents": 1
+    },
+    "USP-S | Jawbreaker (Field-Tested)": {
+      "avg_volume_30d": 11.333333333333334,
+      "coefficient_of_variation": 0.0985,
+      "drift_percent": -6.685236768802229,
+      "latest_price_cents": 326,
+      "rolling_30d_avg_cents": 335,
+      "support_floor_cents": 293,
+      "volatility_cents": 33
+    },
+    "USP-S | PC-GRN (Field-Tested)": {
+      "avg_volume_30d": 2.1333333333333333,
+      "coefficient_of_variation": 0.125,
+      "drift_percent": 0.0,
+      "latest_price_cents": 9,
+      "rolling_30d_avg_cents": 8,
+      "support_floor_cents": 7,
+      "volatility_cents": 1
+    },
+    "USP-S | Printstream (Battle-Scarred)": {
+      "avg_volume_30d": 3.033333333333333,
+      "coefficient_of_variation": 0.048,
+      "drift_percent": -5.121719886184003,
+      "latest_price_cents": 2948,
+      "rolling_30d_avg_cents": 3001,
+      "support_floor_cents": 2816,
+      "volatility_cents": 144
+    },
+    "USP-S | Printstream (Field-Tested)": {
+      "avg_volume_30d": 14.766666666666667,
+      "coefficient_of_variation": 0.1272,
+      "drift_percent": -4.491413474240423,
+      "latest_price_cents": 3725,
+      "rolling_30d_avg_cents": 3615,
+      "support_floor_cents": 3025,
+      "volatility_cents": 460
+    },
+    "USP-S | Sleeping Potion (Minimal Wear)": {
+      "avg_volume_30d": 8.7,
+      "coefficient_of_variation": 0.1259,
+      "drift_percent": -8.830022075055188,
+      "latest_price_cents": 426,
+      "rolling_30d_avg_cents": 413,
+      "support_floor_cents": 346,
+      "volatility_cents": 52
+    },
+    "USP-S | The Traitor (Well-Worn)": {
+      "avg_volume_30d": 1.3333333333333333,
+      "coefficient_of_variation": 0.0627,
+      "drift_percent": -5.040595399188092,
+      "latest_price_cents": 2807,
+      "rolling_30d_avg_cents": 2807,
+      "support_floor_cents": 2581,
+      "volatility_cents": 176
+    },
+    "USP-S | Ticket to Hell (Field-Tested)": {
+      "avg_volume_30d": 4.7,
+      "coefficient_of_variation": 0.1404,
+      "drift_percent": -1.7241379310344827,
+      "latest_price_cents": 51,
+      "rolling_30d_avg_cents": 57,
+      "support_floor_cents": 47,
+      "volatility_cents": 8
+    },
+    "Winter Offensive Weapon Case": {
+      "avg_volume_30d": 1.8333333333333333,
+      "coefficient_of_variation": 0.0641,
+      "drift_percent": -6.764374295377677,
+      "latest_price_cents": 831,
+      "rolling_30d_avg_cents": 827,
+      "support_floor_cents": 759,
+      "volatility_cents": 53
+    },
+    "XM1014 | Gum Wall Camo (Field-Tested)": {
+      "avg_volume_30d": 0.5,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "XM1014 | Irezumi (Battle-Scarred)": {
+      "avg_volume_30d": 0.6666666666666666,
+      "coefficient_of_variation": 0.1667,
+      "drift_percent": 0.0,
+      "latest_price_cents": 10,
+      "rolling_30d_avg_cents": 6,
+      "support_floor_cents": 5,
+      "volatility_cents": 1
+    },
+    "XM1014 | Teclu Burner (Minimal Wear)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.0147,
+      "drift_percent": -8.520179372197308,
+      "latest_price_cents": 204,
+      "rolling_30d_avg_cents": 204,
+      "support_floor_cents": 200,
+      "volatility_cents": 3
+    },
+    "XM1014 | Tranquility (Minimal Wear)": {
+      "avg_volume_30d": 1.1,
+      "coefficient_of_variation": 0.1431,
+      "drift_percent": -10.866141732283465,
+      "latest_price_cents": 1115,
+      "rolling_30d_avg_cents": 1132,
+      "support_floor_cents": 924,
+      "volatility_cents": 162
+    },
+    "XM1014 | XoooM (Factory New)": {
+      "avg_volume_30d": 1.0333333333333334,
+      "coefficient_of_variation": 0.1333,
+      "drift_percent": -25.0,
+      "latest_price_cents": 13,
+      "rolling_30d_avg_cents": 15,
+      "support_floor_cents": 12,
+      "volatility_cents": 2
+    },
+    "Zeus x27 | Electric Blue (Field-Tested)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.3333,
+      "drift_percent": 0.0,
+      "latest_price_cents": 3,
+      "rolling_30d_avg_cents": 3,
+      "support_floor_cents": 2,
+      "volatility_cents": 1
+    },
+    "Zeus x27 | Olympus (Field-Tested)": {
+      "avg_volume_30d": 6.333333333333333,
+      "coefficient_of_variation": 0.086,
+      "drift_percent": -4.123711340206185,
+      "latest_price_cents": 275,
+      "rolling_30d_avg_cents": 279,
+      "support_floor_cents": 248,
+      "volatility_cents": 24
+    },
+    "Zeus x27 | Tosai (Minimal Wear)": {
+      "avg_volume_30d": 2.2666666666666666,
+      "coefficient_of_variation": 0.0896,
+      "drift_percent": -8.21917808219178,
+      "latest_price_cents": 68,
+      "rolling_30d_avg_cents": 67,
+      "support_floor_cents": 59,
+      "volatility_cents": 6
+    },
+    "eSports 2013 Case": {
+      "avg_volume_30d": 0.9333333333333333,
+      "coefficient_of_variation": 0.0381,
+      "drift_percent": -5.194208227993564,
+      "latest_price_cents": 4002,
+      "rolling_30d_avg_cents": 4125,
+      "support_floor_cents": 3924,
+      "volatility_cents": 157
+    },
+    "eSports 2013 Winter Case": {
+      "avg_volume_30d": 3.5,
+      "coefficient_of_variation": 0.0807,
+      "drift_percent": -8.123028391167193,
+      "latest_price_cents": 953,
+      "rolling_30d_avg_cents": 1165,
+      "support_floor_cents": 1045,
+      "volatility_cents": 94
+    },
+    "★ Bayonet | Gamma Doppler (Phase 2) (Factory New)": {
+      "avg_volume_30d": 0.43333333333333335,
+      "coefficient_of_variation": 0.0518,
+      "drift_percent": -5.4221398212442935,
+      "latest_price_cents": 52297,
+      "rolling_30d_avg_cents": 54073,
+      "support_floor_cents": 50483,
+      "volatility_cents": 2801
+    },
+    "★ Bowie Knife | Crimson Web (Field-Tested)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.0866,
+      "drift_percent": -6.527777777777779,
+      "latest_price_cents": 10095,
+      "rolling_30d_avg_cents": 10095,
+      "support_floor_cents": 8975,
+      "volatility_cents": 874
+    },
+    "★ Broken Fang Gloves | Jade (Field-Tested)": {
+      "avg_volume_30d": 3.2333333333333334,
+      "coefficient_of_variation": 0.0576,
+      "drift_percent": -8.9230354495215,
+      "latest_price_cents": 6801,
+      "rolling_30d_avg_cents": 6757,
+      "support_floor_cents": 6258,
+      "volatility_cents": 389
+    },
+    "★ Butterfly Knife | Crimson Web (Field-Tested)": {
+      "avg_volume_30d": 0.8,
+      "coefficient_of_variation": 0.0314,
+      "drift_percent": -4.548058701687894,
+      "latest_price_cents": 63995,
+      "rolling_30d_avg_cents": 64977,
+      "support_floor_cents": 62359,
+      "volatility_cents": 2043
+    },
+    "★ Butterfly Knife | Gamma Doppler (Phase 2) (Factory New)": {
+      "avg_volume_30d": 0.8333333333333334,
+      "coefficient_of_variation": 0.0456,
+      "drift_percent": -3.8134329748970353,
+      "latest_price_cents": 186609,
+      "rolling_30d_avg_cents": 206451,
+      "support_floor_cents": 194376,
+      "volatility_cents": 9422
+    },
+    "★ Butterfly Knife | Slaughter (Factory New)": {
+      "avg_volume_30d": 0.8666666666666667,
+      "coefficient_of_variation": 0.059,
+      "drift_percent": -2.4799288951057106,
+      "latest_price_cents": 125384,
+      "rolling_30d_avg_cents": 133858,
+      "support_floor_cents": 123728,
+      "volatility_cents": 7904
+    },
+    "★ Driver Gloves | Imperial Plaid (Field-Tested)": {
+      "avg_volume_30d": 7.9,
+      "coefficient_of_variation": 0.094,
+      "drift_percent": -8.52679131635086,
+      "latest_price_cents": 15110,
+      "rolling_30d_avg_cents": 14579,
+      "support_floor_cents": 12822,
+      "volatility_cents": 1371
+    },
+    "★ Driver Gloves | King Snake (Field-Tested)": {
+      "avg_volume_30d": 5.3,
+      "coefficient_of_variation": 0.0566,
+      "drift_percent": -6.403422178348141,
+      "latest_price_cents": 14782,
+      "rolling_30d_avg_cents": 14222,
+      "support_floor_cents": 13190,
+      "volatility_cents": 805
+    },
+    "★ Driver Gloves | Snow Leopard (Field-Tested)": {
+      "avg_volume_30d": 6.533333333333333,
+      "coefficient_of_variation": 0.0766,
+      "drift_percent": -7.127437325905292,
+      "latest_price_cents": 25118,
+      "rolling_30d_avg_cents": 26673,
+      "support_floor_cents": 24056,
+      "volatility_cents": 2042
+    },
+    "★ Falchion Knife | Autotronic (Field-Tested)": {
+      "avg_volume_30d": 1.8,
+      "coefficient_of_variation": 0.0523,
+      "drift_percent": -3.7212734556188067,
+      "latest_price_cents": 9190,
+      "rolling_30d_avg_cents": 9133,
+      "support_floor_cents": 8520,
+      "volatility_cents": 478
+    },
+    "★ Flip Knife | Tiger Tooth (Factory New)": {
+      "avg_volume_30d": 1.4,
+      "coefficient_of_variation": 0.0257,
+      "drift_percent": -1.8235857135660671,
+      "latest_price_cents": 19184,
+      "rolling_30d_avg_cents": 19489,
+      "support_floor_cents": 18847,
+      "volatility_cents": 501
+    },
+    "★ Gut Knife | Tiger Tooth (Factory New)": {
+      "avg_volume_30d": 1.7,
+      "coefficient_of_variation": 0.0533,
+      "drift_percent": -2.9670687968699054,
+      "latest_price_cents": 8710,
+      "rolling_30d_avg_cents": 8928,
+      "support_floor_cents": 8318,
+      "volatility_cents": 476
+    },
+    "★ Hand Wraps | Duct Tape (Field-Tested)": {
+      "avg_volume_30d": 6.333333333333333,
+      "coefficient_of_variation": 0.0864,
+      "drift_percent": -8.428428428428427,
+      "latest_price_cents": 4289,
+      "rolling_30d_avg_cents": 4574,
+      "support_floor_cents": 4068,
+      "volatility_cents": 395
+    },
+    "★ Hand Wraps | Overprint (Field-Tested)": {
+      "avg_volume_30d": 1.8333333333333333,
+      "coefficient_of_variation": 0.0842,
+      "drift_percent": -6.058607368321869,
+      "latest_price_cents": 9555,
+      "rolling_30d_avg_cents": 9970,
+      "support_floor_cents": 8895,
+      "volatility_cents": 839
+    },
+    "★ Huntsman Knife | Gamma Doppler (Phase 1) (Factory New)": {
+      "avg_volume_30d": 1.4,
+      "coefficient_of_variation": 0.0392,
+      "drift_percent": -2.859765228732911,
+      "latest_price_cents": 20050,
+      "rolling_30d_avg_cents": 20109,
+      "support_floor_cents": 19098,
+      "volatility_cents": 789
+    },
+    "★ Karambit | Marble Fade (Factory New)": {
+      "avg_volume_30d": 1.5666666666666667,
+      "coefficient_of_variation": 0.0409,
+      "drift_percent": -3.5278498459542726,
+      "latest_price_cents": 95559,
+      "rolling_30d_avg_cents": 95191,
+      "support_floor_cents": 90199,
+      "volatility_cents": 3895
+    },
+    "★ Kukri Knife | Fade (Factory New)": {
+      "avg_volume_30d": 3.933333333333333,
+      "coefficient_of_variation": 0.0702,
+      "drift_percent": -8.188367597961694,
+      "latest_price_cents": 15883,
+      "rolling_30d_avg_cents": 15675,
+      "support_floor_cents": 14264,
+      "volatility_cents": 1101
+    },
+    "★ Kukri Knife | Slaughter (Minimal Wear)": {
+      "avg_volume_30d": 2.466666666666667,
+      "coefficient_of_variation": 0.0666,
+      "drift_percent": -6.585004932587965,
+      "latest_price_cents": 10984,
+      "rolling_30d_avg_cents": 11363,
+      "support_floor_cents": 10393,
+      "volatility_cents": 757
+    },
+    "★ Moto Gloves | Turtle (Field-Tested)": {
+      "avg_volume_30d": 3.7666666666666666,
+      "coefficient_of_variation": 0.0629,
+      "drift_percent": -12.517048037581452,
+      "latest_price_cents": 5641,
+      "rolling_30d_avg_cents": 5773,
+      "support_floor_cents": 5308,
+      "volatility_cents": 363
+    },
+    "★ Navaja Knife | Case Hardened (Field-Tested)": {
+      "avg_volume_30d": 0.3333333333333333,
+      "coefficient_of_variation": 0.0957,
+      "drift_percent": -6.7871308946672535,
+      "latest_price_cents": 6345,
+      "rolling_30d_avg_cents": 6345,
+      "support_floor_cents": 5567,
+      "volatility_cents": 607
+    },
+    "★ Navaja Knife | Tiger Tooth (Factory New)": {
+      "avg_volume_30d": 1.8333333333333333,
+      "coefficient_of_variation": 0.1063,
+      "drift_percent": -5.393874752399817,
+      "latest_price_cents": 6288,
+      "rolling_30d_avg_cents": 6209,
+      "support_floor_cents": 5363,
+      "volatility_cents": 660
+    },
+    "★ Nomad Knife": {
+      "avg_volume_30d": 2.8,
+      "coefficient_of_variation": 0.0728,
+      "drift_percent": -3.957507294082442,
+      "latest_price_cents": 13005,
+      "rolling_30d_avg_cents": 12838,
+      "support_floor_cents": 11640,
+      "volatility_cents": 935
+    },
+    "★ Nomad Knife | Ultraviolet (Field-Tested)": {
+      "avg_volume_30d": 1.0,
+      "coefficient_of_variation": 0.047,
+      "drift_percent": -3.741082303810684,
+      "latest_price_cents": 10508,
+      "rolling_30d_avg_cents": 11064,
+      "support_floor_cents": 10398,
+      "volatility_cents": 520
+    },
+    "★ Paracord Knife | Slaughter (Field-Tested)": {
+      "avg_volume_30d": 0.23333333333333334,
+      "coefficient_of_variation": 0.0449,
+      "drift_percent": -11.182167001644435,
+      "latest_price_cents": 9722,
+      "rolling_30d_avg_cents": 9722,
+      "support_floor_cents": 9162,
+      "volatility_cents": 437
+    },
+    "★ Shadow Daggers | Lore (Battle-Scarred)": {
+      "avg_volume_30d": 0.26666666666666666,
+      "coefficient_of_variation": 0.0633,
+      "drift_percent": -1.3198416190057194,
+      "latest_price_cents": 4486,
+      "rolling_30d_avg_cents": 4486,
+      "support_floor_cents": 4122,
+      "volatility_cents": 284
+    },
+    "★ Skeleton Knife | Doppler (Black Pearl) (Factory New)": {
+      "avg_volume_30d": 0.16666666666666666,
+      "coefficient_of_variation": 0.036,
+      "drift_percent": -0.45435807359346153,
+      "latest_price_cents": 222158,
+      "rolling_30d_avg_cents": 222158,
+      "support_floor_cents": 211895,
+      "volatility_cents": 8008
+    },
+    "★ Specialist Gloves | Cloud Chaser (Battle-Scarred)": {
+      "avg_volume_30d": 0.5,
+      "coefficient_of_variation": 0.1648,
+      "drift_percent": -3.970592895395633,
+      "latest_price_cents": 27899,
+      "rolling_30d_avg_cents": 30304,
+      "support_floor_cents": 23902,
+      "volatility_cents": 4995
+    },
+    "★ Specialist Gloves | Crimson Web (Field-Tested)": {
+      "avg_volume_30d": 5.6,
+      "coefficient_of_variation": 0.1142,
+      "drift_percent": -8.91934557979334,
+      "latest_price_cents": 11932,
+      "rolling_30d_avg_cents": 12693,
+      "support_floor_cents": 10836,
+      "volatility_cents": 1449
+    },
+    "★ Specialist Gloves | Lt. Commander (Minimal Wear)": {
+      "avg_volume_30d": 0.5333333333333333,
+      "coefficient_of_variation": 0.0373,
+      "drift_percent": -3.95340256180486,
+      "latest_price_cents": 18141,
+      "rolling_30d_avg_cents": 18221,
+      "support_floor_cents": 17350,
+      "volatility_cents": 680
+    },
+    "★ Sport Gloves | Amphibious (Field-Tested)": {
+      "avg_volume_30d": 4.166666666666667,
+      "coefficient_of_variation": 0.058,
+      "drift_percent": -8.349031001564446,
+      "latest_price_cents": 28633,
+      "rolling_30d_avg_cents": 28706,
+      "support_floor_cents": 26572,
+      "volatility_cents": 1665
+    },
+    "★ Sport Gloves | Big Game (Field-Tested)": {
+      "avg_volume_30d": 3.566666666666667,
+      "coefficient_of_variation": 0.0524,
+      "drift_percent": -9.426600710652826,
+      "latest_price_cents": 12548,
+      "rolling_30d_avg_cents": 13000,
+      "support_floor_cents": 12127,
+      "volatility_cents": 681
+    },
+    "★ Sport Gloves | Scarlet Shamagh (Battle-Scarred)": {
+      "avg_volume_30d": 1.1333333333333333,
+      "coefficient_of_variation": 0.051,
+      "drift_percent": -3.290558462972256,
+      "latest_price_cents": 13390,
+      "rolling_30d_avg_cents": 13490,
+      "support_floor_cents": 12608,
+      "volatility_cents": 688
+    },
+    "★ Sport Gloves | Vice (Battle-Scarred)": {
+      "avg_volume_30d": 1.6333333333333333,
+      "coefficient_of_variation": 0.0551,
+      "drift_percent": -5.869948623571812,
+      "latest_price_cents": 24551,
+      "rolling_30d_avg_cents": 24551,
+      "support_floor_cents": 22818,
+      "volatility_cents": 1352
+    },
+    "★ Stiletto Knife": {
+      "avg_volume_30d": 2.8333333333333335,
+      "coefficient_of_variation": 0.0573,
+      "drift_percent": -2.8711484593837535,
+      "latest_price_cents": 19159,
+      "rolling_30d_avg_cents": 19418,
+      "support_floor_cents": 17993,
+      "volatility_cents": 1112
+    },
+    "★ Survival Knife | Damascus Steel (Field-Tested)": {
+      "avg_volume_30d": 0.9,
+      "coefficient_of_variation": 0.0509,
+      "drift_percent": -10.110359558561765,
+      "latest_price_cents": 5140,
+      "rolling_30d_avg_cents": 5050,
+      "support_floor_cents": 4721,
+      "volatility_cents": 257
+    },
+    "★ Talon Knife | Doppler (Phase 4) (Factory New)": {
+      "avg_volume_30d": 0.7,
+      "coefficient_of_variation": 0.1446,
+      "drift_percent": -4.849275963450488,
+      "latest_price_cents": 74146,
+      "rolling_30d_avg_cents": 77996,
+      "support_floor_cents": 63545,
+      "volatility_cents": 11276
+    },
+    "★ Talon Knife | Forest DDPAT (Field-Tested)": {
+      "avg_volume_30d": 0.36666666666666664,
+      "coefficient_of_variation": 0.0203,
+      "drift_percent": -7.593593207255886,
+      "latest_price_cents": 19154,
+      "rolling_30d_avg_cents": 19154,
+      "support_floor_cents": 18657,
+      "volatility_cents": 388
+    }
+  },
+  "sticker_prices": {
+    "Apeks (Gold) | Paris 2023": 221,
+    "Assassin": 223,
+    "BLAST.tv (Gold) | Paris 2023": 75,
+    "Baby Lore": 143,
+    "Bad News Eagles | Paris 2023": 2,
+    "Battle Scarred": 320,
+    "Boom | 2020 RMR": 2,
+    "Complexity Gaming (Glitter) | Paris 2023": 8,
+    "Copenhagen Flames | Antwerp 2022": 3,
+    "Drug War Veteran": 95,
+    "ENCE (Glitter) | Paris 2023": 4,
+    "Explosives": 33,
+    "FaZe Clan (Gold) | Paris 2023": 221,
+    "FaZe Clan | Antwerp 2022": 2,
+    "FaZe | 2020 RMR": 33,
+    "Flex": 73,
+    "Flickshot": 68,
+    "Fluxo | Paris 2023": 3,
+    "Fruit Fly (Foil)": 166,
+    "Heroic | 2020 RMR": 2,
+    "Heroic | Paris 2023": 2,
+    "Kimberly": 127,
+    "Kimberly (Holo)": 257,
+    "Shattered Web": 39,
+    "Sherry (Holo)": 184,
+    "Tamara (Holo)": 296,
+    "Vitality (Gold) | Paris 2023": 142,
+    "m0NESY | Shanghai 2024": 6,
+    "s1mple | Stockholm 2021": 16
+  }
+}

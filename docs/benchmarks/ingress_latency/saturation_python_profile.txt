@@ -1,0 +1,48 @@
+         24285673 function calls (24137662 primitive calls) in 13.377 seconds
+
+   Ordered by: internal time
+   List reduced from 768 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    42687    1.024    0.000    1.024    0.000 {method 'sendmsg' of '_socket.socket' objects}
+  512/511    0.367    0.001    0.367    0.001 {method 'acquire' of '_thread.lock' objects}
+86180/86178    0.345    0.000   14.216    0.000 /usr/local/lib/python3.12/asyncio/base_events.py:1922(_run_once)
+    13993    0.334    0.000    0.334    0.000 /usr/local/lib/python3.12/json/decoder.py:344(raw_decode)
+236775/89535    0.332    0.000    2.041    0.000 /app/.venv/lib/python3.12/site-packages/redis/_parsers/resp3.py:192(_read_response)
+    86178    0.330    0.000    0.330    0.000 {method 'poll' of 'select.epoll' objects}
+    42678    0.325    0.000    0.689    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/connection.py:1340(pack_command)
+   241746    0.276    0.000    0.482    0.000 /usr/local/lib/python3.12/asyncio/streams.py:580(readuntil)
+  2793172    0.271    0.000    0.271    0.000 {built-in method builtins.len}
+  2660182    0.271    0.000    0.280    0.000 {built-in method builtins.isinstance}
+   236661    0.261    0.000    0.987    0.000 /app/.venv/lib/python3.12/site-packages/redis/_parsers/base.py:577(_readline)
+    30000    0.208    0.000    4.986    0.000 /app/apps/listener/detection.py:281(score_window)
+    85359    0.200    0.000    7.904    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/client.py:924(execute_command)
+   157235    0.171    0.000    0.224    0.000 /usr/local/lib/python3.12/asyncio/streams.py:722(readexactly)
+    42674    0.168    0.000    0.559    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/connection.py:2879(release)
+    86178    0.154    0.000    0.552    0.000 /usr/local/lib/python3.12/selectors.py:451(select)
+   157235    0.154    0.000    0.428    0.000 /app/.venv/lib/python3.12/site-packages/redis/_parsers/base.py:557(_read)
+        7    0.146    0.021    0.146    0.021 /usr/local/lib/python3.12/json/encoder.py:205(iterencode)
+    42680    0.143    0.000    0.582    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/connection.py:2780(get_connection)
+    89535    0.137    0.000    2.828    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/connection.py:1241(read_response)
+    42655    0.134    0.000    9.997    0.000 /app/apps/listener/main.py:223(tick_consumer)
+   674690    0.129    0.000    0.129    0.000 {method 'get' of 'dict' objects}
+    85348    0.115    0.000    2.730    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/client.py:984(parse_response)
+    85353    0.115    0.000    6.042    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/client.py:846(_send_command_parse_response)
+    42687    0.112    0.000    1.460    0.000 /usr/local/lib/python3.12/asyncio/selector_events.py:1097(_write_sendmsg)
+   140675    0.111    0.000    0.205    0.000 /app/.venv/lib/python3.12/site-packages/redis/_parsers/encoders.py:14(encode)
+   241746    0.109    0.000    0.609    0.000 /usr/local/lib/python3.12/asyncio/streams.py:549(readline)
+   138067    0.108    0.000    0.140    0.000 /usr/local/lib/python3.12/asyncio/events.py:36(__init__)
+    42933    0.108    0.000    0.108    0.000 {method 'recv' of '_socket.socket' objects}
+     3993    0.104    0.000    0.123    0.000 /app/.venv/lib/python3.12/site-packages/redis/_parsers/resp3.py:172(handle_pubsub_push_response)
+    86552    0.101    0.000    0.352    0.000 /usr/local/lib/python3.12/asyncio/base_events.py:771(call_at)
+    85348    0.097    0.000    0.147    0.000 /app/.venv/lib/python3.12/site-packages/redis/observability/attributes.py:383(get_pool_name)
+   217363    0.093    0.000    0.134    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/observability/recorder.py:47(_get_or_create_collector)
+   132213    0.092    0.000    6.572    0.000 /app/.venv/lib/python3.12/site-packages/redis/asyncio/retry.py:47(call_with_retry)
+    42675    0.091    0.000    0.110    0.000 /app/.venv/lib/python3.12/site-packages/redis/utils.py:194(_get_filterable_args)
+    85358    0.088    0.000    0.161    0.000 /usr/local/lib/python3.12/asyncio/timeouts.py:129(timeout)
+    96598    0.088    0.000   12.583    0.000 {method 'run' of '_contextvars.Context' objects}
+    85358    0.084    0.000    0.470    0.000 /usr/local/lib/python3.12/asyncio/timeouts.py:50(reschedule)
+   540555    0.084    0.000    0.084    0.000 {method 'append' of 'list' objects}
+    42685    0.083    0.000    2.234    0.000 /usr/local/lib/python3.12/asyncio/tasks.py:472(wait_for)
+
+
