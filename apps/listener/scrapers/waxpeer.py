@@ -16,6 +16,7 @@ docs/waxpeer_feed.md.
 
 import json
 import os
+import re
 import time
 from collections import OrderedDict
 from collections.abc import AsyncGenerator
@@ -31,7 +32,7 @@ from listener_telemetry import (
     feed_resale_prices,
     feed_tracked_listings,
 )
-from models import LISTED_EVENT_TYPE, FeedEvent, MarketTick, TickKind
+from models import LISTED_EVENT_TYPE, MAX_LISTING_URL_LENGTH, FeedEvent, MarketTick, TickKind
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -52,6 +53,9 @@ logger = get_logger("listener.waxpeer")
 VENUE = "waxpeer"
 SOCKET_URL = "wss://waxpeer.com/socket.io/?EIO=4&transport=websocket"
 GAME_CHANNEL = "csgo"
+# A listing's page is `<WEBSITE_URL>/<slug of the item name>/item?id=<item_id>`. The ID picks the listing; the
+# slug only makes the link readable (checked on waxpeer.com on 2026-10-21).
+WEBSITE_URL = "https://waxpeer.com"
 API_KEY_ENV = "WAXPEER_API_KEY"
 
 # Waxpeer prices are integer thousandths of a dollar (1000 = $1).
@@ -133,6 +137,14 @@ def steam_market_hash_name(name: str, phase: str | None) -> str:
     return name.removesuffix(suffix)
 
 
+def listing_url(name: str, item_id: object) -> str | None:
+    """Link that opens the listing on waxpeer.com, built from its Waxpeer name and item ID; None when too long."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    url = f"{WEBSITE_URL}/{slug}/item?id={item_id}"
+    # A truncated URL would be a broken link; drop it instead.
+    return url if len(url) <= MAX_LISTING_URL_LENGTH else None
+
+
 def waxpeer_stickers(sticker_names: object) -> list[dict[str, str]]:
     """
     Applied stickers as the listener's tick stickers.
@@ -174,6 +186,7 @@ def listing_tick(payload: object, received_at_ms: int) -> MarketTick | None:
             listing_id=str(item_id),
             # The feed sends the finish (`paint_index`) but no paint seed.
             paint_index=optional_non_negative_int(payload.get("paint_index")),
+            listing_url=listing_url(name, item_id),
         )
     except (ValidationError, ValueError, TypeError) as err:
         logger.warning("[WAXPEER] Skipping malformed listing '%s': %s", name, err)

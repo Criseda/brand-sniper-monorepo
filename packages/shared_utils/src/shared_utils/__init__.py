@@ -39,6 +39,7 @@ from .models import (
     LiveMarketTick,
     MarketItem,
     SimulatedTrade,
+    TradeAlertRecord,
     VenueBaseline,
 )
 from .pnl import (
@@ -91,6 +92,7 @@ __all__ = [
     "IngestionBatch",
     "ItemMacroBaseline",
     "SimulatedTrade",
+    "TradeAlertRecord",
     "ListingOutcome",
     "LabelVersion",
     "BaselineBuild",

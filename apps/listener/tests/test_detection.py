@@ -62,6 +62,7 @@ async def test_outlier_is_submitted_to_the_dre():
     assert job.args[0] is outlier
     assert job.args[1] < -2.0  # z-score
     assert job.args[5] == "local"
+    assert job.args[6] is None  # No alert dispatcher passed
 
 
 @pytest.mark.asyncio
@@ -420,6 +421,46 @@ async def test_approved_trade_records_the_bought_listing(monkeypatch):
         listing_id="60823173",
         float_value=0.46,
     )
+
+
+@pytest.mark.asyncio
+async def test_approved_listing_is_alerted_with_the_paper_trade_estimate(monkeypatch):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="macro_sigma"))
+    executor = AsyncMock()
+    alerts = MagicMock()
+    tick = _tick(10.0, event_type="listed", listing_id="60823173", listing_url="https://skinport.com/item/x")
+
+    await detection.evaluate_and_execute(tick, -3.0, MagicMock(), executor, {"latest_price_cents": 1500}, "hybrid", alerts)
+
+    alert = alerts.submit.call_args.args[0]
+    assert alert.estimated_net_margin_cents == executor.execute.await_args.kwargs["estimated_profit_cents"] == 380
+    assert alert.listing_id == "60823173"
+    assert alert.listing_url == "https://skinport.com/item/x"
+    assert (alert.approval_reason, alert.z_source, alert.z_score) == ("macro_sigma", "hybrid", -3.0)
+    assert alert.received_monotonic == tick.received_monotonic
+
+
+@pytest.mark.asyncio
+async def test_a_failing_alert_never_stops_the_paper_trade(monkeypatch, caplog):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
+    executor = AsyncMock()
+    alerts = MagicMock()
+    alerts.submit.side_effect = RuntimeError("alert queue broke")
+
+    await detection.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), executor, {"latest_price_cents": 1500}, alerts=alerts)
+
+    executor.execute.assert_awaited_once()
+    assert "[ALERT] Could not queue the alert" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_rejected_opportunity_is_not_alerted(monkeypatch):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value=None))
+    alerts = MagicMock()
+
+    await detection.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), AsyncMock(), {}, alerts=alerts)
+
+    alerts.submit.assert_not_called()
 
 
 @pytest.mark.asyncio

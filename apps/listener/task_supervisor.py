@@ -77,6 +77,23 @@ class BoundedTaskPool:
         background_jobs_queued.labels(job_type=self.name).set(self._queue.qsize())
         background_jobs_total.labels(job_type=self.name, outcome="submitted").inc()
 
+    def try_submit(self, factory: JobFactory) -> bool:
+        """Queues work without waiting; returns False when the queue is full or the pool is not running.
+
+        For work that must never slow down its caller (alerts): the caller drops the job instead of waiting.
+        """
+        if self._state is not PoolState.RUNNING:
+            background_jobs_total.labels(job_type=self.name, outcome="rejected").inc()
+            return False
+        try:
+            self._queue.put_nowait(WorkItem(factory=factory))
+        except asyncio.QueueFull:
+            background_jobs_total.labels(job_type=self.name, outcome="dropped").inc()
+            return False
+        background_jobs_queued.labels(job_type=self.name).set(self._queue.qsize())
+        background_jobs_total.labels(job_type=self.name, outcome="submitted").inc()
+        return True
+
     async def close(self) -> None:
         """Stops submissions, drains queued work, then shuts down all workers."""
         if self._state is PoolState.CLOSED:

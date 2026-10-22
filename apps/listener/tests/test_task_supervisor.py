@@ -163,3 +163,26 @@ async def test_pool_cancels_running_and_queued_work_after_shutdown_timeout():
 
     assert pool.state is PoolState.CLOSED
     assert cancelled_counter._value.get() == before + 2
+
+
+@pytest.mark.asyncio
+async def test_try_submit_drops_work_when_the_queue_is_full_instead_of_waiting() -> None:
+    release = asyncio.Event()
+    ran: list[int] = []
+
+    async def job(number: int) -> None:
+        await release.wait()
+        ran.append(number)
+
+    pool = BoundedTaskPool("test_try_submit", workers=1, queue_size=1, shutdown_timeout=1)
+    assert not pool.try_submit(lambda: job(0))  # Not started yet
+    dropped_before = background_jobs_total.labels(job_type="test_try_submit", outcome="dropped")._value.get()
+
+    async with pool:
+        assert pool.try_submit(lambda: job(1))
+        assert not pool.try_submit(lambda: job(2))
+        release.set()
+
+    assert ran == [1]
+    assert background_jobs_total.labels(job_type="test_try_submit", outcome="dropped")._value.get() == dropped_before + 1
+    assert not pool.try_submit(lambda: job(3))  # Closed

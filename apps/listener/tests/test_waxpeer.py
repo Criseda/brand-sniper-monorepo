@@ -22,6 +22,7 @@ from scrapers.waxpeer import (
     ResalePrices,
     WaxpeerScraper,
     listing_tick,
+    listing_url,
     mills_to_cents,
     socketio_event,
     steam_market_hash_name,
@@ -125,6 +126,14 @@ def test_doppler_listing_becomes_a_versioned_listed_tick():
     assert tick.float_value == pytest.approx(0.004105276428163052)
     assert tick.stickers == []
     assert tick.timestamp == RECEIVED_AT_MS // 1000
+    assert tick.listing_url == ("https://waxpeer.com/stattrak-survival-knife-doppler-phase-1-factory-new/item?id=53862560251")
+
+
+def test_listing_url_slugs_the_waxpeer_name_and_drops_an_overlong_link():
+    assert listing_url("Sport Gloves | Pandora's Box (Factory New)", "1") == (
+        "https://waxpeer.com/sport-gloves-pandora-s-box-factory-new/item?id=1"
+    )
+    assert listing_url("x" * 600, "1") is None
 
 
 def test_listing_with_stickers_and_trade_lock_is_parsed():

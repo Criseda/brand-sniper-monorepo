@@ -389,6 +389,11 @@ contradicts that config, or a version other than `v1` exists, it stops and chang
 new backend image starts, because `create_all` would otherwise create an empty `label_versions` first, and
 before the next labeler run, which needs the table.
 
+Migration `9b3d6f2e8a41` (#18) adds `trade_alerts`, one row for each attempt to send a trade alert on a channel.
+Run it before the new backend image starts. A listener with alerts configured posts every attempt to
+`/api/v1/ingest/alert`, and an older backend answers that with 404, so update the backend before the listeners.
+The listener only logs and counts a failed record; the alerts themselves are still sent.
+
 ## Data Retention
 
 | Table | Policy | Status |

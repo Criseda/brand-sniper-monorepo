@@ -1,8 +1,9 @@
+import time
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 # Feed event types the listener knows. Only `listed` is a live offer that feeds the Z-score price window;
 # `sold` (and any other type) is recorded for labeling but never drives a trading decision.
@@ -82,6 +83,15 @@ class MarketTick(BaseModel):
         if self.kind != expected:
             raise ValueError(f"A {self.kind} tick cannot carry event_type {self.event_type!r}")
         return self
+
+    # Monotonic clock reading when the tick was built from the venue's data, so the listener can measure how long
+    # it took to act on it (alert latency, #18). Not serialized: it means nothing outside this process.
+    _received_monotonic: float = PrivateAttr(default_factory=time.monotonic)
+
+    @property
+    def received_monotonic(self) -> float:
+        """`time.monotonic()` when the tick was built; compare it with a later reading in this process only."""
+        return self._received_monotonic
 
     @property
     def price_cents(self) -> int:

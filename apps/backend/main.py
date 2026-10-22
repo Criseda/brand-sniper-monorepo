@@ -23,7 +23,7 @@ from api_errors import COMMON_ERROR_RESPONSES, problem_response, register_error_
 from database import engine, session_scope
 from queries import close_http_session, get_item_market_context, get_latest_baseline_build
 from queries import search_macro_trends as query_macro_trends
-from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload
+from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload, TradeAlertPayload
 from shared_utils import (
     BACKEND_API_KEY_HEADER,
     BackendApiKeyConfigError,
@@ -33,7 +33,7 @@ from shared_utils import (
     utc_fromtimestamp_naive,
     utc_now_naive,
 )
-from shared_utils.models import FeedEvent, IngestionBatch, LiveMarketTick, MarketItem, SimulatedTrade
+from shared_utils.models import FeedEvent, IngestionBatch, LiveMarketTick, MarketItem, SimulatedTrade, TradeAlertRecord
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
 
 logger = get_logger("backend.main")
@@ -343,6 +343,35 @@ async def ingest_simulated_trade(payload: SimulatedTradePayload, response: Respo
     paper_trades_executed_total.inc()
     if payload.estimated_profit_cents is not None:
         paper_trading_estimated_profit_total.inc(payload.estimated_profit_cents)
+    return {"status": "SUCCESS"}
+
+
+@app.post(
+    "/api/v1/ingest/alert",
+    dependencies=[Depends(require_backend_api_key)],
+    status_code=status.HTTP_201_CREATED,
+    responses=COMMON_ERROR_RESPONSES,
+)
+async def ingest_trade_alert(payload: TradeAlertPayload):
+    """Stores one alert attempt. Every attempt is kept, repeats included: each one reached (or failed to reach) a person."""
+    record = TradeAlertRecord(
+        venue=payload.venue,
+        listing_id=payload.listing_id,
+        market_hash_name=payload.market_hash_name,
+        price_cents=payload.price_cents,
+        estimated_net_margin_cents=payload.estimated_net_margin_cents,
+        decision_source=payload.decision_source,
+        approval_reason=payload.approval_reason,
+        z_source=payload.z_source,
+        z_score=payload.z_score,
+        channel=payload.channel,
+        outcome=payload.outcome,
+        received_at=utc_fromtimestamp_naive(payload.received_at),
+        alerted_at=utc_fromtimestamp_naive(payload.alerted_at_ms / 1000),
+        latency_ms=payload.latency_ms,
+    )
+    async with session_scope() as session:
+        session.add(record)
     return {"status": "SUCCESS"}
 
 

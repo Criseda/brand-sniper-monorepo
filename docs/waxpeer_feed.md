@@ -200,6 +200,5 @@ Waxpeer rows in `feed_events` follow the same policy as Skinport's (`docs/deploy
 - Outcome labels for Waxpeer listings. They need the labeler to price a Waxpeer listing against Skinport
   comparable sales, and to treat a removal as censored rather than sold.
 - Replay and backtests of Waxpeer events. The replay harness reads Skinport events only.
-- Links to the listing. I have not confirmed Waxpeer's URL format, so `listing_url` is empty.
 - Catching up from the CSV snapshot after the PC was off. The feed only reports changes, so listings that
   appeared while it was off are seen when they next change.
