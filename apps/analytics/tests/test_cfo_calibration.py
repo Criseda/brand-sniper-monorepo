@@ -886,6 +886,16 @@ async def test_a_tool_call_in_the_json_phase_asks_again_without_any_tools(fake_l
     assert "tools" not in last_call and "tool_choice" not in last_call
 
 
+@pytest.mark.asyncio
+async def test_another_failure_in_the_json_phase_is_an_error_verdict(fake_llm):
+    fake_llm.chat.completions.create.side_effect = [completion("Looks fine."), _BadRequest("context_length_exceeded")]
+
+    verdict = await ask_cfo(make_case(), history().as_of(DECIDED_AT), VARIANT_NEUTRAL, "model-a")
+
+    assert verdict.status == STATUS_ERROR and "context_length_exceeded" in verdict.reasoning
+    assert fake_llm.chat.completions.create.call_count == 2
+
+
 # --- Claude through Claude Code ---
 
 CLAUDE_MODEL = "claude-code/claude-sonnet-5-5"
@@ -1106,6 +1116,32 @@ async def test_run_verdicts_keeps_concurrency_questions_open_and_stops_on_quota(
     written = read_verdicts(out)
     assert len(written) == len(asked) - 1 < len(cases)
     assert all(saved.model == CLAUDE_MODEL for saved in written)
+
+
+@pytest.mark.asyncio
+async def test_run_verdicts_asks_nothing_more_after_the_usage_limit(tmp_path):
+    asked = []
+
+    async def fake_ask(case, view, variant, model):
+        asked.append(case.key)
+        raise QuotaExhaustedError("usage limit reached")
+
+    cases = [make_case(f"L{number}") for number in range(1, 5)]
+
+    with pytest.raises(QuotaExhaustedError):
+        await run_verdicts(cases, history(), [VARIANT_NEUTRAL], CLAUDE_MODEL, tmp_path / "v.jsonl", ask=fake_ask)
+
+    assert len(asked) == 1
+    assert read_verdicts(tmp_path / "v.jsonl") == []
+
+
+def test_claude_code_runs_in_its_own_directory_under_temp(monkeypatch, tmp_path):
+    monkeypatch.setattr(cfo_calibration.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    workdir = cfo_calibration._claude_code_workdir()
+
+    assert workdir == tmp_path / "cfo_calibration_claude_code" and workdir.is_dir()
+    assert cfo_calibration._claude_code_workdir() == workdir  # A second run reuses it
 
 
 def test_main_runs_the_claude_code_backend(fake_inputs, tmp_path, monkeypatch):
