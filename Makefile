@@ -67,12 +67,17 @@ latency-bench:
 CFO_OUT ?= data/cfo_calibration
 CFO_DECISIONS ?= $(CFO_OUT)/decisions.jsonl
 CFO_AS_OF ?= 2026-10-13T01:40:07.555120
-.PHONY: cfo-calibration  ## CFO calibration (#250): asks the CFO about each labeled trade, resumes where it stopped
+# llm: the LLM_* API (Groq free tier). claude-code: Claude through Claude Code on a Claude plan, no API key.
+CFO_BACKEND ?= llm
+CFO_CLAUDE_MODEL ?= claude-sonnet-5-5
+# Extra arguments for the run step, e.g. CFO_RUN_ARGS="--max-trades 20"
+CFO_RUN_ARGS ?=
+.PHONY: cfo-calibration  ## CFO calibration (#250): make cfo-calibration [CFO_BACKEND=claude-code], resumes where it stopped
 cfo-calibration:
 	-cd apps/analytics && uv run python cfo_calibration.py run --decisions $(abspath $(CFO_DECISIONS)) \
-		--as-of $(CFO_AS_OF) --out $(abspath $(CFO_OUT))
+		--as-of $(CFO_AS_OF) --out $(abspath $(CFO_OUT)) --backend $(CFO_BACKEND) --claude-model $(CFO_CLAUDE_MODEL) $(CFO_RUN_ARGS)
 	cd apps/analytics && uv run python cfo_calibration.py report --decisions $(abspath $(CFO_DECISIONS)) \
-		--as-of $(CFO_AS_OF) --out $(abspath $(CFO_OUT))
+		--as-of $(CFO_AS_OF) --out $(abspath $(CFO_OUT)) --backend $(CFO_BACKEND) --claude-model $(CFO_CLAUDE_MODEL)
 
 STACK ?= server-stack
 .PHONY: docker-up  ## docker compose up -d for $(STACK) (use STACK=edge-stack for edge)

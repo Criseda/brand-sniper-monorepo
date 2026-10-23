@@ -773,7 +773,7 @@ def test_main_dry_run_calls_no_llm(fake_inputs, tmp_path, capsys, monkeypatch):
 
 
 def test_main_run_and_report(fake_inputs, tmp_path, capsys, monkeypatch):
-    async def fake_run(cases, market, variants, model, out_path):
+    async def fake_run(cases, market, variants, model, out_path, ask=None, concurrency=1):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with out_path.open("w", encoding="utf-8") as out:
             for case in cases:
@@ -884,3 +884,270 @@ async def test_a_tool_call_in_the_json_phase_asks_again_without_any_tools(fake_l
     assert verdict.probability == 0.55
     last_call = fake_llm.chat.completions.create.call_args_list[2].kwargs
     assert "tools" not in last_call and "tool_choice" not in last_call
+
+
+# --- Claude through Claude Code ---
+
+CLAUDE_MODEL = "claude-code/claude-sonnet-5-5"
+
+
+def test_sealed_prompt_carries_the_point_in_time_tool_answers_and_no_outcome():
+    case = make_case(margin=4321)
+    prompt = cfo_calibration.render_sealed_prompt(case, history().as_of(DECIDED_AT), '{"multiplier": 1.0}')
+
+    assert NAME in prompt and "Float value: 0.250000" in prompt and "Float check:" in prompt
+    floor = json.loads(prompt.split("nothing after the trade is included):\n", 1)[1].split("\n", 1)[0])
+    assert floor["baseline"]["latest_price_cents"] == 1000
+    assert floor["sales_last_7_days"]["count"] == 2  # 7 days and 2 hours before; not the one at the decision
+    # The later build, the sales at and after the decision, and the outcome are all absent.
+    assert "9999" not in prompt and "7777" not in prompt and "8888" not in prompt and "4321" not in prompt
+    assert "Use the tools" not in prompt and "fetch_market_floor" not in prompt
+    rest_case = make_case(listing_id=None)
+    assert "Float check" not in cfo_calibration.render_sealed_prompt(rest_case, history().as_of(DECIDED_AT), None)
+
+
+def test_sealed_systems_change_only_the_tool_sentence():
+    originals = {VARIANT_ADVERSARIAL: cfo_calibration.ADVERSARIAL_SYSTEM, VARIANT_NEUTRAL: cfo_calibration.NEUTRAL_SYSTEM}
+    for variant, system in originals.items():
+        sealed = cfo_calibration.SEALED_SYSTEMS[variant]
+        assert "tools" not in sealed.lower()
+        assert sealed == system.replace(cfo_calibration._TOOL_SENTENCES[variant], cfo_calibration._GIVEN_DATA_SENTENCE)
+    with pytest.raises(AssertionError, match="no longer names its tools"):
+        cfo_calibration._without_tools("A prompt without the sentence.", VARIANT_NEUTRAL)
+
+
+def test_claude_code_command_switches_everything_off():
+    command = cfo_calibration.claude_code_command("claude", "claude-sonnet-5-5", "system")
+
+    assert command[:2] == ["claude", "--print"]
+    assert command[command.index("--tools") + 1] == ""
+    assert {"--safe-mode", "--strict-mcp-config", "--no-session-persistence"} <= set(command)
+    assert command[command.index("--model") + 1] == "claude-sonnet-5-5"
+    assert json.loads(command[command.index("--json-schema") + 1]) == cfo_calibration.VERDICT_JSON_SCHEMA
+
+
+class FakeProcess:
+    def __init__(self, stdout=b"", stderr=b"", returncode=0, hang=False):
+        self.stdout, self.stderr, self.returncode, self.hang = stdout, stderr, returncode, hang
+        self.stdin = None
+        self.killed = False
+
+    async def communicate(self, data):
+        self.stdin = data
+        if self.hang:
+            await cfo_calibration.asyncio.sleep(10)
+        return self.stdout, self.stderr
+
+    def kill(self):
+        self.killed = True
+
+    async def wait(self):
+        return -9
+
+
+@pytest.fixture
+def fake_claude(monkeypatch, tmp_path):
+    """Replaces the Claude Code process; set `.process` before the call, read `.argv` and `.cwd` after it."""
+    state = SimpleNamespace(process=None, argv=None, cwd=None)
+
+    async def create(*argv, **kwargs):
+        state.argv, state.cwd = list(argv), kwargs["cwd"]
+        return state.process
+
+    monkeypatch.setattr(cfo_calibration.shutil, "which", lambda name: "claude")
+    monkeypatch.setattr(cfo_calibration.asyncio, "create_subprocess_exec", create)
+    monkeypatch.setattr(cfo_calibration, "_claude_code_workdir", lambda: tmp_path)
+    return state
+
+
+def _result(**fields):
+    return json.dumps({"is_error": False, "result": "", **fields}).encode()
+
+
+@pytest.mark.asyncio
+async def test_run_claude_code_sends_the_prompt_on_stdin_from_an_empty_directory(fake_claude, tmp_path):
+    fake_claude.process = FakeProcess(stdout=_result(structured_output={"probability_of_profit": 0.3, "reasoning": "r"}))
+
+    result = await cfo_calibration.run_claude_code("the prompt", "system", "claude-sonnet-5-5")
+
+    assert result["structured_output"]["probability_of_profit"] == 0.3
+    assert fake_claude.process.stdin == b"the prompt"
+    assert fake_claude.cwd == tmp_path
+    assert fake_claude.argv[fake_claude.argv.index("--system-prompt") + 1] == "system"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("process", "error", "match"),
+    [
+        (
+            FakeProcess(stdout=_result(is_error=True, result="Claude AI usage limit reached|1790000000")),
+            QuotaExhaustedError,
+            "usage limit",
+        ),
+        (FakeProcess(stdout=_result(is_error=True, result="model not found")), RuntimeError, "model not found"),
+        (FakeProcess(stdout=_result(is_error=True, result=None, subtype="error_max_turns")), RuntimeError, "max_turns"),
+        (FakeProcess(stderr=b"You have hit your limit, resets 5pm", returncode=1), QuotaExhaustedError, "hit your"),
+        (FakeProcess(stdout=b"not json", returncode=3), RuntimeError, "exited with 3: not json"),
+    ],
+)
+async def test_run_claude_code_failures(fake_claude, process, error, match):
+    fake_claude.process = process
+
+    with pytest.raises(error, match=match):
+        await cfo_calibration.run_claude_code("prompt", "system", "claude-sonnet-5-5")
+
+
+@pytest.mark.asyncio
+async def test_run_claude_code_kills_a_call_that_hangs(fake_claude, monkeypatch):
+    monkeypatch.setattr(cfo_calibration, "CLAUDE_CODE_TIMEOUT_SECONDS", 0.01)
+    fake_claude.process = FakeProcess(hang=True)
+
+    with pytest.raises(RuntimeError, match="did not answer"):
+        await cfo_calibration.run_claude_code("prompt", "system", "claude-sonnet-5-5")
+    assert fake_claude.process.killed
+
+
+@pytest.mark.asyncio
+async def test_run_claude_code_needs_claude_on_path(monkeypatch):
+    monkeypatch.setattr(cfo_calibration.shutil, "which", lambda name: None)
+
+    with pytest.raises(RuntimeError, match="not on PATH"):
+        await cfo_calibration.run_claude_code("prompt", "system", "claude-sonnet-5-5")
+
+
+@pytest.fixture
+def fake_claude_answer(monkeypatch):
+    """Replaces the Claude Code call and the float check; set `.answer` (a dict or an exception) before the call."""
+    state = SimpleNamespace(answer=None, calls=[], float_checks=[])
+
+    async def fake_run(prompt, system, model):
+        state.calls.append({"prompt": prompt, "system": system, "model": model})
+        if isinstance(state.answer, BaseException):
+            raise state.answer
+        return state.answer
+
+    async def fake_float(name, value):
+        state.float_checks.append((name, value))
+        return '{"multiplier": 1.1}'
+
+    monkeypatch.setattr(cfo_calibration, "run_claude_code", fake_run)
+    monkeypatch.setattr(cfo_calibration, "verify_float_value", fake_float)
+    return state
+
+
+@pytest.mark.asyncio
+async def test_ask_claude_code_reads_the_structured_answer(fake_claude_answer):
+    fake_claude_answer.answer = {
+        "structured_output": {"probability_of_profit": 0.35, "reasoning": "Floor is falling — risky."},
+        "usage": {"input_tokens": 3, "cache_creation_input_tokens": 2000, "cache_read_input_tokens": 500, "output_tokens": 400},
+    }
+
+    result = await cfo_calibration.ask_claude_code(make_case(), history().as_of(DECIDED_AT), VARIANT_ADVERSARIAL, CLAUDE_MODEL)
+
+    assert (result.status, result.probability, result.model) == (STATUS_OK, 0.35, CLAUDE_MODEL)
+    assert result.reasoning == "Floor is falling  risky."
+    assert (result.prompt_tokens, result.completion_tokens, result.llm_calls, result.tool_calls) == (2503, 400, 1, [])
+    call = fake_claude_answer.calls[0]
+    assert call["model"] == "claude-sonnet-5-5"
+    assert call["system"] == cfo_calibration.SEALED_SYSTEMS[VARIANT_ADVERSARIAL]
+    assert 'Float check: {"multiplier": 1.1}' in call["prompt"]
+    assert fake_claude_answer.float_checks == [(NAME, 0.25)]
+
+
+@pytest.mark.asyncio
+async def test_ask_claude_code_falls_back_to_the_text_answer_and_skips_the_float_check(fake_claude_answer):
+    fake_claude_answer.answer = {"result": '```json\n{"probability_of_profit": 0.6, "reasoning": "ok"}\n```'}
+
+    result = await cfo_calibration.ask_claude_code(
+        make_case(listing_id=None), history().as_of(DECIDED_AT), VARIANT_NEUTRAL, CLAUDE_MODEL
+    )
+
+    assert (result.status, result.probability, result.prompt_tokens) == (STATUS_OK, 0.6, 0)
+    assert fake_claude_answer.float_checks == []
+
+
+@pytest.mark.asyncio
+async def test_ask_claude_code_records_failures_and_stops_on_the_usage_limit(fake_claude_answer):
+    view = history().as_of(DECIDED_AT)
+    fake_claude_answer.answer = RuntimeError("Claude Code failed: overloaded")
+
+    failed = await cfo_calibration.ask_claude_code(make_case(), view, VARIANT_NEUTRAL, CLAUDE_MODEL)
+
+    assert failed.status == STATUS_ERROR and "overloaded" in failed.reasoning
+    fake_claude_answer.answer = {"structured_output": {"probability_of_profit": 2.0, "reasoning": "out of range"}}
+    assert (await cfo_calibration.ask_claude_code(make_case(), view, VARIANT_NEUTRAL, CLAUDE_MODEL)).status == STATUS_ERROR
+    fake_claude_answer.answer = QuotaExhaustedError("usage limit reached")
+    with pytest.raises(QuotaExhaustedError):
+        await cfo_calibration.ask_claude_code(make_case(), view, VARIANT_NEUTRAL, CLAUDE_MODEL)
+
+
+@pytest.mark.asyncio
+async def test_run_verdicts_keeps_concurrency_questions_open_and_stops_on_quota(tmp_path):
+    open_now, most_open, asked = [0], [0], []
+
+    async def fake_ask(case, view, variant, model):
+        open_now[0] += 1
+        most_open[0] = max(most_open[0], open_now[0])
+        await cfo_calibration.asyncio.sleep(0.01)
+        open_now[0] -= 1
+        asked.append(case.key)
+        if case.key == "listing:L4":
+            raise QuotaExhaustedError("usage limit reached")
+        return verdict(case.key, 0.5, variant=variant, model=model)
+
+    cases = [make_case(f"L{number}") for number in range(1, 9)]
+    out = tmp_path / "verdicts.jsonl"
+
+    with pytest.raises(QuotaExhaustedError):
+        await run_verdicts(cases, history(), [VARIANT_NEUTRAL], CLAUDE_MODEL, out, ask=fake_ask, concurrency=3)
+
+    assert most_open[0] == 3
+    written = read_verdicts(out)
+    assert len(written) == len(asked) - 1 < len(cases)
+    assert all(saved.model == CLAUDE_MODEL for saved in written)
+
+
+def test_main_runs_the_claude_code_backend(fake_inputs, tmp_path, monkeypatch):
+    seen = {}
+
+    async def fake_run(cases, market, variants, model, out_path, ask=None, concurrency=1):
+        seen.update(model=model, ask=ask, concurrency=concurrency)
+        return {"asked": 0, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr(cfo_calibration, "run_verdicts", fake_run)
+    monkeypatch.setattr(cfo_calibration.shutil, "which", lambda name: "claude")
+    common = ["--decisions", "log.jsonl", "--as-of", "2026-10-13T01:40:07", "--out", str(tmp_path)]
+
+    assert cfo_calibration.main(["run", *common, "--backend", "claude-code"]) == 0
+    assert seen == {"model": CLAUDE_MODEL, "ask": cfo_calibration.ask_claude_code, "concurrency": 4}
+    assert cfo_calibration.main(["run", *common, "--backend", "claude-code", "--claude-model", "claude-haiku-5-5"]) == 0
+    assert seen["model"] == "claude-code/claude-haiku-5-5"
+    assert cfo_calibration.main(["run", *common, "--concurrency", "2"]) == 0
+    assert seen == {"model": "openai/gpt-oss-120b", "ask": cfo_calibration.ask_cfo, "concurrency": 2}
+    assert cfo_calibration.main(["run", *common]) == 0
+    assert seen["concurrency"] == 1
+    with pytest.raises(SystemExit, match="at least 1"):
+        cfo_calibration.main(["run", *common, "--concurrency", "0"])
+    monkeypatch.setattr(cfo_calibration.shutil, "which", lambda name: None)
+    with pytest.raises(SystemExit, match="on PATH"):
+        cfo_calibration.main(["run", *common, "--backend", "claude-code"])
+
+
+def test_report_scores_the_claude_code_verdicts_by_backend(fake_inputs, tmp_path, capsys):
+    common = ["--decisions", "log.jsonl", "--as-of", "2026-10-13T01:40:07", "--out", str(tmp_path)]
+    lines = [verdict(case.key, 0.6, model=CLAUDE_MODEL) for case in fake_inputs]
+    lines.append(verdict(fake_inputs[0].key, 0.1, model="openai/gpt-oss-120b"))
+    (tmp_path / "verdicts.jsonl").write_text("".join(json.dumps(v.__dict__) + "\n" for v in lines), encoding="utf-8")
+
+    assert cfo_calibration.main(["report", *common, "--backend", "claude-code"]) == 0
+
+    report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert report["model"] == CLAUDE_MODEL
+    assert report["variants"]["neutral"]["answered"] == len(fake_inputs)
+
+
+def test_usage_limit_messages():
+    assert cfo_calibration.is_usage_limit("Claude AI usage limit reached|1790000000")
+    assert cfo_calibration.is_usage_limit("You have hit your session limit")
+    assert not cfo_calibration.is_usage_limit("Overloaded")

@@ -12,9 +12,19 @@ without paying for a trade twice. The report scores them against the labels: Bri
 and the precision and fee-aware P&L of the trades it would keep and veto on top of the DRE, with an item
 bootstrap of the paired difference against the DRE alone. CFO output is never used as a training label.
 
+Two backends ask the questions. `llm` (the default) is the OpenAI compatible API in LLM_* with the tool loop above.
+`claude-code` asks Claude through headless Claude Code, so a Claude subscription is enough and no API key is
+needed. It runs in safe mode with no tools, so what fetch_market_floor and verify_float_value would return is put
+in the prompt instead (the name search over other items is left out; giving Claude the same tools over MCP scored
+the same on the #250 trades). Its verdicts are stored as `claude-code/<model>` so they are never mixed with an API
+run of the same model. Claude Code still attaches the account email and environment details such as today's date;
+neither says anything about a trade's outcome.
+
 Usage (from apps/analytics):
     uv run python cfo_calibration.py run --decisions ../../data/scorecard/decisions.jsonl --as-of 2026-10-13T01:40:07 --dry-run
     uv run python cfo_calibration.py run --decisions ... --as-of ... --variants adversarial,neutral
+    uv run python cfo_calibration.py run --decisions ... --as-of ... --backend claude-code
+    uv run python cfo_calibration.py report --decisions ... --as-of ... --backend claude-code
     uv run python cfo_calibration.py report --decisions ... --as-of ... --input-usd-per-mtok 0.15 --output-usd-per-mtok 0.6
 
 See docs/benchmarks/cfo_calibration.md.
@@ -25,9 +35,11 @@ import asyncio
 import bisect
 import json
 import random
+import shutil
 import statistics
 import sys
-from collections.abc import Iterable, Sequence
+import tempfile
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -132,6 +144,44 @@ FINAL_INSTRUCTION = (
 class CalibratedVerdict(BaseModel):
     probability_of_profit: float = Field(ge=0.0, le=1.0)
     reasoning: str
+
+
+# The same answer as a JSON schema, which Claude Code enforces on its structured output.
+VERDICT_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "probability_of_profit": {"type": "number", "minimum": 0, "maximum": 1},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["probability_of_profit", "reasoning"],
+    "additionalProperties": False,
+}
+
+# Claude Code runs with every tool switched off, so the prompts say the market data comes with the trade instead.
+_GIVEN_DATA_SENTENCE = "The market floor and recent sales as of the trade are given with the trade."
+_TOOL_SENTENCES = {
+    VARIANT_ADVERSARIAL: (
+        "Use the available tools to fetch the market floor and recent sales as of the trade, and to look up the\n"
+        "baselines of related items."
+    ),
+    VARIANT_NEUTRAL: (
+        "Use the available tools to check the market floor and recent sales as of the trade and the baselines of related\n"
+        "items."
+    ),
+}
+
+
+def _without_tools(system: str, variant: str) -> str:
+    tool_sentence = _TOOL_SENTENCES[variant]
+    if system.count(tool_sentence) != 1:
+        raise AssertionError(f"The {variant} prompt no longer names its tools as expected")
+    return system.replace(tool_sentence, _GIVEN_DATA_SENTENCE)
+
+
+SEALED_SYSTEMS = {
+    VARIANT_ADVERSARIAL: _without_tools(ADVERSARIAL_SYSTEM, VARIANT_ADVERSARIAL),
+    VARIANT_NEUTRAL: _without_tools(NEUTRAL_SYSTEM, VARIANT_NEUTRAL),
+}
 
 
 class SearchBaselinesArgs(BaseModel):
@@ -346,8 +396,8 @@ def _cents(value: Any) -> str:
     return "unknown" if value is None else dollars(float(value))
 
 
-def render_case_prompt(case: TradeCase) -> str:
-    """What the bot knew when it decided. No outcome, label or later price is part of it."""
+def _trade_lines(case: TradeCase) -> list[str]:
+    """The decision and the listing's own details, as the bot knew them when it decided."""
     trade = case.trade
     features = case.features
     seen_as = (
@@ -371,12 +421,39 @@ def render_case_prompt(case: TradeCase) -> str:
         lines.append(f"Pattern: {case.listing.get('pattern')}")
         stickers = [sticker.get("name") for sticker in case.listing.get("stickers") or [] if sticker.get("name")]
         lines.append(f"Stickers: {', '.join(stickers) if stickers else 'none'}")
+    return lines
+
+
+def render_case_prompt(case: TradeCase) -> str:
+    """What the bot knew when it decided. No outcome, label or later price is part of it."""
+    lines = _trade_lines(case)
     lines.append("")
     lines.append(OUTCOME_DEFINITION)
     lines.append(
         "Use the tools before you answer: fetch_market_floor once, verify_float_value if there is a float value, "
         "and search_item_baselines at most twice. Then estimate the probability that this trade is profitable."
     )
+    lines.append(FINAL_INSTRUCTION)
+    return "\n".join(lines)
+
+
+def render_sealed_prompt(case: TradeCase, view: MarketView, float_check: str | None) -> str:
+    """
+    The same trade for a model without tools: what fetch_market_floor and verify_float_value would return is part
+    of the prompt. The name search over other items has no fixed answer to give, so it is left out.
+    """
+    lines = _trade_lines(case)
+    lines.append("")
+    lines.append(
+        "Market data as of the trade (the Skinport baseline in effect, the sales of the last 7 days and the listings "
+        "of the last 24 hours; nothing after the trade is included):"
+    )
+    lines.append(json.dumps(view.market_floor(case.trade.market_hash_name)))
+    if float_check is not None:
+        lines.append(f"Float check: {float_check}")
+    lines.append("")
+    lines.append(OUTCOME_DEFINITION)
+    lines.append("Estimate the probability that this trade is profitable.")
     lines.append(FINAL_INSTRUCTION)
     return "\n".join(lines)
 
@@ -526,6 +603,140 @@ async def ask_cfo(case: TradeCase, view: MarketView, variant: str, model: str) -
     return verdict
 
 
+# --- Asking Claude through Claude Code ---
+
+# Verdicts from Claude Code are stored under this prefix, because they come from the sealed prompt (no tool loop)
+# and must never be mistaken for verdicts of the same model asked through an API with tools.
+CLAUDE_CODE_MODEL_PREFIX = "claude-code/"
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-5-5"
+CLAUDE_CODE_TIMEOUT_SECONDS = 600
+# A Claude plan answers several calls at once; the free tier API of the `llm` backend wants one at a time.
+CLAUDE_CODE_CONCURRENCY = 4
+BACKEND_LLM = "llm"
+BACKEND_CLAUDE_CODE = "claude-code"
+# Claude Code ends a run with one of these when the plan's usage limit is reached; waiting minutes will not lift it.
+_CLAUDE_CODE_LIMIT_MARKERS = ("usage limit", "limit reached", "hit your", "out of extra usage")
+
+
+def claude_code_command(executable: str, model: str, system: str) -> list[str]:
+    """
+    One headless Claude Code call as the CFO: safe mode (no CLAUDE.md, hooks, plugins or MCP servers), no tools,
+    no saved session, and an answer that must match the verdict schema. The prompt goes on stdin.
+    """
+    return [
+        executable,
+        "--print",
+        "--safe-mode",
+        "--model",
+        model,
+        "--tools",
+        "",
+        "--strict-mcp-config",
+        "--no-session-persistence",
+        "--system-prompt",
+        system,
+        "--json-schema",
+        json.dumps(VERDICT_JSON_SCHEMA),
+        "--output-format",
+        "json",
+    ]
+
+
+def _claude_code_workdir() -> Path:
+    """An empty directory to run Claude Code in, so no project files or instructions are near it."""
+    workdir = Path(tempfile.gettempdir()) / "cfo_calibration_claude_code"
+    workdir.mkdir(exist_ok=True)
+    return workdir
+
+
+def is_usage_limit(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in _CLAUDE_CODE_LIMIT_MARKERS)
+
+
+async def run_claude_code(prompt: str, system: str, model: str) -> dict[str, Any]:
+    """Runs one headless Claude Code call and returns its JSON result; the plan's usage limit stops the run."""
+    executable = shutil.which("claude")
+    if executable is None:
+        raise RuntimeError("Claude Code (claude) is not on PATH")
+    process = await asyncio.create_subprocess_exec(
+        *claude_code_command(executable, model, system),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=_claude_code_workdir(),
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(prompt.encode("utf-8")), timeout=CLAUDE_CODE_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        raise RuntimeError(f"Claude Code did not answer within {CLAUDE_CODE_TIMEOUT_SECONDS} seconds") from None
+    output = stdout.decode("utf-8", errors="replace")
+    try:
+        result = json.loads(output)
+    except json.JSONDecodeError:
+        message = (stderr.decode("utf-8", errors="replace") or output).strip()
+        if is_usage_limit(message):
+            raise QuotaExhaustedError(message) from None
+        raise RuntimeError(f"Claude Code exited with {process.returncode}: {message[:300]}") from None
+    if result.get("is_error"):
+        message = str(result.get("result") or result.get("subtype") or "unknown error")
+        if is_usage_limit(message):
+            raise QuotaExhaustedError(message)
+        raise RuntimeError(f"Claude Code failed: {message[:300]}")
+    return result
+
+
+async def ask_claude_code(case: TradeCase, view: MarketView, variant: str, model: str) -> Verdict:
+    """
+    Asks Claude through Claude Code, so the run uses a Claude subscription instead of an API key. `model` is the
+    stored name, `claude-code/<model id>`. The model gets the sealed prompt and can call no tool, so it can only
+    answer from what was known at the decision time.
+    """
+    verdict = Verdict(
+        key=case.key,
+        variant=variant,
+        model=model,
+        prompt_version=PROMPT_VERSION,
+        status=STATUS_ERROR,
+        probability=None,
+        reasoning="",
+    )
+    try:
+        float_check = None
+        float_value = case.listing.get("float_value") if case.listing is not None else None
+        if float_value is not None:
+            float_check = await verify_float_value(case.trade.market_hash_name, float_value)
+        prompt = render_sealed_prompt(case, view, float_check)
+        result = await run_claude_code(prompt, SEALED_SYSTEMS[variant], model.removeprefix(CLAUDE_CODE_MODEL_PREFIX))
+        verdict.llm_calls = 1
+        parsed = _read_claude_code_answer(result, verdict)
+    except QuotaExhaustedError:
+        raise
+    # Broad on purpose: one failed trade is recorded as an error and retried on the next run.
+    except Exception as error:
+        verdict.reasoning = f"Evaluation failed: {error}"
+        return verdict
+    verdict.status = STATUS_OK
+    verdict.probability = parsed.probability_of_profit
+    verdict.reasoning = parsed.reasoning.encode("ascii", "ignore").decode("ascii")
+    return verdict
+
+
+def _read_claude_code_answer(result: dict[str, Any], verdict: Verdict) -> CalibratedVerdict:
+    """Adds the call's token use to the verdict and returns the answer, from the structured output if there is one."""
+    usage = result.get("usage") or {}
+    verdict.prompt_tokens = sum(
+        int(usage.get(name) or 0) for name in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+    )
+    verdict.completion_tokens = int(usage.get("output_tokens") or 0)
+    answer = result.get("structured_output")
+    return CalibratedVerdict(**answer) if isinstance(answer, dict) else parse_verdict(str(result.get("result") or ""))
+
+
 def verdict_cache_key(variant: str, key: str, model: str) -> tuple[str, str, str, int]:
     return (variant, key, model, PROMPT_VERSION)
 
@@ -550,27 +761,51 @@ def latest_verdicts(verdicts: Iterable[Verdict]) -> dict[tuple[str, str, str, in
     return latest
 
 
+type AskFunction = Callable[[TradeCase, MarketView, str, str], Awaitable[Verdict]]
+
+
 async def run_verdicts(
-    cases: Sequence[TradeCase], history: MarketHistory, variants: Sequence[str], model: str, out_path: Path
+    cases: Sequence[TradeCase],
+    history: MarketHistory,
+    variants: Sequence[str],
+    model: str,
+    out_path: Path,
+    ask: AskFunction | None = None,
+    concurrency: int = 1,
 ) -> dict[str, int]:
     """
     Asks the CFO about every case and variant not already answered, appending each verdict as it arrives.
 
     Cases go in a seeded random order with every variant asked about one case before the next, so a run that stops
     at a daily quota leaves a random sample of trades answered by both prompts, not the first days of the range.
+    Up to `concurrency` questions are open at once; a quota stops new ones, and the run raises once the open ones end.
     """
+    ask = ask or ask_cfo
     done = {key for key, verdict in latest_verdicts(read_verdicts(out_path)).items() if verdict.status == STATUS_OK}
     counts = {"asked": 0, "skipped": 0, "errors": 0}
     ordered = list(cases)
     random.Random(SAMPLE_SEED).shuffle(ordered)
+    pending = []
+    for case in ordered:
+        for variant in variants:
+            if verdict_cache_key(variant, case.key, model) in done:
+                counts["skipped"] += 1
+            else:
+                pending.append((case, variant))
+    slots = asyncio.Semaphore(concurrency)
+    quota_errors: list[QuotaExhaustedError] = []
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("a", encoding="utf-8") as out:
-        for case in ordered:
-            for variant in variants:
-                if verdict_cache_key(variant, case.key, model) in done:
-                    counts["skipped"] += 1
-                    continue
-                verdict = await ask_cfo(case, history.as_of(case.trade.decided_at), variant, model)
+
+        async def answer(case: TradeCase, variant: str) -> None:
+            async with slots:
+                if quota_errors:
+                    return
+                try:
+                    verdict = await ask(case, history.as_of(case.trade.decided_at), variant, model)
+                except QuotaExhaustedError as error:
+                    quota_errors.append(error)
+                    return
                 out.write(json.dumps(asdict(verdict), sort_keys=True) + "\n")
                 out.flush()
                 counts["asked"] += 1
@@ -583,6 +818,10 @@ async def run_verdicts(
                     verdict.prompt_tokens,
                     verdict.completion_tokens,
                 )
+
+        await asyncio.gather(*(answer(case, variant) for case, variant in pending))
+    if quota_errors:
+        raise quota_errors[0]
     return counts
 
 
@@ -986,14 +1225,35 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--as-of", type=parse_utc, required=True, help="Read labels as of this UTC time")
         command.add_argument("--out", type=Path, default=REPO_ROOT / "data" / "cfo_calibration")
         command.add_argument("--max-trades", type=int, default=None, help="Seeded random sample of the labeled trades")
+        command.add_argument(
+            "--backend",
+            choices=(BACKEND_LLM, BACKEND_CLAUDE_CODE),
+            default=BACKEND_LLM,
+            help="llm: the OpenAI compatible API in LLM_* with the tool loop; claude-code: Claude through Claude Code "
+            "(a Claude subscription, no API key) with the sealed prompt",
+        )
+        command.add_argument("--claude-model", default=DEFAULT_CLAUDE_MODEL, help="Model for --backend claude-code")
     run = commands.choices["run"]
     run.add_argument("--variants", default=",".join(VARIANTS))
     run.add_argument("--dry-run", action="store_true", help="Estimate the size of the run without calling the LLM")
+    run.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        help=f"Questions open at once (default: 1, or {CLAUDE_CODE_CONCURRENCY} with claude-code)",
+    )
     report = commands.choices["report"]
-    report.add_argument("--model", default=None, help="Model whose verdicts to score (default: LLM_MODEL)")
+    report.add_argument("--model", default=None, help="Stored model whose verdicts to score (default: the backend's)")
     report.add_argument("--input-usd-per-mtok", type=float, default=None)
     report.add_argument("--output-usd-per-mtok", type=float, default=None)
     return parser
+
+
+def stored_model(args: argparse.Namespace) -> str:
+    """The model name the backend's verdicts are stored under."""
+    if args.backend == BACKEND_CLAUDE_CODE:
+        return CLAUDE_CODE_MODEL_PREFIX + args.claude_model
+    return cfo._get_current_model()
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -1011,16 +1271,24 @@ async def run(args: argparse.Namespace) -> int:
         if args.dry_run:
             print(json.dumps({**estimate_tokens(cases, history), "variants": variants}, indent=2))
             return 0
-        model = cfo._get_current_model()
+        claude_code = args.backend == BACKEND_CLAUDE_CODE
+        concurrency = args.concurrency
+        if concurrency is None:
+            concurrency = CLAUDE_CODE_CONCURRENCY if claude_code else 1
+        if concurrency < 1:
+            raise SystemExit("--concurrency must be at least 1")
+        if claude_code and shutil.which("claude") is None:
+            raise SystemExit("--backend claude-code needs Claude Code (claude) on PATH, logged in")
+        ask = ask_claude_code if claude_code else ask_cfo
         try:
-            counts = await run_verdicts(cases, history, variants, model, verdicts_path)
+            counts = await run_verdicts(cases, history, variants, stored_model(args), verdicts_path, ask, concurrency)
         except QuotaExhaustedError as error:
             logger.error("[CFO] Quota exhausted, stopping; rerun later to resume: %s", error)
             return 2
         print(json.dumps(counts))
         return 0
 
-    model = args.model or cfo._get_current_model()
+    model = args.model or stored_model(args)
     prices = None
     if args.input_usd_per_mtok is not None and args.output_usd_per_mtok is not None:
         prices = (args.input_usd_per_mtok, args.output_usd_per_mtok)
