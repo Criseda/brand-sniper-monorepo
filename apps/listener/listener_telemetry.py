@@ -43,8 +43,8 @@ anomalies_confirmed_total = Counter(
 
 anomalies_rejected_total = Counter(
     "listener_anomalies_rejected_total",
-    "Total number of anomalies filtered out by the DRE",
-    labelnames=["source", "tick_kind"],
+    "Total number of anomalies filtered out by the DRE (reason dre_rejected) or its fee floor (below_fee_floor)",
+    labelnames=["source", "tick_kind", "reason"],
 )
 
 dedup_cache_size = Gauge(

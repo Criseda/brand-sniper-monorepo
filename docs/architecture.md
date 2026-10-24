@@ -69,6 +69,8 @@ from venues with different fees and price levels are never scored together. A RE
 changed since the last poll enters the window only while it is short or once an hour (#269), so a quiet item's
 window is not filled with copies of one price. Until a window holds enough prices to score, as right after a
 restart empties the edge Redis, a tick is scored against the baseline alone and never approved (#308).
+An approval that would not make money after Skinport's seller fee, resold at the baseline's latest price, is
+not traded either (#331).
 The **Deterministic Rules Engine (DRE)** evaluates every tick using Z-score anomaly detection against
 the cached price history. On a confirmed anomaly:
 

@@ -533,13 +533,67 @@ async def test_approval_is_counted_and_logged_with_its_rule(monkeypatch, caplog)
 @pytest.mark.asyncio
 async def test_rejection_is_counted_by_source_and_tick_kind(monkeypatch):
     monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value=None))
-    counter = anomalies_rejected_total.labels(source="hybrid", tick_kind="listing")
+    counter = anomalies_rejected_total.labels(source="hybrid", tick_kind="listing", reason="dre_rejected")
     before = counter._value.get()
 
     listing = _tick(10.0, event_type="listed", listing_id="1")
     await detection.evaluate_and_execute(listing, -3.0, MagicMock(), AsyncMock(), {}, "hybrid")
 
     assert counter._value.get() == before + 1
+
+
+@pytest.mark.parametrize(
+    ("rule", "estimate", "expected"),
+    [
+        ("support_floor", 0, True),
+        ("macro_sigma", -5, True),
+        ("support_floor", 1, False),
+        ("support_floor", None, False),  # No baseline price, no estimate
+        ("sticker_premium", -500, False),  # The estimate does not value stickers
+        ("stickers_below_base", -50, False),
+    ],
+)
+def test_fee_floor_rejects_price_rules_that_net_nothing(rule, estimate, expected):
+    assert detection.below_fee_floor(rule, estimate) is expected
+
+
+def test_fee_floor_can_be_switched_off(monkeypatch):
+    monkeypatch.setattr(detection, "FEE_FLOOR", False)
+
+    assert detection.below_fee_floor("support_floor", -100) is False
+
+
+@pytest.mark.asyncio
+async def test_approval_below_the_fee_floor_is_neither_alerted_nor_traded(monkeypatch, caplog):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
+    executor = AsyncMock()
+    alerts = MagicMock()
+    rejected = anomalies_rejected_total.labels(source="hybrid", tick_kind="listing", reason="below_fee_floor")
+    confirmed = anomalies_confirmed_total.labels(source="hybrid", tick_kind="listing", reason="support_floor")
+    rejected_before, confirmed_before = rejected._value.get(), confirmed._value.get()
+    # Resale at 1050 less the 8% fee (84) is 966, under the 1000 paid.
+    listing = _tick(10.0, event_type="listed", listing_id="1")
+
+    with caplog.at_level("INFO", logger="listener.main"):
+        baseline = {"latest_price_cents": 1050}
+        await detection.evaluate_and_execute(listing, -3.0, MagicMock(), executor, baseline, "hybrid", alerts)
+
+    executor.execute.assert_not_awaited()
+    alerts.submit.assert_not_called()
+    assert (rejected._value.get(), confirmed._value.get()) == (rejected_before + 1, confirmed_before)
+    assert "Below the fee floor (hybrid, listing, rule support_floor)" in caplog.text
+    assert "would net $-0.34 after fees" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_without_the_fee_floor_the_same_approval_is_traded(monkeypatch):
+    monkeypatch.setattr(detection, "FEE_FLOOR", False)
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
+    executor = AsyncMock()
+
+    await detection.evaluate_and_execute(_tick(10.0), -3.0, MagicMock(), executor, {"latest_price_cents": 1050})
+
+    assert executor.execute.await_args.kwargs["estimated_profit_cents"] == -34
 
 
 def test_every_anomaly_counter_series_exists_before_the_first_anomaly():
@@ -551,4 +605,5 @@ def test_every_anomaly_counter_series_exists_before_the_first_anomaly():
     reasons = {"support_floor", "macro_sigma", "stickers_below_base", "sticker_premium"}
     assert label_values(anomalies_confirmed_total, "reason") == reasons
     assert label_values(anomalies_rejected_total, "tick_kind") == {"rest_snapshot", "listing"}
+    assert label_values(anomalies_rejected_total, "reason") == {"dre_rejected", "below_fee_floor"}
     assert label_values(anomalies_detected_total, "source") == {"local", "hybrid", "macro"}
