@@ -86,6 +86,8 @@ OUTCOME_PENDING = "pending"  # The label horizon has not passed yet
 OUTCOME_UNLABELED = "unlabeled"  # The horizon has passed but no label row exists: run label_outcomes.py
 
 REASON_BELOW_THRESHOLD = "below_threshold"
+# A DRE approval the fee floor rejected (#331); the listener's detection.REJECTED_BELOW_FEE_FLOOR.
+REASON_BELOW_FEE_FLOOR = "below_fee_floor"
 
 # Buy price tiers and liquidity buckets: (lower bound, label), in ascending order.
 PRICE_TIERS = ((0, "under $5"), (500, "$5 to $50"), (5_000, "$50 to $500"), (50_000, "$500 and over"))
