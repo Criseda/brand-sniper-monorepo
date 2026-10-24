@@ -28,6 +28,7 @@ from backtest.sources import (
     write_fixture,
 )
 from backtest.strategy import (
+    REASON_BELOW_FEE_FLOOR,
     REASON_BELOW_THRESHOLD,
     REASON_DRE_REJECTED,
     REASON_DUPLICATE,
@@ -450,6 +451,48 @@ async def test_sweep_strategy_records_sticker_count_and_the_dre_verdict_below_th
     assert {row["features"]["sticker_count"] for row in rows.values()} == {0}
 
 
+def fee_floor_stream() -> tuple[list, BaselineSnapshot]:
+    """Listings under the support floor, two of them priced so that resale at 950 less the 8% fee (874) loses."""
+    events = [_snapshot(index * 305, price) for index, price in enumerate([1000, 1010, 990, 1005, 995])]
+    events += [
+        _feed(1600, "listed", _sale(1, 990)),  # below threshold; the DRE approves, the floor would not
+        _feed(1601, "listed", _sale(2, 900)),  # an outlier the DRE approves, but it nets -$0.26
+        _feed(1602, "listed", _sale(3, 400)),  # an outlier that nets $4.74: approved
+    ]
+    baseline = {"support_floor_cents": 995, "latest_price_cents": 950}
+    return events, BaselineSnapshot(baselines={ITEM: baseline})
+
+
+@pytest.mark.asyncio
+async def test_the_fee_floor_rejects_an_approval_that_nets_nothing(monkeypatch):
+    monkeypatch.setattr(detection, "FEE_FLOOR", True)
+    events, baselines = fee_floor_stream()
+
+    log_text, _ = await _replay(events, baselines, strategy=ZScoreDreSweepStrategy())
+
+    rows = {row["listing_id"]: row for row in _rows(log_text)}
+    assert (rows["1"]["reason"], rows["1"]["features"]["dre_reason"]) == (REASON_BELOW_THRESHOLD, REASON_SUPPORT_FLOOR)
+    assert rows["1"]["features"]["below_fee_floor"] is True
+    assert (rows["2"]["reason"], rows["2"]["approve"]) == (REASON_BELOW_FEE_FLOOR, False)
+    assert rows["2"]["features"]["estimated_net_profit_cents"] == -26
+    assert rows["2"]["features"]["dre_rule"] == REASON_SUPPORT_FLOOR
+    assert (rows["3"]["reason"], rows["3"]["approve"]) == (REASON_SUPPORT_FLOOR, True)
+    assert json.loads(log_text.splitlines()[0])["config"]["fee_floor"] is True
+
+
+@pytest.mark.asyncio
+async def test_without_the_fee_floor_the_replay_approves_what_it_used_to(monkeypatch):
+    monkeypatch.setattr(detection, "FEE_FLOOR", False)
+    events, baselines = fee_floor_stream()
+
+    log_text, _ = await _replay(events, baselines, strategy=ZScoreDreSweepStrategy())
+
+    rows = {row["listing_id"]: row for row in _rows(log_text)}
+    assert rows["1"]["features"]["below_fee_floor"] is False
+    assert (rows["2"]["reason"], rows["2"]["approve"]) == (REASON_SUPPORT_FLOOR, True)
+    assert json.loads(log_text.splitlines()[0])["config"]["fee_floor"] is False
+
+
 @pytest.mark.asyncio
 async def test_live_strategy_log_carries_no_sweep_inputs():
     events, baselines = synthetic_stream()
@@ -527,7 +570,7 @@ def _replay_run(decided) -> tuple[list[tuple], list[tuple]]:
     dre_reached = [
         (tick.market_hash_name, tick.listing_id, tick.price_cents, round(decision.score, 6))
         for tick, decision in decided
-        if decision.approve or decision.reason == REASON_DRE_REJECTED
+        if decision.approve or decision.reason in (REASON_DRE_REJECTED, REASON_BELOW_FEE_FLOOR)
     ]
     approved = [
         (
@@ -545,19 +588,22 @@ def _replay_run(decided) -> tuple[list[tuple], list[tuple]]:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("stream", "macro_triggers", "expected_trades"),
+    ("stream", "macro_triggers", "fee_floor", "expected_trades"),
     [
-        # Cold, the recorded fixture's approvals are all macro Z scores: none without them, 18 with them.
-        ("recorded_fixture", False, 0),
-        ("recorded_fixture", True, 18),
-        ("synthetic", False, 3),
-        ("repeated_snapshots", False, 3),
-        ("cold_start", False, 1),
-        ("cold_start", True, 3),
+        # Cold, the recorded fixture's approvals are all macro Z scores: none without them, 18 with them, and one
+        # of those 18 nets nothing after the seller fee.
+        ("recorded_fixture", False, True, 0),
+        ("recorded_fixture", True, True, 17),
+        ("recorded_fixture", True, False, 18),
+        ("synthetic", False, True, 3),
+        ("repeated_snapshots", False, True, 3),
+        ("cold_start", False, True, 1),
+        ("cold_start", True, True, 3),
     ],
 )
-async def test_replay_decisions_match_the_live_consumer(monkeypatch, stream, macro_triggers, expected_trades):
+async def test_replay_decisions_match_the_live_consumer(monkeypatch, stream, macro_triggers, fee_floor, expected_trades):
     monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", macro_triggers)
+    monkeypatch.setattr(detection, "FEE_FLOOR", fee_floor)
     if stream == "recorded_fixture":
         events = load_fixture(FIXTURE_DIR / "events.jsonl")
         baselines = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")

@@ -37,7 +37,9 @@ DEDUP_RULE = "listing_id_and_time_window_and_unchanged_snapshot"
 # Reasons specific to the Z-score/DRE strategy. Approvals carry the DRE rule (rules_engine.REASON_*).
 REASON_INSUFFICIENT_HISTORY = "insufficient_history"
 REASON_BELOW_THRESHOLD = "below_threshold"
-REASON_DRE_REJECTED = "dre_rejected"
+REASON_DRE_REJECTED = detection.REJECTED_BY_DRE
+# Approved by a DRE rule, but the fee-aware estimate is zero or less (#331, detection.below_fee_floor).
+REASON_BELOW_FEE_FLOOR = detection.REJECTED_BELOW_FEE_FLOOR
 # Scored with the macro Z score only (the window is too short, as right after a restart), which never
 # triggers (#308, zscore.source_can_trigger).
 REASON_MACRO_ONLY = "macro_only"
@@ -97,6 +99,7 @@ class ZScoreDreStrategy:
             "macro_zscore_fallback": zscore.MACRO_ZSCORE_FALLBACK,
             "macro_prior_weight": zscore.MACRO_PRIOR_WEIGHT,
             "macro_zscore_triggers": zscore.MACRO_ZSCORE_TRIGGERS,
+            "fee_floor": detection.FEE_FLOOR,
         }
 
     async def decide(self, tick: MarketTick, context: DecisionContext) -> Decision:
@@ -121,9 +124,13 @@ class ZScoreDreStrategy:
             return Decision(approve=False, reason=REASON_MACRO_ONLY, score=window_score.z_score, features=features)
         if not zscore.should_trigger_anomaly(window_score.z_score, window_score.mean_cents, tick, window_score.source):
             if self.records_sweep_inputs:
-                # The DRE does not read the Z-score thresholds, so its verdict here is the one a looser
-                # threshold would have got.
-                features["dre_reason"] = await dre_approval_reason(tick, context.cache, window_score.baseline)
+                # The DRE and its fee floor do not read the Z-score thresholds, so their verdict here is the one
+                # a looser threshold would have got.
+                dre_reason = await dre_approval_reason(tick, context.cache, window_score.baseline)
+                features["dre_reason"] = dre_reason
+                if dre_reason is not None:
+                    estimate = detection.estimate_net_profit_cents(tick, window_score.baseline or {})
+                    features["below_fee_floor"] = detection.below_fee_floor(dre_reason, estimate)
             return Decision(approve=False, reason=REASON_BELOW_THRESHOLD, score=window_score.z_score, features=features)
 
         approval_reason = await dre_approval_reason(tick, context.cache, window_score.baseline)
@@ -131,7 +138,11 @@ class ZScoreDreStrategy:
             return Decision(approve=False, reason=REASON_DRE_REJECTED, score=window_score.z_score, features=features)
 
         # Same estimate the live executor records with the paper trade.
-        features["estimated_net_profit_cents"] = detection.estimate_net_profit_cents(tick, window_score.baseline or {})
+        estimate = detection.estimate_net_profit_cents(tick, window_score.baseline or {})
+        features["estimated_net_profit_cents"] = estimate
+        if detection.below_fee_floor(approval_reason, estimate):
+            features["dre_rule"] = approval_reason
+            return Decision(approve=False, reason=REASON_BELOW_FEE_FLOOR, score=window_score.z_score, features=features)
         return Decision(approve=True, reason=approval_reason, score=window_score.z_score, features=features)
 
 

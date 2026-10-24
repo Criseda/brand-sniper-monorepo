@@ -434,6 +434,26 @@ def test_sweep_recomputes_the_live_cell_and_trades_more_with_a_looser_threshold(
     assert _cell(sweep, -2.0, 200)["trades"] == 1
 
 
+def test_sweep_keeps_the_fee_floor_at_every_threshold():
+    decisions = [
+        *_sweep_decisions(),
+        # The DRE would approve it at a looser threshold, but it nets nothing after the fee (#331).
+        logged(decision_row("F", START, score=-1.7, price=900, dre_reason="support_floor", below_fee_floor=True)),
+        # Triggered and approved by the DRE, then rejected by the fee floor.
+        logged(decision_row("G", START, reason="below_fee_floor", score=-3.5, price=700, dre_rule="support_floor")),
+    ]
+
+    def listing_trade(decision):
+        return trade(listing_id=decision.row["listing_id"])
+
+    sweep = sweep_thresholds(decisions, make_log(decisions), START, listing_trade)
+
+    assert sweep["live_matches_log"] is True
+    assert _cell(sweep, -2.0, 50)["trades"] == 1
+    # B joins at -1.5 as before; F and G never do.
+    assert _cell(sweep, -1.5, 50)["trades"] == 2
+
+
 def test_sweep_flags_a_live_cell_that_does_not_match_the_log():
     decisions = [logged(decision_row("A", START, approve=True, reason="support_floor", score=-1.0))]
 

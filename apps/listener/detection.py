@@ -27,7 +27,7 @@ from listener_telemetry import (
 )
 from models import MarketTick
 from redis.asyncio import Redis
-from rules_engine import APPROVAL_REASONS, dre_approval_reason
+from rules_engine import APPROVAL_REASONS, REASON_MACRO_SIGMA, REASON_SUPPORT_FLOOR, dre_approval_reason
 from shared_utils import (
     PROFIT_ESTIMATE_BASIS_NET,
     edge_baselines_key,
@@ -50,6 +50,10 @@ SLIDING_WINDOW_SIZE = int(os.getenv("SLIDING_WINDOW_SIZE", "20"))
 # 25,300 items, and a cap below that evicts items every poll, so their unchanged lowest asks are scored again.
 # The cap leaves room for the item list to grow; each venue has its own, so venues never evict each other.
 DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "100000"))
+# Reject a DRE approval whose fee-aware estimate is zero or less: it loses money even if it resells at the
+# baseline price (#331). False brings back the DRE without the floor.
+FEE_FLOOR = os.getenv("DRE_FEE_FLOOR", "true").lower() in ("true", "1", "yes")
+FEE_FLOOR_RULES = (REASON_SUPPORT_FLOOR, REASON_MACRO_SIGMA)
 # A REST snapshot at the same price as the item's previous tick within this many seconds is a duplicate.
 # Feed listings are not held to it: each one is a separate offer (see `is_duplicate`).
 DEDUP_WINDOW_SECONDS = 300
@@ -66,6 +70,11 @@ LEGACY_PRICE_WINDOW_VENUE = "skinport"
 TICK_KIND_REST_SNAPSHOT = "rest_snapshot"
 TICK_KIND_LISTING = "listing"
 TICK_KINDS = (TICK_KIND_REST_SNAPSHOT, TICK_KIND_LISTING)
+
+# `reason` label on the rejection counter, and the replay's reason for the same rejection.
+REJECTED_BY_DRE = "dre_rejected"
+REJECTED_BELOW_FEE_FLOOR = "below_fee_floor"
+REJECTION_REASONS = (REJECTED_BY_DRE, REJECTED_BELOW_FEE_FLOOR)
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +168,8 @@ def initialise_anomaly_counters() -> None:
     for source in ZSCORE_SOURCES:
         for tick_kind in TICK_KINDS:
             anomalies_detected_total.labels(source=source, tick_kind=tick_kind)
-            anomalies_rejected_total.labels(source=source, tick_kind=tick_kind)
+            for rejection in REJECTION_REASONS:
+                anomalies_rejected_total.labels(source=source, tick_kind=tick_kind, reason=rejection)
             for reason in APPROVAL_REASONS:
                 anomalies_confirmed_total.labels(source=source, tick_kind=tick_kind, reason=reason)
 
@@ -322,6 +332,19 @@ def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int
     )
 
 
+def below_fee_floor(approval_reason: str, estimated_profit_cents: int | None) -> bool:
+    """
+    The fee floor (#331): a deal whose fee-aware estimate is zero or less loses money even if it resells at the
+    baseline price, so it is not traded. Without a baseline price there is no estimate, and the floor does not apply.
+
+    The estimate values the item at its baseline price and ignores stickers, so it only judges the rules that buy on
+    price (`FEE_FLOOR_RULES`). The sticker rules pay up to or above the baseline price for the stickers on top.
+    """
+    if not FEE_FLOOR or approval_reason not in FEE_FLOOR_RULES:
+        return False
+    return estimated_profit_cents is not None and estimated_profit_cents <= 0
+
+
 async def evaluate_and_execute(
     tick: MarketTick,
     z_score: float,
@@ -336,50 +359,8 @@ async def evaluate_and_execute(
     approval_reason = await dre_approval_reason(tick, cache, baseline)
     rules_engine_latency_seconds.observe(time.monotonic() - _dre_t0)
     tick_kind = tick_kind_label(tick)
-    if approval_reason is not None:
-        anomalies_confirmed_total.labels(source=source, tick_kind=tick_kind, reason=approval_reason).inc()
-        logger.info(
-            "[ANOMALY] Confirmed true outlier by Edge DRE (%s, %s, rule %s)! %s dropped to $%.2f. Executing trade (Z=%.2f)...",
-            source,
-            tick_kind,
-            approval_reason,
-            tick.market_hash_name,
-            tick.price_usd,
-            z_score,
-        )
-
-        if baseline is None:
-            baseline_raw = await cache.hget(edge_baselines_key(resale_venue_for(tick.venue)), tick.market_hash_name)
-            baseline = json.loads(baseline_raw) if baseline_raw else {}
-        estimated_profit_cents = estimate_net_profit_cents(tick, baseline)
-
-        if alerts is not None:
-            # Queued before the paper trade, which waits on the backend. Never raises into the decision path.
-            try:
-                alerts.submit(
-                    TradeAlert.from_tick(
-                        tick,
-                        estimated_net_margin_cents=estimated_profit_cents,
-                        approval_reason=approval_reason,
-                        z_source=source,
-                        z_score=z_score,
-                    )
-                )
-            except Exception:
-                logger.exception("[ALERT] Could not queue the alert for %s", tick.market_hash_name)
-
-        await executor.execute(
-            venue=tick.venue,
-            market_hash_name=tick.market_hash_name,
-            purchase_price_cents=tick.price_cents,
-            estimated_profit_cents=estimated_profit_cents,
-            profit_estimate_basis=PROFIT_ESTIMATE_BASIS_NET,
-            z_score=z_score,
-            listing_id=tick.listing_id,
-            float_value=tick.float_value,
-        )
-    else:
-        anomalies_rejected_total.labels(source=source, tick_kind=tick_kind).inc()
+    if approval_reason is None:
+        anomalies_rejected_total.labels(source=source, tick_kind=tick_kind, reason=REJECTED_BY_DRE).inc()
         logger.info(
             "[ANOMALY] False outlier filtered by Edge DRE (%s, %s): %s at $%.2f.",
             source,
@@ -387,6 +368,61 @@ async def evaluate_and_execute(
             tick.market_hash_name,
             tick.price_usd,
         )
+        return
+
+    if baseline is None:
+        baseline_raw = await cache.hget(edge_baselines_key(resale_venue_for(tick.venue)), tick.market_hash_name)
+        baseline = json.loads(baseline_raw) if baseline_raw else {}
+    estimated_profit_cents = estimate_net_profit_cents(tick, baseline)
+    if below_fee_floor(approval_reason, estimated_profit_cents):
+        anomalies_rejected_total.labels(source=source, tick_kind=tick_kind, reason=REJECTED_BELOW_FEE_FLOOR).inc()
+        logger.info(
+            "[ANOMALY] Below the fee floor (%s, %s, rule %s): %s at $%.2f would net $%.2f after fees.",
+            source,
+            tick_kind,
+            approval_reason,
+            tick.market_hash_name,
+            tick.price_usd,
+            (estimated_profit_cents or 0) / 100,
+        )
+        return
+
+    anomalies_confirmed_total.labels(source=source, tick_kind=tick_kind, reason=approval_reason).inc()
+    logger.info(
+        "[ANOMALY] Confirmed true outlier by Edge DRE (%s, %s, rule %s)! %s dropped to $%.2f. Executing trade (Z=%.2f)...",
+        source,
+        tick_kind,
+        approval_reason,
+        tick.market_hash_name,
+        tick.price_usd,
+        z_score,
+    )
+
+    if alerts is not None:
+        # Queued before the paper trade, which waits on the backend. Never raises into the decision path.
+        try:
+            alerts.submit(
+                TradeAlert.from_tick(
+                    tick,
+                    estimated_net_margin_cents=estimated_profit_cents,
+                    approval_reason=approval_reason,
+                    z_source=source,
+                    z_score=z_score,
+                )
+            )
+        except Exception:
+            logger.exception("[ALERT] Could not queue the alert for %s", tick.market_hash_name)
+
+    await executor.execute(
+        venue=tick.venue,
+        market_hash_name=tick.market_hash_name,
+        purchase_price_cents=tick.price_cents,
+        estimated_profit_cents=estimated_profit_cents,
+        profit_estimate_basis=PROFIT_ESTIMATE_BASIS_NET,
+        z_score=z_score,
+        listing_id=tick.listing_id,
+        float_value=tick.float_value,
+    )
 
 
 async def update_window_and_detect(

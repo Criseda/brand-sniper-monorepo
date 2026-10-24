@@ -562,11 +562,15 @@ def would_trigger(
 
 
 def dre_would_approve(row: dict[str, Any]) -> bool:
-    """The DRE verdict on a scored tick. It does not depend on the Z thresholds, so it holds for any of them."""
+    """
+    The DRE verdict on a scored tick, fee floor included (#331). It does not depend on the Z thresholds, so it
+    holds for any of them. A log from before the floor has no `below_fee_floor`, and its verdicts have no floor.
+    """
     if row["approve"]:
         return True
     if row["reason"] == REASON_BELOW_THRESHOLD:
-        return (row.get("features") or {}).get("dre_reason") is not None
+        features = row.get("features") or {}
+        return features.get("dre_reason") is not None and not features.get("below_fee_floor", False)
     return False
 
 

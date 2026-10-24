@@ -62,6 +62,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **20** | [#271](https://github.com/Criseda/brand-sniper-monorepo/issues/271) | `[PE-20]` Buy each listing once across restarts, for any executor | #265 |
 | **21** | [#275](https://github.com/Criseda/brand-sniper-monorepo/issues/275) | `[PE-21]` Poll the lowest ask of tradable listings (`tradable=0` is trade locked only) | #267 |
 | **22** | [#308](https://github.com/Criseda/brand-sniper-monorepo/issues/308) | `[PE-22]` No approval on the macro Z score right after a restart | #269 |
+| **23** | [#331](https://github.com/Criseda/brand-sniper-monorepo/issues/331) | `[PE-23]` DRE fee floor: no approval when the deal loses money after the seller fee | #233, #248 |
 
 **Not planned**: #237, #238, #239 (compiled Rust edge engine) were closed after the #175 benchmark ([`docs/benchmarks/ingress_latency.md`](docs/benchmarks/ingress_latency.md)): the Python listener decides on a listing in 1.2 ms at the median, and most of that is Redis round trips a compiled runtime would not remove. Reopen #238 only if #236 shows in-process ONNX scoring breaks the latency budget.
 

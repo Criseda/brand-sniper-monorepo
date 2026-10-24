@@ -130,7 +130,8 @@ Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`
 `listing_id`). REST snapshots are logged only when approved; live can trade on them too.
 
 `zscore_dre` reasons: `insufficient_history`, `macro_only` (scored with the macro Z score, which never
-triggers, see below), `below_threshold`, `dre_rejected`, and on approval the DRE
+triggers, see below), `below_threshold`, `dre_rejected`, `below_fee_floor` (a DRE approval that nets nothing
+after the seller fee, see below), and on approval the DRE
 rule that approved (`support_floor`, `macro_sigma`, `stickers_below_base`, `sticker_premium`). An
 approval's `features.estimated_net_profit_cents` is the fee-aware estimate the live paper trade records.
 
@@ -175,6 +176,15 @@ DRE. Those were mostly REST lowest asks scored on the first poll after a restart
 header's `macro_zscore_triggers` says whether a run let them trigger (`MACRO_ZSCORE_TRIGGERS`, false by
 default); a log without it is from before #308, when they did. How I chose it is in
 [benchmarks/cold_start.md](benchmarks/cold_start.md).
+
+**A deal that nets nothing after the fee is not traded.** Since #331 an approval by `support_floor` or
+`macro_sigma` whose fee aware estimate (`estimated_net_profit_cents`, resale at the baseline's latest price
+less the seller fee) is zero or less is logged with reason `below_fee_floor` and the rule that approved it in
+`features.dre_rule`, and is not traded. The sticker rules are left alone, because the estimate does not value
+stickers. Below the threshold the sweep strategy records `below_fee_floor` next to `dre_reason`, so the sweep
+keeps the floor at every threshold. The header's `fee_floor` says whether a run used it (`DRE_FEE_FLOOR`, true
+by default); a log without it is from before #331. What it changed is in
+[benchmarks/fee_floor.md](benchmarks/fee_floor.md).
 
 **Dedup state and price windows are kept per venue.** Since #270 the header's `state_key` is
 `venue_and_item`: each venue has its own dedup state and its own price window per item, and the dedup
