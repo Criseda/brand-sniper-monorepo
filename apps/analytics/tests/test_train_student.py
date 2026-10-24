@@ -713,12 +713,25 @@ def test_report_and_metrics_without_labels_or_with_thin_cells():
     thin = _cell(status="insufficient_data", labeled=3)
     report["pooled"]["comparison"] = {"listings": 3, "rules": thin, "model_at_threshold": thin, "model_at_rules_volume": thin}
     report["pooled"]["metrics"]["roc_auc"] = None
+    report["pooled"]["dre_approvals"] = {
+        "approvals": 3,
+        "model_roc_auc": None,
+        "ratio_roc_auc": None,
+        "dre": thin,
+        "fee_floor": thin,
+        "ratio_at_fee_floor_volume": thin,
+        "model_at_fee_floor_volume": thin,
+    }
 
-    assert "| Live rules | 3 | 3 | insufficient data | insufficient data |" in render_markdown(report)
+    markdown = render_markdown(report)
+    assert "| Live rules | 3 | 3 | insufficient data | insufficient data |" in markdown
+    assert "ROC-AUC n/a for the model and n/a for the ratio" in markdown
     metrics = mlflow_metrics(report)
     assert "roc_auc" not in metrics
     assert "rules_precision" not in metrics
     assert metrics["rules_trades"] == 3
+    assert metrics["dre_approvals"] == 3
+    assert not any(key.startswith("dre_") and key != "dre_approvals" for key in metrics)
 
 
 def test_mlflow_reuses_an_existing_registered_model(monkeypatch, tmp_path):
