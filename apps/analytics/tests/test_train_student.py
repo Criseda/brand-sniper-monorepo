@@ -20,8 +20,10 @@ from train_student import (
     check_no_look_ahead,
     check_onnx,
     choose_threshold,
+    compare_on_dre_approvals,
     feature_matrix,
     fit_booster,
+    latest_price_ratio,
     log_to_mlflow,
     mlflow_metrics,
     mlflow_params,
@@ -70,9 +72,9 @@ def _decision(listing_id, decided_at, approve=False, student=None, reason="below
     return LoggedDecision(row=row, build_id=1, look_ahead=False)
 
 
-def _log(decisions, strategy="zscore_dre_features", feature_version=FEATURE_VERSION) -> DecisionLog:
+def _log(decisions, strategy="zscore_dre_features", feature_version=FEATURE_VERSION, fee_floor=True) -> DecisionLog:
     return DecisionLog(
-        header={"strategy": strategy, "config": {"feature_version": feature_version}},
+        header={"strategy": strategy, "config": {"feature_version": feature_version, "fee_floor": fee_floor}},
         decisions=decisions,
         summary=None,
         sha256="sha",
@@ -105,21 +107,36 @@ def synthetic(count=4000, days=40, seed=7):
         ratio = rng.uniform(0.5, 1.2)
         profitable = rng.random() < (0.85 if ratio < 0.7 else 0.08)
         margin = rng.randint(50, 400) if profitable else -rng.randint(50, 400)
-        approve = ratio < 0.75 and rng.random() < 0.5
-        decisions.append(_decision(str(index), decided_at, approve=approve, student=_student(ratio, z_score=(ratio - 1) * 10)))
+        dre_approves = ratio < 0.75 and rng.random() < 0.5
+        below_fee_floor = dre_approves and ratio >= 0.72  # The fee floor rejects the dearest of the DRE's deals.
+        reason = "below_fee_floor" if below_fee_floor else "support_floor" if dre_approves else "below_threshold"
+        student = _student(ratio, z_score=(ratio - 1) * 10, price_to_latest=ratio)
+        approve = dre_approves and not below_fee_floor
+        decisions.append(_decision(str(index), decided_at, approve=approve, student=student, reason=reason))
         labels.append(_label(str(index), decided_at, profitable, margin))
     return _log(decisions), _labels(labels)
 
 
-def _row(listing_id, decided_at, profitable=True, label_available_at=None, ratio=0.8):
+def _row(
+    listing_id,
+    decided_at,
+    profitable=True,
+    label_available_at=None,
+    ratio=0.8,
+    approved=False,
+    reason="below_threshold",
+    price_to_latest=0.0,
+):
+    features = [ratio] + [0.0] * (len(FEATURE_NAMES) - 1)
+    features[FEATURE_NAMES.index("price_to_latest")] = price_to_latest
     return LabeledListing(
         listing_id=listing_id,
         decided_at=decided_at,
         market_hash_name="x",
         price_cents=1000,
-        features=tuple([ratio] + [0.0] * (len(FEATURE_NAMES) - 1)),
-        rules_approved=False,
-        rules_reason="below_threshold",
+        features=tuple(features),
+        rules_approved=approved,
+        rules_reason=reason,
         label_available_at=label_available_at or decided_at + HORIZON,
         is_profitable=profitable,
         net_margin_cents=100 if profitable else -100,
@@ -310,6 +327,72 @@ def test_candidate_only_when_the_model_beats_the_rules_out_of_sample(rules, at_t
     assert reason
 
 
+# --- The DRE's deals (#333) ---
+
+
+def test_the_dre_approved_a_listing_when_the_rules_did_or_only_the_fee_floor_rejected_it():
+    assert _row("1", T0, approved=True, reason="support_floor").dre_approved
+    assert _row("2", T0, reason="below_fee_floor").dre_approved
+    assert not _row("3", T0, reason="dre_rejected").dre_approved
+    assert not _row("4", T0).dre_approved
+
+
+def test_latest_price_ratio_is_zero_without_a_baseline_price():
+    rows = [_row("1", T0, price_to_latest=0.8), _row("2", T0, price_to_latest=math.nan)]
+
+    assert latest_price_ratio(rows).tolist() == pytest.approx([1.25, 0.0])
+
+
+def test_on_the_dre_deals_the_ratio_and_the_model_keep_as_many_as_the_fee_floor():
+    at = [T0 + timedelta(minutes=minute) for minute in range(100)]
+    kept = [
+        _row(
+            str(index),
+            at[index],
+            profitable=index < 20,
+            approved=True,
+            reason="support_floor",
+            price_to_latest=0.8 + index / 1000,
+        )
+        for index in range(40)
+    ]
+    rejected = [
+        _row(str(index), at[index], profitable=False, reason="below_fee_floor", price_to_latest=0.95) for index in range(40, 50)
+    ]
+    sticker_deal = _row("50", at[50], profitable=True, approved=True, reason="sticker_premium", price_to_latest=math.nan)
+    not_a_deal = _row("51", at[51], profitable=True)
+    rows = [*kept, *rejected, sticker_deal, not_a_deal]
+    probabilities = np.array([1.0 if row.is_profitable else 0.0 for row in rows])
+
+    result = compare_on_dre_approvals(rows, probabilities)
+
+    assert result["approvals"] == 51
+    assert result["dre"]["trades"] == 51
+    assert result["fee_floor"]["trades"] == 41
+    assert result["fee_floor"]["precision"]["value"] == pytest.approx(21 / 41)
+    # The ratio keeps the 40 cheapest deals and the first rejected one; the deal without a baseline price is last.
+    assert result["ratio_at_fee_floor_volume"]["trades"] == 41
+    assert result["ratio_at_fee_floor_volume"]["precision"]["value"] == pytest.approx(20 / 41)
+    # The model ranks only the DRE's deals, so the profitable listing the DRE did not approve is not among them.
+    assert result["model_at_fee_floor_volume"]["precision"]["value"] == pytest.approx(21 / 41)
+    assert result["model_roc_auc"] == 1.0
+    assert 0.5 < result["ratio_roc_auc"] < 1.0
+
+
+def test_no_dre_deals_gives_empty_cells():
+    result = compare_on_dre_approvals([_row("1", T0)], np.array([0.9]))
+
+    assert result["approvals"] == 0
+    assert result["model_roc_auc"] is None
+    assert result["model_at_fee_floor_volume"]["trades"] == 0
+
+
+def test_a_log_replayed_without_the_fee_floor_says_so():
+    result = train_student.train_student(TrainingInputs(log=_log([], fee_floor=False), labels=_labels([])))
+
+    assert any("without the fee floor" in note for note in result.report["notes"])
+
+
 # --- End to end ---
 
 
@@ -333,6 +416,14 @@ def test_training_run_evaluates_walk_forward_and_exports_a_model():
     markdown = render_markdown(report)
     assert "## Out of sample, all folds" in markdown
     assert "Live rules" in markdown
+    dre = report["pooled"]["dre_approvals"]
+    assert dre["fee_floor"]["trades"] < dre["dre"]["trades"]
+    assert dre["ratio_at_fee_floor_volume"]["trades"] == dre["fee_floor"]["trades"]
+    assert dre["ratio_roc_auc"] > 0.5
+    assert "## On the DRE's deals" in markdown
+    assert "| Ratio at the fee floor's volume |" in markdown
+    assert not any("without the fee floor" in note for note in report["notes"])
+    assert "dre_ratio_roc_auc" in mlflow_metrics(report)
 
 
 def test_training_is_reproducible():
@@ -622,12 +713,25 @@ def test_report_and_metrics_without_labels_or_with_thin_cells():
     thin = _cell(status="insufficient_data", labeled=3)
     report["pooled"]["comparison"] = {"listings": 3, "rules": thin, "model_at_threshold": thin, "model_at_rules_volume": thin}
     report["pooled"]["metrics"]["roc_auc"] = None
+    report["pooled"]["dre_approvals"] = {
+        "approvals": 3,
+        "model_roc_auc": None,
+        "ratio_roc_auc": None,
+        "dre": thin,
+        "fee_floor": thin,
+        "ratio_at_fee_floor_volume": thin,
+        "model_at_fee_floor_volume": thin,
+    }
 
-    assert "| Live rules | 3 | 3 | insufficient data | insufficient data |" in render_markdown(report)
+    markdown = render_markdown(report)
+    assert "| Live rules | 3 | 3 | insufficient data | insufficient data |" in markdown
+    assert "ROC-AUC n/a for the model and n/a for the ratio" in markdown
     metrics = mlflow_metrics(report)
     assert "roc_auc" not in metrics
     assert "rules_precision" not in metrics
     assert metrics["rules_trades"] == 3
+    assert metrics["dre_approvals"] == 3
+    assert not any(key.startswith("dre_") and key != "dre_approvals" for key in metrics)
 
 
 def test_mlflow_reuses_an_existing_registered_model(monkeypatch, tmp_path):

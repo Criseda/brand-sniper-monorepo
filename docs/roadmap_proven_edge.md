@@ -198,9 +198,9 @@ The cost is that the newest 3 days of labels wait before training can use them.
   defines it (#269): an unchanged REST lowest ask enters only while the window is short or once an hour.
 - Initial set: `price_to_window_mean`, `z_score`, `z_source`, `price_to_30d_avg`, `price_to_support_floor`,
   `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`,
-  `listings_per_hour_item`. Changes to this list update this document and bump the feature version logged in MLflow.
+  `listings_per_hour_item`, and `price_to_latest` since version 3 (#333). Changes to this list update this document and bump the feature version logged in MLflow.
 
-Feature version 1 lives in `shared_utils/features.py`. The listener gathers its inputs in
+The features live in `shared_utils/features.py`. The listener gathers its inputs in
 `apps/listener/student_features.py`, the replay logs them with the `zscore_dre_features` strategy, and the
 training flow reads them back from that log. A test drives the live tick consumer and the replay over the
 same events and checks that both give the same features. A missing input gives a missing feature (NaN in the
@@ -219,6 +219,7 @@ model), never a zero.
 | `float_tier_boundary_distance` | Float minus the lower bound of its wear tier (0, 0.07, 0.15, 0.38, 0.45) |
 | `sticker_value_ratio` | Resale venue price of the applied stickers over the baseline's latest price |
 | `listings_per_hour_item` | The item's scored listings on the venue in the hour before this one. Since #312 (feature version 2) every listing is scored once; in version 1 a listing at the item's previous price within 5 minutes was not scored, so it was not counted. The count starts empty when the listener starts. |
+| `price_to_latest` | Price over the baseline's latest price, the price the fee aware profit estimate resells at. Added in feature version 3 (#333), after the inverse of this ratio ranked the DRE's approvals better than the CFO in #250. |
 
 ### 4.6 Validation and promotion (#234, #236)
 - Walk-forward temporal validation only (expanding or rolling windows); random K-fold is prohibited:
@@ -230,6 +231,9 @@ model), never a zero.
   rarer outcome. Pooled over the folds, the model is a candidate when it makes more net P&L than the rules at
   its threshold, or is more precise than the rules at the rules' volume, with at least 30 labeled trades on each
   side. An exploratory run (labels not final, or overlapping the validation window) is never a candidate.
+- The report also scores the model on the DRE's own deals (#333), the listings it approved before the fee
+  floor: ROC-AUC among them, and net P&L when the model keeps as many of them as the fee floor (#331) does,
+  next to the fee floor and the ratio of the latest baseline price to the price at that same number.
 - A candidate is **promoted** from shadow to deciding only after a documented shadow period in which it beats the rules on live, realized outcomes. The Z-score path remains the fallback.
 
 ### 4.7 Monitoring (#235)

@@ -308,8 +308,15 @@ On the validation listings the live rules, the model at its threshold, and the m
 `score_trades`, so precision, net P&L and the 30 trade minimum mean exactly what they mean in the
 scorecard. It also reports ROC-AUC, PR-AUC, the Brier score and a calibration table.
 
+Most listings are nowhere near a deal, so the report also scores the model on the listings the DRE approved
+before the fee floor (#333): the decision that matters is which of those to buy. Among them it gives the
+ROC-AUC of the model and of the ratio of the baseline's latest price to the price, and scores four groups:
+every DRE approval, the fee floor's approvals (the live rules), and the ratio and the model each keeping as
+many as the fee floor does, highest first. A log replayed with `DRE_FEE_FLOOR=false` has no fee floor
+rejections, and the report says so.
+
 A fold, or the final model, needs 1000 labeled listings and 100 of the rarer outcome. The final model is
-trained on every listing, exported to ONNX (float32 `features` [n, 11] in, `probability` [n] out, the
+trained on every listing, exported to ONNX (float32 `features` [n, 12] in, `probability` [n] out, the
 feature names and versions as metadata), and checked against the native model. It writes
 `docs/benchmarks/student_model.{md,json}` and `student_model.onnx`, logs them to the MLflow experiment
 `student-model` with the label config and feature version as parameters, and registers the ONNX model as
