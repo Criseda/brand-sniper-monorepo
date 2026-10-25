@@ -59,6 +59,7 @@ This starts 8 long-running services. Infrastructure ports marked "loopback" are 
 | MLflow | `127.0.0.1:5000` | Model registry and audit logs |
 | Redis | Not published | Market cache (volatile RAM) |
 | Redis exporter | Not published | Redis metrics bridge |
+| Postgres exporter | Not published | Database size and health metrics |
 | Backend | `0.0.0.0:8080` | REST API and health |
 | Listener | Not published | Market data ingestion |
 

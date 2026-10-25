@@ -177,6 +177,35 @@ services:
       start_period: 10s
       retries: 3
 
+  # Database size, connections and health for any PostgreSQL the apps use (Azure, local, another host).
+  # It connects with POSTGRES_EXPORTER_DSN, or DATABASE_URL when that is unset (config/postgres-exporter/entrypoint.sh).
+  # On the observability network only: the internal data network has no route to a hosted database.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    container_name: sniper_postgres_exporter
+    env_file:
+      - ../../.env
+    entrypoint: ["/bin/sh", "/etc/postgres-exporter/entrypoint.sh"]
+    command:
+      - --collector.long_running_transactions
+      - --collector.database_wraparound
+    volumes:
+      - ./config/postgres-exporter:/etc/postgres-exporter:ro
+    networks:
+      - observability
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Core Compute Engine REST API & FastMCP Agent Server
   # ---------------------------------------------------------------------------
