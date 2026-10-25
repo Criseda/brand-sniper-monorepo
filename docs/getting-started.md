@@ -82,7 +82,7 @@ uv run alembic upgrade head
 
 - **Listener** — streaming Skinport sales data, detecting anomalies in real-time
 - **Backend** — serving the API at `http://localhost:8080/docs`
-- **Analytics** (manual) — run `docker compose run --rm analytics` to trigger the Adversarial CFO (see [deployment.md](deployment.md#running-the-analytics-container-periodic-jobs) for details on periodic execution and macro sync)
+- **Analytics** (manual) — run `docker compose run --rm analytics` to trigger the Adversarial CFO (see [deployment.md](deployment.md#running-the-analytics-container-periodic-jobs) for details on periodic execution)
 
 Check the Grafana dashboard at `http://localhost:3000` (using credentials configured in `.env`) and MLflow at `http://localhost:5000`.
 

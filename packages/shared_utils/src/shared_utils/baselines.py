@@ -233,7 +233,7 @@ def build_item_baseline(history: SalesHistory, daily_medians_cents: Sequence[int
 
     `daily_medians_cents` are this item's 24 hour medians from earlier builds in the last 30 days, one
     per day. With at least `MIN_DAILY_POINTS` of them, volatility is their standard deviation and the
-    floor their 10th percentile, as the Kaggle pipeline computed them; otherwise both are estimated
+    floor their 10th percentile, as the old Kaggle pipeline computed them; otherwise both are estimated
     from this build's 30 day window.
     """
     month = history.last_30_days

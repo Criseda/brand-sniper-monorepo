@@ -112,28 +112,11 @@ class FeedEvent(SQLModel, table=True):
     payload: dict[str, Any] = Field(sa_column=Column(JsonDocument, nullable=False))
 
 
-class HistoricalPrice(SQLModel, table=True):
-    """
-    Data warehouse table holding long-term aggregate historical timelines (Kaggle).
-     Optimized with a composite index for fast chronological time-series retrieval.
-    """
-
-    __tablename__: str = "historical_prices"
-
-    id: int | None = Field(default=None, primary_key=True)
-    item_id: int = Field(foreign_key="market_items.id", ondelete="CASCADE")
-    sale_date: NaiveDatetime = Field(nullable=False)
-    median_price_cents: int = Field(nullable=False)
-    volume_sold: int = Field(nullable=False)
-
-    # Composite index: binds item_id and sale_date together for fast macro-analytics
-    __table_args__ = (Index("ix_historical_prices_item_date", "item_id", "sale_date"),)
-
-
 class ItemMacroBaseline(SQLModel, table=True):
     """
-    Persisted results of the long-term macro trend pipeline, allowing FastAPI
-    and the AI reasoning agents to perform dynamic, safety-weighted pricing checks.
+    Long term macro trends per item, computed once from the Kaggle Steam price history (2013 to 2024)
+    before that history was dropped. Frozen: nothing recomputes them. The backend still reads them
+    for the CFO's liquidity check and macro context, never as a live price (docs/data_sources.md).
     """
 
     __tablename__: str = "item_macro_baselines"

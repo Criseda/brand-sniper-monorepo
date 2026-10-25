@@ -40,7 +40,7 @@ Times are ISO 8601. A value without an offset is taken as UTC.
 | `--log-from` | Fixture replay: the same idea. Events before this time only warm up. |
 | `--speed` | Replay at recorded pace times this factor (`1` = real time). Omit it to run flat out. |
 | `--timings` | Also write each decision's latency (nanoseconds, JSON Lines). This file is not deterministic and is kept apart from the decision log. |
-| `--baselines` | Baseline file. Required with `--fixture`; a database replay defaults to the current `item_macro_baselines`. |
+| `--baselines` | Baseline file. Required with `--fixture`; a database replay defaults to the `venue_baselines` build that was current at each moment. |
 
 Detection thresholds come from the environment, as in the live listener: the CLI loads the root `.env`
 and then `apps/listener/.env` before it imports the decision code. The values used are written to the

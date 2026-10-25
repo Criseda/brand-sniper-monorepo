@@ -8,7 +8,7 @@ from the production database on 2026-09-26.
 
 | Source | Table | Venue | Covers | Status |
 |:---|:---|:---|:---|:---|
-| Kaggle Steam price dataset | `historical_prices` | Steam Community Market | 2013-04-26 to 2024-06-15 | Static and older than the crash. Long term context only. |
+| Kaggle Steam price dataset | `historical_prices` (dropped), `item_macro_baselines` | Steam Community Market | 2013-04-26 to 2024-06-15 | Dropped from the database in October 2026; the CSVs are archived offline. Only the frozen `item_macro_baselines` summary remains, as CFO context. |
 | Skinport sales history (`/v1/sales/history`) | `baseline_builds`, `venue_baselines` | Skinport | One build per day from 2026-09-26 | The live baselines (#259). |
 | Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Trade locked listings only until #275 (see below). Gaps whenever my PC was off. |
 | Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` with an `event_type` | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event with listing details (#232). Labels are built from this. |
@@ -21,15 +21,35 @@ on Kaggle. It has one CSV per item, named after the URL encoded `market_hash_nam
 `price, quantity, date, unix timestamp`. Each row is the median Steam Community Market sale price and the
 volume for one time bucket. In total it is about 22,500 files, 105 million rows and 22,446 items.
 
-The files go in `data/items/`, which is not in git. `apps/analytics/validate_historical.py` checks them
-and `apps/analytics/seed_historical.py` loads them once into `historical_prices`. Nothing writes to that
-table afterwards.
+The files went in `data/items/`, which is not in git. A validation script checked them and a seed script
+loaded them once into `historical_prices`. Nothing wrote to that table afterwards.
 
-Until #259 every live baseline came from it: `apps/analytics/long_term_macro.py` computed the
-`item_macro_baselines` rows and a sync script copied them into the edge Redis. That sync is gone. The
-`item_macro_baselines` rows are still computed and the backend still reads them, along with
-`historical_prices`, for the long term Steam context it gives the CFO (`apps/backend/queries.py`), but the
-listener no longer sees them.
+Until #259 every live baseline came from it: `long_term_macro.py` computed the `item_macro_baselines` rows
+and a sync script copied them into the edge Redis. That sync went first. After it, only the CFO's market
+context still read the table, as a Steam average it fell back on when Skinport had no price.
+
+### Why I dropped it
+
+In October 2026 the table was about 10 GiB, a third of the 32 GiB Azure plan, and the database had read it
+three times since its statistics were last reset. Nothing in the listener, the DRE, the baseline builders,
+the backtests, the labels or the student model used it, and the one place that did, the CFO's fallback,
+was handing the CFO the stale Steam prices described below. So the migration `a7d4e2c9f1b3` drops the
+table, the market context no longer returns `historical_steam_avg_cents` or `regime_shift_detected`, and
+the seed, validation and macro scripts are gone.
+
+What I kept:
+
+- **The data.** I zipped `data/items/`, `name_conversion_table.csv` and `example price history.csv` and keep
+  the archive outside the repository.
+- **`item_macro_baselines`.** The last macro run's summary per item (latest price, 30 and 90 day averages,
+  drift, volatility, 30 day volume, support floor). It is small and frozen, since nothing can recompute it
+  now. The backend still reads it for the CFO's liquidity check and the `search_macro_trends` tool, never
+  as a live price.
+- **A way back.** To reload the history, restore the CSVs into `data/items/`, run `alembic downgrade
+  c3e9a1d7b5f2` to recreate the empty table, and run the scripts from the commit before the drop:
+  `git show 4ced059:apps/analytics/seed_historical.py` (and `validate_historical.py`,
+  `verify_seed_historical.py`, `long_term_macro.py` next to it). The `HistoricalPrice` model has to come
+  back to `shared_utils.models` too.
 
 ### Why these baselines are wrong today
 
@@ -43,8 +63,8 @@ It is also the wrong venue. Steam prices include Steam's fee of about 15% and ar
 you cannot withdraw, so they sit above Skinport prices. Compared against a Steam average, a normal
 Skinport listing looks cheap.
 
-And it never changes. Because nothing updates `historical_prices`, the daily baseline job gets the same
-numbers every time, and the "30 day average" is really the last 30 days of the dataset. The one good side
+And it never changed. Because nothing updated `historical_prices`, the daily baseline job got the same
+numbers every time, and the "30 day average" was really the last 30 days of the dataset. The one good side
 effect is that replaying an old date does not leak future baselines, as long as this stays true.
 
 This is how far off they were on 2026-09-26. I divided each item's baseline latest price by its median
