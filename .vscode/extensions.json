@@ -4,5 +4,8 @@
     "charliermarsh.ruff",
     "ms-python.mypy-type-checker",
     "tamasfe.even-better-toml"
+  ],
+  "unwantedRecommendations": [
+    "ms-python.black-formatter"
   ]
 }
