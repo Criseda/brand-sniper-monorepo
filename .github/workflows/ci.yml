@@ -15,7 +15,45 @@ on:
   workflow_dispatch:
 
 jobs:
+  # A pull request that only touches docs skips quality and test. A skipped job
+  # counts as passed for the required status checks, so the PR can still merge.
+  # The workflow itself must still run on every PR: with a paths filter on
+  # pull_request the required checks would never report and the PR would hang.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 0
+
+      - name: Detect non-docs changes
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Docs: any Markdown file, anything under docs/, and LICENSE.
+          code_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" \
+            | grep -v -E '(\.md$|^docs/|^LICENSE$)' || true)
+          if [ -n "$code_files" ]; then
+            echo "Non-docs files changed:"
+            echo "$code_files"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only change, skipping quality and test."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   quality:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -60,6 +98,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
