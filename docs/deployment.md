@@ -148,8 +148,7 @@ The Analytics container (`analytics`) is the cold-path evaluation and macro anal
 
 ### Why Periodic Runs are Required
 
-1. **Long term macro context**: `long_term_macro.py` computes `item_macro_baselines` from the Kaggle history for the CFO's context. The live baselines do not come from here any more; the always-on `baseline-builder` service makes them (see below).
-2. **Adversarial CFO Audits**: The LLM-powered CFO audits recent trades to ensure decision quality, logging the confidence scores and structured reasoning traces to MLflow.
+1. **Adversarial CFO Audits**: The LLM-powered CFO audits recent trades to ensure decision quality, logging the confidence scores and structured reasoning traces to MLflow.
 
 ### How to Run the Jobs
 
@@ -181,12 +180,9 @@ The listener loads the newest build when it starts and checks for a newer one ev
 `BASELINE_MAX_AGE_HOURS` (48), it logs an error every minute, `listener_baselines_loaded` or
 `listener_baseline_build_age_seconds` show it in Prometheus, and its `/health` returns 503.
 
-The Kaggle pipeline is now long term context only and never touches the edge Redis. Read
-[`data_sources.md`](data_sources.md) for why:
-```bash
-# Full Kaggle macro calculation for the CFO's long term context
-docker compose run -d --rm analytics uv run python long_term_macro.py --limit 0
-```
+The Kaggle Steam history and its macro pipeline are retired: `historical_prices` was dropped and only the
+frozen `item_macro_baselines` remain as CFO context. Read [`data_sources.md`](data_sources.md) for why
+and for how to bring the history back.
 
 #### 2. Daily CFO Performance Audit
 This triggers the LLM agent to audit the bot's logged simulated trades against live floors and macro news to check trade quality.

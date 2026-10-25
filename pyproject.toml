@@ -82,11 +82,7 @@ show_missing = true
 # Per-module coverage gates enforced by scripts/check_coverage_targets.py.
 # Targets mirror issue #139: https://github.com/Criseda/brand-sniper-monorepo/issues/139
 [tool.brand-sniper.coverage-targets]
-"apps/analytics/seed_historical.py" = 80
 "apps/analytics/build_baselines.py" = 80
-"apps/analytics/long_term_macro.py" = 80
-"apps/analytics/validate_historical.py" = 80
-"apps/analytics/verify_seed_historical.py" = 80
 "apps/listener/scrapers/skinport.py" = 70
 "apps/listener/scrapers/factory.py" = 70
 "apps/listener/executor.py" = 70

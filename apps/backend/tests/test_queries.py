@@ -4,7 +4,7 @@ from pathlib import Path
 
 import aiohttp
 import pytest
-from shared_utils.models import HistoricalPrice, ItemMacroBaseline, LiveMarketTick, MarketItem
+from shared_utils.models import ItemMacroBaseline, LiveMarketTick, MarketItem
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import SQLModel
@@ -15,9 +15,7 @@ import queries
 from queries import (
     _analyze_real_time_history,
     _apply_liquidity_guardrails,
-    _compute_discount_corridor,
     _compute_snipe_threshold,
-    _detect_regime_shift,
     get_item_market_context,
 )
 
@@ -74,40 +72,12 @@ async def _seed_knife(maker) -> None:
         [
             base_item,
             versioned_item,
-            HistoricalPrice(
-                item_id=1,
-                sale_date=datetime(2025, 1, 1),
-                median_price_cents=100000,
-                volume_sold=10,
-            ),
-            HistoricalPrice(
-                item_id=1,
-                sale_date=datetime(2025, 1, 2),
-                median_price_cents=100000,
-                volume_sold=12,
-            ),
             LiveMarketTick(item_id=2, price_cents=70000, venue="skinport", inserted_at=datetime(2025, 1, 1)),
             LiveMarketTick(item_id=2, price_cents=70000, venue="skinport", inserted_at=datetime(2025, 1, 1)),
             LiveMarketTick(item_id=2, price_cents=50000, venue="steam", inserted_at=datetime(2025, 1, 1)),
             _macro_baseline(item_id=2, latest_price_cents=70000, avg_volume_30d=2.5),
         ],
     )
-
-
-class TestDiscountCorridor:
-    @pytest.mark.parametrize(
-        ("item_type", "expected"),
-        [
-            ("Knife", 0.25),
-            ("Glove", 0.25),
-            ("Sticker", 0.35),
-            ("Patch", 0.35),
-            ("Rifle", 0.30),
-            ("Unknown", 0.30),
-        ],
-    )
-    def test_discount_factor_by_class(self, item_type, expected):
-        assert _compute_discount_corridor(item_type) == expected
 
 
 class TestLiquidityGuardrails:
@@ -133,23 +103,6 @@ class TestLiquidityGuardrails:
     def test_low_tier_actively_traded_liquid(self):
         baseline = _macro_baseline(item_id=1, latest_price_cents=10000, avg_volume_30d=0.6)
         assert _apply_liquidity_guardrails(baseline, "Rifle") == (True, 0.6)
-
-
-class TestRegimeShift:
-    def test_no_steam_baseline_no_shift(self):
-        assert _detect_regime_shift(None, 70000, 0.25) == (False, True)
-
-    def test_no_baseline_comparison_no_shift(self):
-        assert _detect_regime_shift(100000.0, None, 0.25) == (False, True)
-
-    def test_major_deviation_flags_regime_shift(self):
-        assert _detect_regime_shift(100000.0, 40000, 0.25) == (True, False)
-
-    def test_expected_cash_band_keeps_steam_baseline(self):
-        assert _detect_regime_shift(100000.0, 70000, 0.25) == (False, True)
-
-    def test_deviation_at_threshold_is_not_a_shift(self):
-        assert _detect_regime_shift(100000.0, 56000, 0.25) == (False, True)
 
 
 class TestSnipeThreshold:
@@ -191,7 +144,6 @@ class TestGetItemMarketContext:
         context = await get_item_market_context(VERSIONED_NAME)
 
         assert context == {
-            "historical_steam_avg_cents": 100000,
             "historical_skinport_avg_cents": 70000,
             "real_time_skinport_median_cents": 70000,
             "cash_equivalent_avg_cents": 70000,
@@ -202,7 +154,6 @@ class TestGetItemMarketContext:
             "drift_percent": 0.02,
             "volatility_cents": 3000,
             "support_floor_cents": 55000,
-            "regime_shift_detected": False,
             "downtrend_detected": False,
             "downtrend_severity": 0.0,
             "item_page": "https://skinport.com/item/butterfly",
@@ -223,12 +174,7 @@ class TestGetItemMarketContext:
             maker,
             [
                 MarketItem(id=3, market_hash_name="AK-47 | Redline (Field-Tested)", item_type="Rifle"),
-                HistoricalPrice(
-                    item_id=3,
-                    sale_date=datetime(2025, 1, 1),
-                    median_price_cents=10000,
-                    volume_sold=50,
-                ),
+                LiveMarketTick(item_id=3, price_cents=10000, venue="skinport", inserted_at=datetime(2025, 1, 1)),
             ],
         )
         mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
@@ -240,8 +186,8 @@ class TestGetItemMarketContext:
         assert context["support_floor_cents"] is None
         assert context["avg_volume_30d"] is None
         assert context["is_liquid"] is True
-        assert context["cash_equivalent_avg_cents"] == 7000
-        assert context["snipe_threshold_cents"] == 5950
+        assert context["cash_equivalent_avg_cents"] == 10000
+        assert context["snipe_threshold_cents"] == 8500
 
     async def test_downtrend_steepens_snipe_threshold(self, db_maker, mocker):
         maker, engine = db_maker
@@ -255,23 +201,6 @@ class TestGetItemMarketContext:
         assert context["downtrend_severity"] == pytest.approx(100 / 700, rel=1e-6)
         assert context["cash_equivalent_avg_cents"] == 60000
         assert context["snipe_threshold_cents"] == 42429
-
-    async def test_regime_shift_detected_when_steam_drift_corrupted(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        await _seed_knife(maker)
-        shift_history = {
-            "last_24_hours": {"median": 400.0, "volume": 4},
-            "last_7_days": {"median": 400.0, "volume": 30},
-            "last_30_days": {"median": 400.0, "volume": 100},
-            "last_90_days": {"median": 400.0, "volume": 400},
-        }
-        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value=shift_history)
-
-        context = await get_item_market_context(VERSIONED_NAME)
-
-        assert context["regime_shift_detected"] is True
-        assert context["cash_equivalent_avg_cents"] == 40000
 
     async def test_illiquid_item_returns_no_threshold(self, db_maker, mocker):
         maker, engine = db_maker
@@ -310,10 +239,21 @@ class TestGetItemMarketContext:
 
         assert context["real_time_skinport_median_cents"] is None
         assert context["downtrend_detected"] is False
-        assert context["historical_steam_avg_cents"] is None
         assert context["cash_equivalent_avg_cents"] == 6500
         assert context["snipe_threshold_cents"] == 5525
         assert context["item_page"] is None
+
+    async def test_item_without_skinport_data_has_no_cash_price(self, db_maker, mocker):
+        maker, engine = db_maker
+        await _create_tables(engine)
+        await _seed(maker, [MarketItem(id=5, market_hash_name="Sticker | Old Steam Only", item_type="Sticker")])
+        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
+
+        context = await get_item_market_context("Sticker | Old Steam Only")
+
+        assert context["cash_equivalent_avg_cents"] is None
+        assert context["snipe_threshold_cents"] is None
+        assert "historical_steam_avg_cents" not in context
 
     async def test_db_failure_propagates(self, mocker):
         from contextlib import asynccontextmanager
@@ -461,86 +401,6 @@ class TestFetchSkinportSalesHistory:
 
 
 @pytest.mark.asyncio
-class TestGetStickerPriceCents:
-    async def test_api_median_resolves_to_cents(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value=KNIFE_HISTORY)
-
-        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 70000
-
-    async def test_api_empty_falls_back_to_db_history_avg(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        await _seed(
-            maker,
-            [
-                MarketItem(id=10, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
-                HistoricalPrice(item_id=10, sale_date=datetime(2025, 1, 1), median_price_cents=12345, volume_sold=5),
-            ],
-        )
-        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
-
-        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 12345
-
-    async def test_db_history_missing_falls_back_to_live_ticks(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        await _seed(
-            maker,
-            [
-                MarketItem(id=11, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
-                LiveMarketTick(item_id=11, price_cents=9999, venue="skinport", inserted_at=datetime(2025, 1, 1)),
-                LiveMarketTick(item_id=11, price_cents=9999, venue="skinport", inserted_at=datetime(2025, 1, 1)),
-            ],
-        )
-        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
-
-        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 9999
-
-    async def test_unknown_sticker_returns_none(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
-
-        assert await queries.get_sticker_price_cents("Not A Real Sticker") is None
-
-    async def test_api_median_missing_falls_back_to_db(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        await _seed(
-            maker,
-            [
-                MarketItem(id=12, market_hash_name="Titan | Katowice 2014", item_type="Sticker"),
-                HistoricalPrice(item_id=12, sale_date=datetime(2025, 1, 1), median_price_cents=777, volume_sold=1),
-            ],
-        )
-        mocker.patch.object(
-            queries,
-            "fetch_skinport_sales_history",
-            return_value={"last_24_hours": {"median": None, "volume": 0}},
-        )
-
-        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") == 777
-
-    async def test_db_failure_returns_none_without_raising(self, db_maker, mocker):
-        maker, engine = db_maker
-        await _create_tables(engine)
-        await _seed(
-            maker,
-            [MarketItem(id=13, market_hash_name="Titan | Katowice 2014", item_type="Sticker")],
-        )
-        mocker.patch.object(queries, "fetch_skinport_sales_history", return_value={})
-        mocker.patch.object(
-            queries,
-            "session_scope",
-            side_effect=SQLAlchemyError("database down"),
-        )
-
-        assert await queries.get_sticker_price_cents("Titan | Katowice 2014") is None
-
-
-@pytest.mark.asyncio
 class TestSearchMacroTrends:
     async def test_empty_query_returns_empty_list(self, db_maker):
         maker, engine = db_maker
@@ -619,7 +479,6 @@ class TestPrivateFetchers:
         mocker.patch("sqlmodel.ext.asyncio.session.AsyncSession.exec", side_effect=SQLAlchemyError("boom"))
 
         async with maker() as session:
-            assert await queries._fetch_steam_baseline(session, "Item", 1) is None
             assert await queries._fetch_skinport_baseline(session, "Item", 1) is None
             assert await queries._fetch_macro_baseline(session, "Item", 1) is None
 

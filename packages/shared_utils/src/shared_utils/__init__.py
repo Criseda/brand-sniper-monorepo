@@ -31,7 +31,6 @@ from .logging_utils import get_logger
 from .models import (
     BaselineBuild,
     FeedEvent,
-    HistoricalPrice,
     IngestionBatch,
     ItemMacroBaseline,
     LabelVersion,
@@ -90,7 +89,6 @@ __all__ = [
     "MarketItem",
     "LiveMarketTick",
     "FeedEvent",
-    "HistoricalPrice",
     "IngestionBatch",
     "ItemMacroBaseline",
     "SimulatedTrade",

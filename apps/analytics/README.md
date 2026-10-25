@@ -37,13 +37,6 @@ uv run python evaluate_performance.py
 # --loop keeps checking every hour, as the baseline-builder service does)
 uv run python build_baselines.py
 
-# Execute the Long-Term Macro Trend Calculation from the Kaggle history (default: 100 items).
-# This is long term context for the CFO only; it no longer touches the edge Redis.
-uv run python long_term_macro.py
-
-# Execute the macro calculation on all database items
-uv run python long_term_macro.py --limit 0
-
 # Label recorded listings with their market outcome (last 3 matured days, or an explicit range)
 uv run python label_outcomes.py
 uv run python label_outcomes.py --start 2026-09-24 --end 2026-10-01
@@ -62,12 +55,6 @@ uv run python baseline_scorecard.py --decisions ../../data/scorecard/decisions.j
 ```bash
 # Execute the Daily CFO Evaluation flow
 docker compose run --rm analytics
-
-# Execute the Long-Term Macro Trend Calculation (default: 100 items)
-docker compose run --rm analytics uv run python long_term_macro.py
-
-# Execute the macro calculation on all database items in Docker
-docker compose run --rm analytics uv run python long_term_macro.py --limit 0
 ```
 
 For more details on deploying the analytics container as a scheduled daily cron job in production, see the central [deployment guide](../../docs/deployment.md#running-the-analytics-container-periodic-jobs).
