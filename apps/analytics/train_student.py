@@ -11,7 +11,8 @@ Validation is walk forward only. A fold with cutoff t trains on listings decided
 available by t (`label_available_at <= t`), and validates on the listings decided in the next window. The
 14 day label horizon therefore puts at least 14 days between a training listing and a validation listing.
 The model and the live rules are scored on the same validation listings with the #249 scorecard metrics
-(precision with a Wilson interval, fee aware net P&L, insufficient data below 30 labeled trades).
+(precision with a Wilson interval, fee aware net P&L, insufficient data below 30 labeled trades), and on
+the DRE's own deals (#333) next to the fee floor (#331) and the ratio of the latest baseline price to the price.
 
 An exploratory run (`--exploratory`) also reads labels that are not final yet and lets training labels
 overlap the validation window. It exercises the pipeline on the labels that exist; its numbers are not a
@@ -47,6 +48,7 @@ import onnxruntime
 from baseline_scorecard import (
     FEATURES_STRATEGY,
     MIN_SAMPLE,
+    REASON_BELOW_FEE_FLOOR,
     TICK_KIND_LISTING,
     DecisionLog,
     Trade,
@@ -71,7 +73,7 @@ from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_s
 
 logger = get_logger("analytics.student")
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 MLFLOW_EXPERIMENT = "student-model"
 REGISTERED_MODEL = "brand-sniper-student"
 
@@ -130,6 +132,11 @@ class LabeledListing:
     label_available_at: datetime
     is_profitable: bool
     net_margin_cents: int
+
+    @property
+    def dre_approved(self) -> bool:
+        """Whether the DRE approved the listing before the fee floor (#331): approved, or rejected only by it."""
+        return self.rules_approved or self.rules_reason == REASON_BELOW_FEE_FLOOR
 
 
 def build_dataset(log: DecisionLog, labels: FinalLabels) -> list[LabeledListing]:
@@ -386,7 +393,7 @@ def round_thresholds_down(converted: onnx.ModelProto, booster: lightgbm.LGBMClas
 
 def to_onnx(model: StudentModel, metadata: dict[str, str]) -> onnx.ModelProto:
     """
-    One ONNX graph: float32 features [n, 11] in, calibrated probability [n] out.
+    One ONNX graph: float32 features [n, len(FEATURE_NAMES)] in, calibrated probability [n] out.
 
     The LightGBM converter gives class probabilities; the graph takes the profitable one, turns it back into
     the raw score (log odds) and applies the Platt scaling.
@@ -514,6 +521,55 @@ def compare(rows: Sequence[LabeledListing], probabilities: np.ndarray, model_app
     }
 
 
+def latest_price_ratio(rows: Sequence[LabeledListing]) -> np.ndarray:
+    """
+    The baseline's latest price over the price of each listing, the ranking that beat the CFO in #250; 0, the
+    lowest, without a baseline price.
+    """
+    column = FEATURE_NAMES.index("price_to_latest")
+    ratios = []
+    for row in rows:
+        price_to_latest = row.features[column]
+        ratios.append(1.0 / price_to_latest if price_to_latest > 0 else 0.0)  # NaN compares False
+    return np.array(ratios, dtype=np.float64)
+
+
+def _roc_auc(scores: np.ndarray, actual: np.ndarray) -> float | None:
+    return float(roc_auc_score(actual, scores)) if len(set(actual.tolist())) == 2 else None
+
+
+def _top(rows: Sequence[LabeledListing], scores: np.ndarray, count: int) -> list[LabeledListing]:
+    order = np.argsort(-scores, kind="stable")
+    return [rows[int(index)] for index in order[:count]]
+
+
+def compare_on_dre_approvals(rows: Sequence[LabeledListing], probabilities: np.ndarray) -> dict[str, Any]:
+    """
+    How the model ranks the DRE's own deals (#333), next to the simple rules, on the same listings.
+
+    The DRE's deals are the listings it approved before the fee floor (#331). The fee floor keeps the ones the
+    live rules approved; the ratio of the latest baseline price to the price, and the model, each keep as many,
+    the highest first, so the three are compared at the same number of trades.
+    """
+    indices = [index for index, row in enumerate(rows) if row.dre_approved]
+    approvals = [rows[index] for index in indices]
+    approval_probabilities = probabilities[indices] if indices else np.array([], dtype=np.float64)
+    ratios = latest_price_ratio(approvals)
+    actual = outcomes(approvals)
+    fee_floor = [row for row in approvals if row.rules_approved]
+    return {
+        "approvals": len(approvals),
+        "model_roc_auc": _roc_auc(approval_probabilities, actual),
+        "ratio_roc_auc": _roc_auc(ratios, actual),
+        "dre": score_trades(as_trades(approvals, "dre")),
+        "fee_floor": score_trades(as_trades(fee_floor, "fee_floor")),
+        "ratio_at_fee_floor_volume": score_trades(as_trades(_top(approvals, ratios, len(fee_floor)), "ratio")),
+        "model_at_fee_floor_volume": score_trades(
+            as_trades(_top(approvals, approval_probabilities, len(fee_floor)), "student")
+        ),
+    }
+
+
 def _total(cell: dict[str, Any]) -> float | None:
     return cell["net_pnl_cents"]["total"] if cell["status"] == "ok" else None
 
@@ -608,6 +664,11 @@ def train_student(inputs: TrainingInputs) -> TrainingResult:
             "Exploratory run: it reads labels that are not final and lets training labels overlap the validation "
             "windows. Its numbers check the pipeline; they are not an evaluation, and no model is registered."
         )
+    if not log.config.get("fee_floor"):
+        notes.append(
+            "The log was replayed without the fee floor (#331), so the fee floor row on the DRE's deals holds every "
+            "DRE approval."
+        )
 
     fold_reports, pooled_rows, pooled_probabilities, pooled_approves = evaluate_folds(
         rows, inputs.fold_hours, inputs.exploratory
@@ -619,6 +680,7 @@ def train_student(inputs: TrainingInputs) -> TrainingResult:
         pooled = {
             "metrics": ranking_metrics(pooled_probabilities, outcomes(pooled_rows)),
             "comparison": compare(pooled_rows, pooled_probabilities, pooled_approves),
+            "dre_approvals": compare_on_dre_approvals(pooled_rows, pooled_probabilities),
         }
         candidate, verdict = candidate_verdict(pooled["comparison"], inputs.exploratory)
     else:
@@ -720,6 +782,29 @@ def _data_line(data: dict[str, Any]) -> str:
     )
 
 
+def _dre_approvals_section(dre: dict[str, Any]) -> list[str]:
+    lines = [
+        "## On the DRE's deals",
+        "",
+        f"{dre['approvals']} of the out of sample listings were approved by the DRE before the fee floor (#331). "
+        f"Among them, ROC-AUC {_number(dre['model_roc_auc'])} for the model and {_number(dre['ratio_roc_auc'])} for "
+        "the ratio of the baseline's latest price to the price. The ratio and the model keep as many of the deals "
+        "as the fee floor does, the highest first.",
+        "",
+        "| Who decides | Trades | Labeled | Precision (95% CI) | Net P&L |",
+        "|---|---|---|---|---|",
+    ]
+    for title, key in (
+        ("DRE without the fee floor", "dre"),
+        ("Fee floor", "fee_floor"),
+        ("Ratio at the fee floor's volume", "ratio_at_fee_floor_volume"),
+        ("Model at the fee floor's volume", "model_at_fee_floor_volume"),
+    ):
+        lines.append("| " + " | ".join([title, *_cell_text(dre[key])]) + " |")
+    lines.append("")
+    return lines
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     data = report["data"]
     lines = ["# Student model", ""]
@@ -780,6 +865,7 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"| {entry['mean_predicted']:.3f} | {entry['observed']:.3f} |"
             )
         lines.append("")
+        lines.extend(_dre_approvals_section(pooled["dre_approvals"]))
     lines.extend(
         [
             "## Folds",
@@ -858,6 +944,15 @@ def mlflow_metrics(report: dict[str, Any]) -> dict[str, float]:
             if cell["status"] == "ok":
                 metrics[f"{side}_precision"] = cell["precision"]["value"]
                 metrics[f"{side}_net_pnl_total_cents"] = cell["net_pnl_cents"]["total"]
+        dre = pooled["dre_approvals"]
+        metrics["dre_approvals"] = dre["approvals"]
+        for key in ("model_roc_auc", "ratio_roc_auc"):
+            if dre[key] is not None:
+                metrics[f"dre_{key}"] = dre[key]
+        for side in ("fee_floor", "ratio_at_fee_floor_volume", "model_at_fee_floor_volume"):
+            cell = dre[side]
+            if cell["status"] == "ok":
+                metrics[f"dre_{side}_net_pnl_total_cents"] = cell["net_pnl_cents"]["total"]
     if report["model"]["threshold"] is not None:
         metrics["threshold"] = report["model"]["threshold"]
     return metrics

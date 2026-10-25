@@ -19,7 +19,9 @@ from typing import Any
 
 # Version 2 (#312): every feed listing is scored, so `listings_per_hour_item` counts listings that version 1
 # missed when they repeated the item's previous price within 5 minutes.
-FEATURE_VERSION = 2
+# Version 3 (#333): `price_to_latest`, the price over the baseline's latest price, which the fee aware profit
+# estimate resells at.
+FEATURE_VERSION = 3
 
 # The model's input columns, in order. The ONNX model takes them as one float32 row per listing.
 FEATURE_NAMES = (
@@ -34,6 +36,7 @@ FEATURE_NAMES = (
     "float_tier_boundary_distance",
     "sticker_value_ratio",
     "listings_per_hour_item",
+    "price_to_latest",
 )
 
 # `z_source` as a number: how the Z score was computed (zscore.ZSCORE_SOURCES). Missing when unscored.
@@ -91,6 +94,7 @@ def compute_features(inputs: FeatureInputs) -> dict[str, float | int | None]:
         "float_tier_boundary_distance": float_tier_boundary_distance(inputs.float_value),
         "sticker_value_ratio": _ratio(inputs.sticker_value_cents, latest_price),
         "listings_per_hour_item": inputs.listings_last_hour,
+        "price_to_latest": _ratio(price, latest_price),
     }
 
 

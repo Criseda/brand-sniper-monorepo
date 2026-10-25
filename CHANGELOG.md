@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Active Milestone: [Proven Edge: Outcome-Labeled Learning Loop (Milestone 5)](https://github.com/Criseda/brand-sniper-monorepo/milestone/5)
 
 #### Added
+- Student feature `price_to_latest`, the price over the baseline's latest price (feature version 3), and a student report section that scores the model on the DRE's deals before the fee floor: ROC-AUC, and net P&L when it keeps as many as the fee floor does, next to the fee floor and the latest price ratio (#333).
 - CFO calibration experiment: point in time CFO tools, adversarial and neutral prompts with a probability of profit, scored against v1 labels with Brier score, reliability and an item bootstrap against the DRE alone, and a `claude-code` backend that asks Claude through Claude Code on a Claude plan with no API key (`apps/analytics/cfo_calibration.py`, `make cfo-calibration CFO_BACKEND=claude-code`, `docs/benchmarks/cfo_calibration.md`) (#250).
 - Active execution roadmap and architectural blueprint for Milestone 5 (`docs/roadmap_proven_edge.md`).
 - Project Changelog tracking versioned releases and unreleased PR deliveries (`CHANGELOG.md`).

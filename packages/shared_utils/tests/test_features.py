@@ -44,6 +44,7 @@ def test_every_feature_from_full_inputs():
     assert features["float_tier_boundary_distance"] == pytest.approx(0.0112)
     assert features["sticker_value_ratio"] == pytest.approx(0.25)
     assert features["listings_per_hour_item"] == 3
+    assert features["price_to_latest"] == pytest.approx(0.9)
 
 
 def test_missing_inputs_give_missing_features_not_zeros():
@@ -60,6 +61,7 @@ def test_a_zero_baseline_price_is_missing_rather_than_a_division_error():
 
     assert features["price_to_support_floor"] is None
     assert features["sticker_value_ratio"] is None
+    assert features["price_to_latest"] is None
 
 
 @pytest.mark.parametrize(
