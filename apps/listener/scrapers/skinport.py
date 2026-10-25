@@ -131,6 +131,7 @@ def _sale_to_tick(sale: dict, event_type: str, received_at_ms: int) -> MarketTic
             # salePrice is in USD cents when currency is USD
             price_usd=float(sale_price) / 100.0,
             timestamp=received_at_ms // 1000,
+            observed_at_ms=received_at_ms,
             float_value=optional_wear(sale.get("wear")),
             stickers=sale.get("stickers") or [],
             event_type=event_type,

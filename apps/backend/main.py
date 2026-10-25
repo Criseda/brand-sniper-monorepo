@@ -418,6 +418,8 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
                     "price_cents": tick.price_cents,
                     "venue": payload.venue,
                     "inserted_at": utc_fromtimestamp_naive(tick.timestamp),
+                    # Same conversion as feed_events.received_at, so a listing tick and its raw event share one time.
+                    "observed_at": utc_fromtimestamp_naive(tick.observed_at_ms / 1000) if tick.observed_at_ms else None,
                     "event_type": tick.event_type,
                     "listing_id": tick.listing_id,
                     "float_value": tick.float_value,

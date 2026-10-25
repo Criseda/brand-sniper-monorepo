@@ -186,6 +186,7 @@ def listing_tick(payload: object, received_at_ms: int) -> MarketTick | None:
             market_hash_name=build_versioned_name(steam_market_hash_name(name, phase), phase),
             price_usd=price_cents / 100,
             timestamp=received_at_ms // 1000,
+            observed_at_ms=received_at_ms,
             float_value=optional_wear(payload.get("float")),
             stickers=waxpeer_stickers(payload.get("sticker_names")),
             event_type=LISTED_EVENT_TYPE,
@@ -360,6 +361,7 @@ class RecordingFilter:
                 market_hash_name=followed.market_hash_name,
                 price_usd=price_cents / 100,
                 timestamp=received_at_ms // 1000,
+                observed_at_ms=received_at_ms,
                 event_type=REMOVED_EVENT_TYPE,
                 listing_id=listing_id,
             )

@@ -5,7 +5,7 @@ outcome labels with walk forward validation, calibrated, exported to ONNX and co
 The input is a decision log from the replay harness made with the `zscore_dre_features` strategy: the live
 decisions, plus the student features of every feed listing (shared_utils.features), computed from the
 price windows and baselines the listener had at that moment. Rows join to the final labels of one label
-version (`label_outcomes.fetch_final_labels`). Neutral labels (too few comparable sales) are left out.
+version (`outcome_data.fetch_final_labels`). Neutral labels (too few comparable sales) are left out.
 
 Validation is walk forward only. A fold with cutoff t trains on listings decided before t whose label was
 available by t (`label_available_at <= t`), and validates on the listings decided in the next window. The
@@ -62,10 +62,11 @@ from baseline_scorecard import (
     score_trades,
     set_outcome,
 )
-from label_outcomes import LABEL_VERSION, FinalLabels, fetch_final_labels, label_mlflow_params
 from mlflow.client import MlflowClient
 from onnx import TensorProto, helper
 from onnxmltools.convert.common.data_types import FloatTensorType
+from outcome_data import fetch_final_labels
+from outcome_labels import LABEL_VERSION, FinalLabels, label_mlflow_params
 from prefect import flow
 from shared_utils import FEATURE_NAMES, FEATURE_VERSION, feature_vector, get_logger, utc_now_naive
 from sklearn.linear_model import LogisticRegression

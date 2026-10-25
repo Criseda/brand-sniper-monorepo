@@ -56,6 +56,9 @@ class MarketTick(BaseModel):
     timestamp: int = Field(
         default_factory=lambda: int(datetime.now(UTC).timestamp()), description="Unix timestamp of when the tick was parsed"
     )
+    # Feed events carry their edge receive time to the millisecond, the same clock as `feed_events.received_at`,
+    # so outcome labels read from the ticks match the raw feed exactly (#256). None means `timestamp` is all we know.
+    observed_at_ms: int | None = Field(default=None, gt=0, description="Edge receive time as Unix epoch milliseconds")
     float_value: float | None = Field(default=None, ge=0, le=1, description="Asset wear float value if available")
     stickers: list[dict] = Field(default_factory=list, description="List of applied stickers on the asset")
 
@@ -84,6 +87,13 @@ class MarketTick(BaseModel):
             raise ValueError(f"A {self.kind} tick cannot carry event_type {self.event_type!r}")
         return self
 
+    @model_validator(mode="after")
+    def _observed_at_matches_timestamp(self) -> Self:
+        """The millisecond receive time and the whole-second `timestamp` name the same moment."""
+        if self.observed_at_ms is not None and self.observed_at_ms // 1000 != self.timestamp:
+            raise ValueError(f"observed_at_ms {self.observed_at_ms} is not inside second {self.timestamp}")
+        return self
+
     # Monotonic clock reading when the tick was built from the venue's data, so the listener can measure how long
     # it took to act on it (alert latency, #18). Not serialized: it means nothing outside this process.
     _received_monotonic: float = PrivateAttr(default_factory=time.monotonic)
@@ -97,6 +107,11 @@ class MarketTick(BaseModel):
     def price_cents(self) -> int:
         """Vector optimization converter to completely eliminate floating-point math rounding errors."""
         return int(round(self.price_usd * 100))
+
+    @property
+    def observed_at_epoch_ms(self) -> int:
+        """Edge receive time in epoch milliseconds, whole seconds when the tick has no finer time."""
+        return self.observed_at_ms if self.observed_at_ms is not None else self.timestamp * 1000
 
     @property
     def is_rest_snapshot(self) -> bool:
@@ -116,6 +131,7 @@ class MarketTick(BaseModel):
             "market_hash_name": self.market_hash_name,
             "price_cents": self.price_cents,
             "timestamp": self.timestamp,
+            "observed_at_ms": self.observed_at_epoch_ms,
         }
         optional_fields = {
             "event_type": self.event_type,

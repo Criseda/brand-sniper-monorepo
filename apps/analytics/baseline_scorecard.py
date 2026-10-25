@@ -5,7 +5,7 @@ the market actually did.
 The input is a decision log from the replay harness (apps/listener, `python -m backtest run`), made with the
 `zscore_dre_sweep` strategy: the live decisions plus the inputs the threshold sweep needs. Approved feed
 listings join to their `listing_outcomes` labels. Approved REST snapshots have no listing ID, so they are
-labeled here with the same v1 rule (`label_outcomes.label_listing`), from the sold sales after the trade
+labeled here with the same v1 rule (`outcome_labels.label_listing`), from the sold sales after the trade
 hold. Nothing uses a label before its `label_available_at`.
 
 Every number that rests on fewer than `MIN_SAMPLE` labeled trades is reported as insufficient data.
@@ -38,12 +38,13 @@ from shared_utils import setup_script_environment
 
 REPO_ROOT = setup_script_environment(__file__)
 
-from label_outcomes import LABEL_VERSION, VENUE, FeedSale, LabelConfig, SoldIndex, fetch_feed_sales, label_listing
 from mlflow.client import MlflowClient
+from outcome_data import fetch_listing_events
+from outcome_labels import LABEL_VENUE as VENUE
+from outcome_labels import LABEL_VERSION, FeedSale, LabelConfig, SoldIndex, label_listing
 from shared_utils import (
     get_logger,
     parse_item_meta,
-    parse_version_from_name,
     purchase_keys,
     utc_fromtimestamp_naive,
     utc_now_naive,
@@ -327,7 +328,6 @@ def label_snapshot_trades(trades: Sequence[Trade], sold: SoldIndex, config: Labe
         listing = FeedSale(
             listing_id=f"rest-snapshot-{index}",
             market_hash_name=trade.market_hash_name,
-            feed_name=parse_version_from_name(trade.market_hash_name)[0],
             price_cents=trade.price_cents,
             seen_at=trade.decided_at,
         )
@@ -684,8 +684,10 @@ async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
         if mature:
             first = min(trade.decided_at for trade in mature)
             last = max(trade.decided_at for trade in mature)
-            names = sorted({parse_version_from_name(trade.market_hash_name)[0] for trade in mature})
-            sold = await fetch_feed_sales("sold", first, last + timedelta(seconds=config.horizon_seconds), names=names)
+            names = sorted({trade.market_hash_name for trade in mature})
+            sold = await fetch_listing_events(
+                config.venue, "sold", first, last + timedelta(seconds=config.horizon_seconds), names=names
+            )
             label_snapshot_trades(snapshot_trades, SoldIndex.build(sold), config, inputs.as_of)
         else:
             label_snapshot_trades(snapshot_trades, SoldIndex(), config, inputs.as_of)

@@ -55,8 +55,13 @@ class LiveMarketTick(SQLModel, table=True):
     # Link that opens the listing. For Skinport this is the item page (the feed sends no sale ID).
     listing_url: str | None = Field(default=None, max_length=512)
 
-    # Let the PostgreSQL server safely generate the UTC timestamp natively
+    # Edge receive time in whole seconds: the backend writes the listener's `timestamp` here. The server default only
+    # applies to rows inserted without one.
     inserted_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")}, index=True)
+    # Edge receive time to the millisecond, the same clock as feed_events.received_at (#256). Outcome labels read it
+    # instead of the raw feed. NULL on rows from listeners older than #256, except Skinport listing rows, which
+    # backfill_observed_at.py fills from their feed events.
+    observed_at: NaiveDatetime | None = Field(default=None)
 
     # Partial index: most rows are REST snapshots with a NULL listing_id, which would only bloat
     # the index and slow the hot ingest path.
@@ -65,6 +70,14 @@ class LiveMarketTick(SQLModel, table=True):
             "ix_live_market_ticks_listing_id",
             "listing_id",
             postgresql_where=text("listing_id IS NOT NULL"),
+        ),
+        # The labeler reads one venue's listed or sold rows by receive time (#256).
+        Index(
+            "ix_live_market_ticks_listing_observed",
+            "venue",
+            "event_type",
+            "observed_at",
+            postgresql_where=text("listing_id IS NOT NULL AND observed_at IS NOT NULL"),
         ),
     )
 

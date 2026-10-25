@@ -163,6 +163,14 @@ not part of `v1` comparables; add them as a new label version.
 Run it daily over the last few matured days (`uv run python label_outcomes.py`), or over an explicit
 range (`--start 2026-09-24 --end 2026-10-01`).
 
+The labeler reads the normalized listing rows of `live_market_ticks` (listing ID, event type, price, item and
+`observed_at`, the edge receive time to the millisecond), not the raw JSON in `feed_events` (#256). So a new
+venue needs no labeler change: once it has a fee schedule, `--venue <name> --label-version <version>` labels it
+against its own sales. The labeling rule is in `outcome_labels.py` (no I/O), the database access in
+`outcome_data.py`, and the flow and CLI in `label_outcomes.py`. Before `observed_at` existed, the labeler parsed
+`feed_events` itself; on Skinport listings from 2026-09-24 to 2026-10-10 both ways give the same 45,365 `v1`
+labels.
+
 Labels are versioned (`label_version`), and a version is a contract. The `label_versions` table stores the
 parameters of each version as JSON: the venue fees (seller fee tiers, buyer fee, trade hold, minimum margin),
 the horizon, the minimum number of comparable sales, the settle time and the revision time.

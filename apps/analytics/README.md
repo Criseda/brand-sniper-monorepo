@@ -47,6 +47,11 @@ uv run python long_term_macro.py --limit 0
 # Label recorded listings with their market outcome (last 3 matured days, or an explicit range)
 uv run python label_outcomes.py
 uv run python label_outcomes.py --start 2026-09-24 --end 2026-10-01
+# Another venue needs a fee schedule in shared_utils.pnl and a label version of its own
+uv run python label_outcomes.py --venue waxpeer --label-version v1-waxpeer
+
+# Fill observed_at on Skinport listing ticks written before #256 (safe to run again)
+uv run python backfill_observed_at.py
 
 # Score a replayed decision log against the outcome labels (baseline scorecard, #249). From the repo
 # root, `make scorecard START=... END=...` runs the replay and this step together.
