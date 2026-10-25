@@ -30,6 +30,8 @@ SERVER_NETWORKS = {
     "prometheus": {"observability"},
     "grafana": {"observability"},
     "redis-exporter": {"data", "observability"},
+    # Observability only: the internal data network has no route to a hosted database.
+    "postgres-exporter": {"observability"},
     "backend": {"application", "data", "observability"},
     "listener-skinport": {"application", "data", "observability"},
     "listener-waxpeer": {"application", "data", "observability"},
@@ -208,7 +210,8 @@ def main() -> int:
     )
     failures.extend(validate_stack("edge", edge, EDGE_NETWORKS, EDGE_DEPENDENCIES, EDGE_PORTS))
 
-    server_override_networks = {**SERVER_NETWORKS, "postgres": {"data"}}
+    # The local PostgreSQL lives on the data network, so the exporter joins it there.
+    server_override_networks = {**SERVER_NETWORKS, "postgres": {"data"}, "postgres-exporter": {"data", "observability"}}
     server_override_dependencies = {
         **SERVER_DEPENDENCIES,
         "mlflow-server": {"postgres": "service_healthy"},
@@ -225,6 +228,7 @@ def main() -> int:
             **SERVER_DEPENDENCIES["baseline-builder-dmarket"],
             "postgres": "service_healthy",
         },
+        "postgres-exporter": {"postgres": "service_healthy"},
     }
     server_override_ports = {**SERVER_PORTS, "postgres": {("127.0.0.1", 5432, 5432)}}
     failures.extend(
