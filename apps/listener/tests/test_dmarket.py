@@ -279,6 +279,28 @@ async def test_a_poll_that_falls_behind_leaves_the_rest_to_catching_up(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_a_poll_that_fails_part_way_is_read_again_in_full():
+    market = FakeMarket(_listings(2, T0_MS), page_size=2)
+    poller = ListingPoller()
+    await poller.live_poll(market.offers, Clock())
+
+    # Six listings arrived; the first page of the next poll arrives, the second fails.
+    market.add(*_listings(6, T0_MS + 6_000, prefix="m"))
+    market.fail_after = 2
+    with pytest.raises(DMarketAPIError):
+        await poller.live_poll(market.offers, Clock())
+
+    # Nothing moved on, so the resume point does not claim the listings that were never handed on.
+    assert poller.newest_ms == T0_MS
+    assert parse_resume_document(poller.resume_document()) == ResumePoint(newest_ms=T0_MS)
+
+    market.fail_after = None
+    read = await poller.live_poll(market.offers, Clock())
+    assert _ids(read) == ["m005", "m004", "m003", "m002", "m001", "m000"]
+    assert poller.newest_ms == T0_MS + 6_000
+
+
+@pytest.mark.asyncio
 async def test_catching_up_stops_at_the_lower_end_of_its_gap():
     # Older listings are still for sale below the gap; catching up must not read on into them.
     market = FakeMarket([*_listings(5, T0_MS), *_listings(4, T0_MS - 60_000, prefix="old")], page_size=2)
@@ -648,14 +670,81 @@ async def test_scraper_asks_the_backend_when_the_edge_redis_is_empty(monkeypatch
 async def test_scraper_starts_from_the_newest_listings_without_any_resume_point(monkeypatch):
     monkeypatch.setattr(dmarket, "POLL_INTERVAL_SECONDS", 3_600)
     market = FakeMarket(_listings(5, T0_MS), page_size=2)
-    scraper = _scraper(market, FakeCache(fail=True), FakeSession(FakeBackendResponse(500, {})))
+    cache = FakeCache(_dmarket_baselines({REDLINE: 1_000}))
+    scraper = _scraper(market, cache, FakeSession(FakeBackendResponse(500, {})))
 
     ticks, _events, ended = await _collect(scraper)
 
-    # Neither the edge Redis nor the backend knew where reading stopped, and no baselines could be read.
+    # Neither the edge Redis nor the backend knew where reading stopped; none of the listings is below the price.
     assert ticks == [] and isinstance(ended, StopPolling)
     assert market.cursors == [None]
     assert scraper.poller.started
+
+
+@pytest.mark.asyncio
+async def test_a_resume_point_the_edge_redis_cannot_store_is_only_logged():
+    scraper = DMarketScraper(keys=KEYS, backend_base_url="http://backend:8080")
+    scraper.poller.newest_ms = T0_MS
+    cache = FakeCache(fail=True)
+
+    await scraper._save_resume_point(cache)
+
+    assert cache.values == {}
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_read_while_the_edge_redis_holds_no_baselines(monkeypatch):
+    monkeypatch.setattr(dmarket, "POLL_INTERVAL_SECONDS", 0)
+    market = FakeMarket(_listings(5, T0_MS), page_size=2)
+    sleeps: list[float] = []
+
+    async def stop_on_second_wait(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) > 1:
+            raise StopPolling
+
+    scraper = _scraper(market, FakeCache(fail=True), FakeSession(FakeBackendResponse(500, {})))
+    scraper._sleep = stop_on_second_wait
+
+    ticks, _events, ended = await _collect(scraper)
+
+    # Every listing read now would be dropped as having no baseline, so the poll waits instead of reading.
+    assert ticks == [] and isinstance(ended, StopPolling)
+    assert market.cursors == []
+    assert sleeps[0] == pytest.approx(dmarket.RESALE_PRICES_RETRY_SECONDS, abs=1)
+
+
+@pytest.mark.asyncio
+async def test_catching_up_after_downtime_waits_for_the_baselines_to_load(monkeypatch):
+    monkeypatch.setattr(dmarket, "POLL_INTERVAL_SECONDS", 3_600)
+    monkeypatch.setattr(dmarket, "LIVE_MAX_PAGES", 1)
+    monkeypatch.setattr(dmarket, "RESALE_PRICES_RETRY_SECONDS", 0)
+    now_ms = int(datetime.now(UTC).timestamp()) * 1000
+    # The PC was off: the edge Redis is empty, the backend knows where reading stopped, and the baseline loader
+    # stores the DMarket build only after the listener has started.
+    market = FakeMarket([_entry(f"c{index}", now_ms - index * 30_000, price_cents=500) for index in range(6)], page_size=2)
+    session = FakeSession(FakeBackendResponse(200, {"observed_at_ms": now_ms - 200_000, "listing_ids": []}))
+    cache = FakeCache()
+    reads_while_waiting: list[int] = []
+    waits = 0
+
+    async def baselines_arrive(_seconds):
+        nonlocal waits
+        waits += 1
+        if waits == 1:
+            reads_while_waiting.append(len(market.cursors))
+            cache.hashes = _dmarket_baselines({REDLINE: 1_000})
+            return
+        raise StopPolling
+
+    scraper = _scraper(market, cache, session)
+    scraper._sleep = baselines_arrive
+
+    ticks, _events, _ended = await _collect(scraper)
+
+    assert reads_while_waiting == [0]
+    # Once the prices are there, the live poll and catching up record every cheap listing of the downtime.
+    assert sorted(tick.listing_id for tick in ticks) == sorted(f"c{index}" for index in range(6))
 
 
 @pytest.mark.asyncio
@@ -735,7 +824,7 @@ async def test_between_live_polls_the_scraper_sleeps_when_there_is_nothing_to_ca
             raise StopPolling
 
     # An empty market: no listing read yet, so there is no newest listing age to report either.
-    scraper = _scraper(FakeMarket([]), FakeCache())
+    scraper = _scraper(FakeMarket([]), FakeCache(_dmarket_baselines({REDLINE: 1_000})))
     scraper._sleep = sleep_once
 
     await _collect(scraper)

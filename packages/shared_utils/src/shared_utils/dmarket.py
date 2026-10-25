@@ -359,9 +359,12 @@ def offers_cursor(created_at_ms: int, offer_id: str = "") -> str:
 
 
 def cursor_created_at_ms(cursor: str) -> int | None:
-    """The creation time a cursor points at; None for a cursor that is not DMarket's base64 JSON."""
+    """
+    The creation time a cursor points at; None for a cursor that is not DMarket's base64 JSON. The URL safe
+    alphabet (`-` and `_`) is read too, in case DMarket ever sends it.
+    """
     try:
-        position = json.loads(base64.b64decode(cursor + "=" * (-len(cursor) % 4), validate=True))
+        position = json.loads(base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True))
     except (binascii.Error, ValueError):
         return None
     if not isinstance(position, list) or not position:
@@ -513,7 +516,11 @@ class DMarketClient:
                     continue
                 if response.status != 200:
                     raise DMarketAPIError(response.status, (await response.text())[:300])
-                return await response.json(content_type=None)
+                try:
+                    return await response.json(content_type=None)
+                except ValueError as err:
+                    # A 200 that is not JSON (a maintenance page from a proxy) fails like any other answer.
+                    raise DMarketAPIError(response.status, f"the answer is not JSON: {err}") from err
         raise DMarketAPIError(429, f"still rate limited after {self._max_retries} retries")
 
     async def last_sales(self, title: str, offset: int = 0, game_id: str = CS2_GAME_ID) -> tuple[list[DMarketSale], int]:

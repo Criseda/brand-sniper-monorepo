@@ -263,6 +263,12 @@ Catching up reads a gap one page at a time between live polls, from the cursor w
 lower end. Requests are paced to 10 a second (`DMARKET_LISTENER_MAX_REQUESTS_PER_SECOND`), so catching up gets
 about 14 pages for every live poll. A request that fails ends the poll loop; the listener's feed loop starts it
 again after a second, doubling up to 30 seconds while it keeps failing, and reading carries on where it stopped.
+A live poll that fails part way moves nothing on, so the next poll reads the same stretch again in full and the
+resume point never names listings that were not read.
+
+Nothing is read until the DMarket baselines are in the edge Redis. After my PC was off the baseline loader fills
+it while the listener starts, and a listing read before then would be dropped as having no baseline and never
+read again, which would throw away the start of catching up.
 
 The edge Redis lives only in RAM, so after my PC was off it is empty, and anything kept only there is lost
 exactly when catching up needs it. The listener therefore finds its resume point in two places.

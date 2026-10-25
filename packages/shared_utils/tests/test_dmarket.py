@@ -368,6 +368,20 @@ async def test_client_raises_on_other_errors():
     assert raised.value.status == 401
 
 
+class NotJSONResponse(FakeResponse):
+    async def json(self, content_type=None):
+        raise json.JSONDecodeError("Expecting value", "<html>", 0)
+
+
+@pytest.mark.asyncio
+async def test_client_raises_on_an_answer_that_is_not_json():
+    # A proxy's maintenance page with status 200 fails like any other answer, so callers handle one error.
+    client, _session, _clock = make_client([NotJSONResponse(200, "<html>")])
+    with pytest.raises(DMarketAPIError, match="not JSON") as raised:
+        await client.get(LAST_SALES_PATH)
+    assert raised.value.status == 200
+
+
 @pytest.mark.asyncio
 async def test_fee_schedule_reads_every_page():
     first = {"defaultFee": {"fraction": "0.1"}, "reducedFees": [{"title": f"T{i}", "fraction": "0.02"} for i in range(100)]}
@@ -481,6 +495,14 @@ def test_cursor_is_base64_json_of_time_and_offer_id():
     assert cursor_created_at_ms(page["cursor"]) == 1_792_935_756_000
     assert offers_cursor(1_792_935_756_000, "f3a42338-df1e-4571-b52a-cd4b27e90d8e") == page["cursor"]
     assert cursor_created_at_ms(offers_cursor(1_792_900_000_000)) == 1_792_900_000_000
+
+
+def test_a_cursor_in_the_url_safe_alphabet_is_read_too():
+    # An offer ID chosen so the standard encoding holds "+", which the URL safe alphabet writes as "-".
+    cursor = offers_cursor(1_792_900_000_000, "~~~?>>")
+    assert "+" in cursor
+    url_safe = cursor.replace("+", "-").replace("/", "_").rstrip("=")
+    assert cursor_created_at_ms(url_safe) == 1_792_900_000_000
 
 
 @pytest.mark.parametrize(

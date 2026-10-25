@@ -284,7 +284,9 @@ class ListingPoller:
         only the first page is read.
         """
         floor_ms = self._next_floor_ms
+        newest_ms = self.newest_ms
         read: list[tuple[DMarketOffer | None, dict[str, Any], int]] = []
+        read_ids: set[str] = set()
         cursor: str | None = None
         for _page in range(LIVE_MAX_PAGES):
             page = await fetch(cursor)
@@ -294,12 +296,13 @@ class ListingPoller:
                 offer = parse_offer(entry)
                 if offer is not None:
                     oldest_ms = offer.created_at_ms if oldest_ms is None else min(oldest_ms, offer.created_at_ms)
-                    if self.newest_ms is None or offer.created_at_ms > self.newest_ms:
-                        self.newest_ms = offer.created_at_ms
+                    if newest_ms is None or offer.created_at_ms > newest_ms:
+                        newest_ms = offer.created_at_ms
                     if floor_ms is not None and offer.created_at_ms < floor_ms:
                         continue
-                    if not self._take_unseen(offer):
+                    if offer.offer_id in self._seen or offer.offer_id in read_ids:
                         continue
+                    read_ids.add(offer.offer_id)
                 read.append((offer, entry if isinstance(entry, dict) else {}, received_at_ms))
             if floor_ms is None or page.cursor is None or oldest_ms is None or oldest_ms < floor_ms:
                 break
@@ -311,8 +314,14 @@ class ListingPoller:
             skip_ids = frozenset(listing_id for listing_id, created in self._recorded.items() if created >= floor_ms)
             self.gaps.append(CatchUpGap(cursor=cursor, until_ms=floor_ms, skip_ids=skip_ids))
 
-        if self.newest_ms is not None:
-            self._next_floor_ms = self.newest_ms - LIVE_OVERLAP_MS
+        # Only a poll whose pages all arrived moves the poller on. One that fails part way leaves the newest time,
+        # the floor and the listings seen as they were, so the next poll reads the same stretch again in full and
+        # the resume point never claims listings that were not read.
+        for listing_id in read_ids:
+            self._remember(listing_id)
+        self.newest_ms = newest_ms
+        if newest_ms is not None:
+            self._next_floor_ms = newest_ms - LIVE_OVERLAP_MS
         read.sort(key=lambda item: item[0].created_at_ms if item[0] is not None else 0)
         return read
 
@@ -524,12 +533,23 @@ class DMarketScraper(BaseScraper):
         fetch_live, fetch_catch_up = fetcher("live"), fetcher(EVENT_CATCH_UP)
         next_live_at = 0.0
         next_refresh_at = 0.0
+        waiting_logged = False
         while True:
             now = time.monotonic()
             if now >= next_refresh_at:
                 await self._refresh_resale_prices(cache)
                 loaded = bool(self.resale_prices.latest_price_cents)
                 next_refresh_at = now + (RESALE_PRICES_REFRESH_SECONDS if loaded else RESALE_PRICES_RETRY_SECONDS)
+
+            if not self.resale_prices.latest_price_cents:
+                # Without prices every listing read would be dropped as having no baseline, and reading would move
+                # past it for good: after downtime the edge Redis is empty and the baseline loader fills it while
+                # this starts. Nothing is read until the prices are there.
+                if not waiting_logged:
+                    logger.info("[DMARKET] Waiting for the %s baselines before reading listings.", self.resale_prices.venue)
+                    waiting_logged = True
+                await self._sleep(max(0.0, next_refresh_at - now))
+                continue
 
             if now >= next_live_at:
                 next_live_at = now + POLL_INTERVAL_SECONDS
