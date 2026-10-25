@@ -43,7 +43,7 @@
    ```
    Then open a PR on GitHub. Use the [pull request template](.github/pull_request_template.md).
 
-7. **CI checks** run automatically on your PR. All checks must pass before merging. The `main` branch is protected — direct pushes are not allowed.
+7. **CI checks** run automatically on your PR. All checks must pass before merging. The `main` branch is protected — direct pushes are not allowed. A PR that only changes docs (Markdown files, `docs/`, `LICENSE`) skips the `quality` and `test` jobs; GitHub counts a skipped job as passed, so the PR can still merge.
 
 ## Branch naming
 
