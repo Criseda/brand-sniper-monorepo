@@ -74,6 +74,8 @@ DMARKET_HEARTBEAT_PATH = Path("/tmp/baseline-builder-dmarket.heartbeat")
 DMARKET_REQUESTS_PER_SECOND = 10.0
 # The heartbeat is touched after every this many titles of a sales sync.
 DMARKET_HEARTBEAT_EVERY_TITLES = 100
+# Progress is logged after every this many titles.
+DMARKET_PROGRESS_LOG_EVERY_TITLES = 1000
 # A build is refused when more titles than this share failed to sync: the stored sales would be stale.
 DMARKET_MAX_FAILED_SHARE = 0.5
 # Three missed hourly checks in a row mark the service unhealthy.
@@ -246,7 +248,7 @@ async def build_dmarket_baselines(
     def on_progress(done: int) -> None:
         if heartbeat_path is not None and done % DMARKET_HEARTBEAT_EVERY_TITLES == 0:
             record_heartbeat(heartbeat_path)
-        if done % 1000 == 0:
+        if done % DMARKET_PROGRESS_LOG_EVERY_TITLES == 0:
             run_logger.info("[DMARKET] Sales synced for %d of %d titles.", done, len(titles))
 
     timeout = aiohttp.ClientTimeout(total=60, connect=10)

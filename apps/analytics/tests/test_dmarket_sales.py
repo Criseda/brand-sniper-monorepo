@@ -323,3 +323,51 @@ def test_module_constants_fit_the_rate_limit():
     # The listener takes up to 10 of the account's 30 requests a second (docs/dmarket_api.md).
     assert build_baselines.DMARKET_REQUESTS_PER_SECOND <= 10
     assert dmarket_sales.HISTORY_DAYS == 90
+
+
+@pytest.mark.asyncio
+async def test_flow_touches_the_heartbeat_and_logs_progress_during_the_sync(engine, dmarket, tmp_path, monkeypatch):
+    monkeypatch.setattr(build_baselines, "DMARKET_HEARTBEAT_EVERY_TITLES", 1)
+    monkeypatch.setattr(build_baselines, "DMARKET_PROGRESS_LOG_EVERY_TITLES", 1)
+    heartbeat = tmp_path / "heartbeat"
+
+    assert await build_dmarket_baselines(requests_per_second=1000, heartbeat_path=heartbeat) is not None
+    assert heartbeat.exists()
+
+
+@pytest.mark.asyncio
+async def test_a_title_that_never_ends_stops_at_the_page_guard(dmarket, monkeypatch):
+    import aiohttp
+
+    monkeypatch.setattr(dmarket_sales, "MAX_PAGES_PER_TITLE", 2)
+    async with aiohttp.ClientSession() as session:
+        client = DMarketClient(DMarketKeys.from_env(), session, 1000, base_url=dmarket.base_url)
+        sales, requests = await fetch_title_sales(client, REDLINE, NOW - timedelta(days=90))
+
+    assert requests == 2
+    assert len(sales) == 40
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("venue", ["skinport", "dmarket"])
+async def test_build_once_runs_the_venues_builder(venue, monkeypatch):
+    calls = []
+
+    async def fake_skinport(**kwargs):
+        calls.append(("skinport", kwargs))
+        return 1
+
+    async def fake_dmarket(**kwargs):
+        calls.append(("dmarket", kwargs))
+        return 2
+
+    monkeypatch.setattr(build_baselines, "build_venue_baselines", fake_skinport)
+    monkeypatch.setattr(build_baselines, "build_dmarket_baselines", fake_dmarket)
+
+    result = await build_baselines.build_once(venue, 20.0, force=True)
+
+    assert calls[0][0] == venue
+    assert calls[0][1]["force"] is True
+    assert result == (2 if venue == "dmarket" else 1)
+    if venue == "dmarket":
+        assert calls[0][1]["heartbeat_path"] == build_baselines.DMARKET_HEARTBEAT_PATH
