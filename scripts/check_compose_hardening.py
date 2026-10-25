@@ -35,6 +35,7 @@ SERVER_NETWORKS = {
     "listener-waxpeer": {"application", "data", "observability"},
     "analytics": {"application", "data"},
     "baseline-builder": {"application", "data"},
+    "baseline-builder-dmarket": {"application", "data"},
 }
 
 SERVER_DEPENDENCIES = {
@@ -50,6 +51,7 @@ SERVER_DEPENDENCIES = {
         "prefect-server": "service_healthy",
     },
     "baseline-builder": {"prefect-server": "service_healthy"},
+    "baseline-builder-dmarket": {"prefect-server": "service_healthy"},
 }
 
 SERVER_PORTS = {
@@ -217,6 +219,10 @@ def main() -> int:
         },
         "baseline-builder": {
             **SERVER_DEPENDENCIES["baseline-builder"],
+            "postgres": "service_healthy",
+        },
+        "baseline-builder-dmarket": {
+            **SERVER_DEPENDENCIES["baseline-builder-dmarket"],
             "postgres": "service_healthy",
         },
     }

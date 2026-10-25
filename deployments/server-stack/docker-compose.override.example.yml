@@ -80,5 +80,12 @@ services:
       postgres:
         condition: service_healthy
 
+  baseline-builder-dmarket:
+    environment:
+      DATABASE_URL: ${LOCAL_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/brand_sniper}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
