@@ -340,6 +340,18 @@ def test_waxpeer_estimate_is_net_of_the_skinport_seller_fee():
     assert detection.estimate_net_profit_cents(tick, {"latest_price_cents": 1500}) == 1500 - 120 - 1000
 
 
+def test_dmarket_estimate_uses_the_item_fee_from_its_baseline():
+    tick = _tick(10.00, venue="dmarket", event_type="listed", listing_id="a")
+    # Resold on DMarket at $15.00: 2% for an item on the reduced list, the 10% default without a fee (#339).
+    assert detection.estimate_net_profit_cents(tick, {"latest_price_cents": 1500, "seller_fee_bps": 200}) == 1500 - 30 - 1000
+    assert detection.estimate_net_profit_cents(tick, {"latest_price_cents": 1500}) == 1500 - 150 - 1000
+    assert detection.estimate_net_profit_cents(tick, {"latest_price_cents": 1500, "seller_fee_bps": True}) == 1500 - 150 - 1000
+    # A fee of 100% or more, or below nothing, is not a fee: the default applies instead of failing the estimate.
+    for not_a_fee in (10_000, -1):
+        baseline = {"latest_price_cents": 1500, "seller_fee_bps": not_a_fee}
+        assert detection.estimate_net_profit_cents(tick, baseline) == 1500 - 150 - 1000
+
+
 @pytest.mark.asyncio
 async def test_two_venues_keep_separate_price_windows():
     store = InMemoryEdgeStore()

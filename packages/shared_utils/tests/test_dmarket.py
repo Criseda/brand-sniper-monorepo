@@ -10,6 +10,8 @@ from multidict import CIMultiDict
 from shared_utils.dmarket import (
     CUSTOMIZED_FEES_PATH,
     LAST_SALES_PATH,
+    OFFER_TYPE_BOT,
+    OFFERS_PATH,
     SALE_TYPE_OFFER,
     SALE_TYPE_TARGET,
     SIGNATURE_PREFIX,
@@ -20,11 +22,16 @@ from shared_utils.dmarket import (
     FeeSchedule,
     ReducedFee,
     cents_to_int,
+    created_at_ms,
+    cursor_created_at_ms,
     dollars_to_cents,
     encode_path,
     encode_query,
     fraction_to_bps,
+    offers_cursor,
     parse_fee_page,
+    parse_offer,
+    parse_offers_page,
     parse_sale,
     parse_sales,
     phase_version,
@@ -361,6 +368,20 @@ async def test_client_raises_on_other_errors():
     assert raised.value.status == 401
 
 
+class NotJSONResponse(FakeResponse):
+    async def json(self, content_type=None):
+        raise json.JSONDecodeError("Expecting value", "<html>", 0)
+
+
+@pytest.mark.asyncio
+async def test_client_raises_on_an_answer_that_is_not_json():
+    # A proxy's maintenance page with status 200 fails like any other answer, so callers handle one error.
+    client, _session, _clock = make_client([NotJSONResponse(200, "<html>")])
+    with pytest.raises(DMarketAPIError, match="not JSON") as raised:
+        await client.get(LAST_SALES_PATH)
+    assert raised.value.status == 200
+
+
 @pytest.mark.asyncio
 async def test_fee_schedule_reads_every_page():
     first = {"defaultFee": {"fraction": "0.1"}, "reducedFees": [{"title": f"T{i}", "fraction": "0.02"} for i in range(100)]}
@@ -389,3 +410,142 @@ def test_pacing_is_shared_by_concurrent_requests():
         return clock.sleeps
 
     assert asyncio.run(run()) == [0.5, 0.5]
+
+
+# --- Listings ---
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-10-25T13:42:58Z", 1_792_935_778_000),
+        ("2026-10-18T17:35:20.832359660Z", 1_792_344_920_832),
+        ("2026-10-25T15:42:58+02:00", 1_792_935_778_000),
+        ("2026-10-25T13:42:58.5Z", 1_792_935_778_500),
+        ("2026-10-25 13:42:58", None),
+        ("2026-13-25T13:42:58Z", None),
+        (1_792_935_778, None),
+    ],
+    ids=["bot_seconds", "p2p_nanoseconds", "offset", "short_fraction", "no_zone", "bad_month", "number"],
+)
+def test_created_at_is_parsed_to_milliseconds(value, expected):
+    assert created_at_ms(value) == expected
+
+
+def test_a_bot_listing_is_parsed_from_the_live_page():
+    entries = load_fixture("dmarket_offers_page.json")["items"]
+
+    offer = parse_offer(entries[0])
+
+    assert offer is not None
+    assert offer.offer_id == "04e7ed6f-d1c2-4ab8-b18b-f681c2dbfe3b"
+    assert offer.created_at_ms == 1_792_935_778_000
+    assert offer.price_cents == 21345
+    assert offer.offer_type == OFFER_TYPE_BOT
+    assert offer.market_hash_name == "★ Specialist Gloves | Big Swell (Field-Tested)"
+    assert offer.float_value == 0.23134745657444
+    assert (offer.paint_seed, offer.paint_index, offer.phase, offer.sticker_names) == (873, 1437, None, ())
+
+
+def test_listing_phase_and_stickers_follow_skinport_names():
+    entries = load_fixture("dmarket_offers_page.json")["items"]
+    doppler = next(parse_offer(entry) for entry in entries if entry["attributes"]["cs2"]["phase"] == "phase-3")
+    stickered = next(parse_offer(entry) for entry in entries if len(entry["attributes"]["cs2"]["stickers"]) == 4)
+
+    assert doppler is not None and doppler.phase == "Phase 3"
+    assert doppler.market_hash_name.endswith("Doppler (Phase 3) (Factory New)")
+    assert stickered is not None and stickered.sticker_names == ("Boom (Holo) | 2020 RMR",) * 4
+
+
+def test_an_item_without_wear_has_no_float_pattern_or_finish():
+    entry = {
+        "offerId": "a",
+        "createdAt": "2026-10-25T13:42:58Z",
+        "priceCents": "45",
+        "offerType": "dmarket",
+        "attributes": {"title": "Revolution Case", "cs2": {"float": "0", "paintSeed": 0, "paintIndex": 0, "phase": ""}},
+    }
+
+    offer = parse_offer(entry)
+
+    assert offer is not None
+    assert (offer.float_value, offer.paint_seed, offer.paint_index) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        {"offerId": "", "createdAt": "2026-10-25T13:42:58Z", "priceCents": "5", "attributes": {"title": "X"}},
+        {"offerId": "a", "createdAt": "yesterday", "priceCents": "5", "attributes": {"title": "X"}},
+        {"offerId": "a", "createdAt": "2026-10-25T13:42:58Z", "priceCents": "5.5", "attributes": {"title": "X"}},
+        {"offerId": "a", "createdAt": "2026-10-25T13:42:58Z", "priceCents": "5", "attributes": {"title": ""}},
+        {"offerId": "a", "createdAt": "2026-10-25T13:42:58Z", "priceCents": "5"},
+        "not a listing",
+    ],
+    ids=["no_id", "bad_time", "fractional_cents", "no_title", "no_attributes", "not_an_object"],
+)
+def test_unusable_listings_are_skipped(broken):
+    assert parse_offer(broken) is None
+
+
+def test_cursor_is_base64_json_of_time_and_offer_id():
+    page = load_fixture("dmarket_offers_page.json")
+
+    # The live cursor points at the last listing of the page, and one built the same way matches it.
+    assert cursor_created_at_ms(page["cursor"]) == 1_792_935_756_000
+    assert offers_cursor(1_792_935_756_000, "f3a42338-df1e-4571-b52a-cd4b27e90d8e") == page["cursor"]
+    assert cursor_created_at_ms(offers_cursor(1_792_900_000_000)) == 1_792_900_000_000
+
+
+def test_a_cursor_in_the_url_safe_alphabet_is_read_too():
+    # An offer ID chosen so the standard encoding holds "+", which the URL safe alphabet writes as "-".
+    cursor = offers_cursor(1_792_900_000_000, "~~~?>>")
+    assert "+" in cursor
+    url_safe = cursor.replace("+", "-").replace("/", "_").rstrip("=")
+    assert cursor_created_at_ms(url_safe) == 1_792_900_000_000
+
+
+@pytest.mark.parametrize(
+    "cursor", ["not base64!", "bm90IGpzb24=", "e30=", "WyJhIl0="], ids=["text", "not_json", "object", "string"]
+)
+def test_unreadable_cursors_point_nowhere(cursor):
+    assert cursor_created_at_ms(cursor) is None
+
+
+def test_offers_page_keeps_raw_entries_and_the_next_cursor():
+    page = parse_offers_page(load_fixture("dmarket_offers_page.json"))
+    assert len(page.entries) == 28
+    assert page.cursor is not None
+
+    assert parse_offers_page({"items": [], "cursor": ""}).cursor is None
+    assert parse_offers_page(None).entries == []
+
+
+@pytest.mark.asyncio
+async def test_client_asks_for_the_newest_bot_listings_from_a_cursor():
+    client, session, _clock = make_client([FakeResponse(200, {"items": [], "cursor": ""})])
+
+    page = await client.offers(offers_cursor(1_792_935_756_000))
+
+    assert page.entries == [] and page.cursor is None
+    url, _headers = session.requests[0]
+    assert url.startswith(f"https://api.dmarket.com{OFFERS_PATH}?gameId=a8db&limit=100&orderBy=createdAt&orderDir=desc")
+    assert "&cursor=" in url
+
+
+def test_a_listing_without_item_details_has_no_wear_phase_or_stickers():
+    entry = {"offerId": "a", "createdAt": "2026-10-25T13:42:58Z", "priceCents": "45", "attributes": {"title": "X"}}
+
+    offer = parse_offer(entry)
+
+    assert offer is not None
+    assert (offer.float_value, offer.phase, offer.sticker_names, offer.offer_type) == (None, None, (), "")
+
+
+@pytest.mark.asyncio
+async def test_client_asks_for_the_newest_listings_without_a_cursor():
+    client, session, _clock = make_client([FakeResponse(200, {"items": [], "cursor": ""})])
+
+    await client.offers()
+
+    assert "cursor=" not in session.requests[0][0]

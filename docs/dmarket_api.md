@@ -24,7 +24,7 @@ clients that sign requests in four languages at [dmarket/dm-trading-tools](https
 
 | Endpoint | What it gives | Used by |
 |---|---|---|
-| `GET /marketplace-api/v2/offers` | Listings for sale. `gameId=a8db` is CS2 | `scrapers/dmarket.py` |
+| `GET /marketplace-api/v2/offers` | Listings for sale. `gameId=a8db` is CS2 | `apps/listener/scrapers/dmarket.py` |
 | `GET /trade-aggregator/v1/last-sales` | Sales history of one title, up to 12 months | Baseline builder and labeler |
 | `GET /exchange/v1/customized-fees` | The default seller fee and the titles with a reduced fee | Baseline builder |
 | `POST /marketplace-api/v1/aggregated-prices` | Best ask and best buy order per title, with counts | Probes only |
@@ -100,6 +100,20 @@ listings. A listing's `attributes.title` is the exact market hash name.
 within one second, by `offerId` ascending. `createdAt` has whole seconds for bot held listings and nanoseconds
 for person to person listings.
 
+**A cursor can be built from any time.** On 2026-10-25 at 20:33 a cursor built from a time two hours earlier and
+an empty offer ID returned the listings created just before that time, and one built from a time 24 hours earlier
+did the same. The offer ID part made no difference. Paging has no depth limit either: 130 pages in a row went back
+54 minutes, past the 10,000 listings `total` claims.
+
+**Most listings leave the market within the hour.** The newest 2,000 bot held listings spanned 4 minutes, and the
+2,000 after them spanned 26 minutes more. Listings created 2 or 24 hours earlier that were still for sale came at
+about 0.7 per second of creation time, against 5 to 9 new ones a second. Reading back through a day of downtime
+therefore means about 60,000 listings.
+
+**Listings do not show up late.** Over 80 polls 1.5 seconds apart, none of the 594 new listings had a `createdAt`
+older than the newest listing an earlier poll had already seen. Bots list in bursts, so the newest listing is
+often 5 to 15 seconds old when a poll sees it.
+
 ## Listings
 
 `GET /marketplace-api/v2/offers` returns `{"items": [...], "total": "10000", "cursor": "..."}`. The fields the
@@ -124,6 +138,18 @@ listener reads:
 
 The Doppler phase is put into the name the way Skinport ticks carry it, with `build_versioned_name`:
 `phase-2` on `★ Karambit | Doppler (Factory New)` becomes `★ Karambit | Doppler (Phase 2) (Factory New)`.
+Items without wear send `"0"` for the float and 0 for the pattern and finish, and their ticks carry none of the
+three. Applied stickers are named the way Skinport names them (`Boom (Holo) | 2020 RMR`), so sticker prices
+match.
+
+DMarket has no page per listing. A tick's `listing_url` opens the market filtered to the item's exact name
+(`https://dmarket.com/ingame-items/item-list/csgo-skins?title=...`), where the listing is shown with the item's
+other listings. A link with `userOfferId` redirected to the unfiltered market when I tried it.
+
+The raw payload stored in `feed_events` keeps the fields that describe a listing: the top level fields above
+plus `locked`, and from `attributes` the asset `id`, `title`, the trade lock fields, `status` and all of `cs2`
+except the inspect links. Images, links, and the account and Steam asset IDs of DMarket's bots are dropped,
+which takes the listings of the recorded page from 2.2 KB each to 1.2 KB.
 
 `settlementTime`, `revertPendingUntil` and `tradeProtectionRemoved` sit next to the trade lock fields. I have
 not bought anything, so I do not know what they mean for a buyer yet (see [Not verified yet](#not-verified-yet)).
@@ -195,9 +221,15 @@ DMarket sale over the 30 days before. 1,486 had at least 5 sales in that time, 4
 | Below the 30 day median | 1.4 |
 | Below 92% of it | 0.2 |
 
-At 1.4 a second that is about 120,000 rows a day with the PC on all day. Every listing is counted in
-`listener_feed_events_filtered_total{event, outcome}` as for Waxpeer, with the outcome `recorded`,
-`no_baseline`, `above_resale_price` or `malformed`.
+At 1.4 a second that is about 120,000 rows a day with the PC on all day. A live run of the listener on
+2026-10-25 between 20:53 and 21:00 recorded 16% to 26% of the listings it read, about 2 a second at that hour.
+
+Every listing read is counted in `listener_feed_events_filtered_total{event, outcome}` as for Waxpeer. The
+event is `listed` for a listing the live poll read and `catch_up` for one read while catching up after downtime.
+The outcome is `recorded`, `no_baseline`, `above_resale_price`, `person_to_person` (the API returned a listing
+it cannot buy, which the default query never did) or `malformed`. A listing the filter keeps uses the same
+rule as Waxpeer's: below the item's latest DMarket price, or above it by no more than the DRE's sticker rules
+allow for its stickers.
 
 ## Why DMarket is judged against its own sales
 
@@ -208,7 +240,8 @@ is treated as something I could buy on DMarket and resell on DMarket:
 - The DMarket listener loads the DMarket baselines and scores each listing against them. Its price window
   holds DMarket prices only (`price_window:dmarket:<item>`).
 - The profit estimate buys at the listing price with no buyer fee and resells at the DMarket baseline price
-  less the item's DMarket seller fee.
+  less the item's DMarket seller fee, which the baseline carries as `seller_fee_bps`. The DRE's fee floor uses
+  that estimate, and a replay loads the fee with each build.
 - Paper trades record `venue = dmarket`.
 
 Reselling on Skinport would ignore the sales DMarket does publish, and would carry Skinport's 7 day hold on
@@ -216,21 +249,51 @@ every trade. Comparing the two venues is the cross venue spread feature, which i
 
 ## Polling and catching up
 
-The listener asks for the newest page every 1.5 seconds (`DMARKET_POLL_INTERVAL_SECONDS`) and pages back
-through `cursor` until it reaches a listing it has seen. In the 30 minute recording a poll never needed more
-than 3 pages, so polling takes about 2 requests a second.
+DMarket has no websocket, so `scrapers/dmarket.py` polls. Every 1.5 seconds (`DMARKET_POLL_INTERVAL_SECONDS`)
+the live poll asks for the newest page and pages back until it passes the newest listing the previous poll read,
+less 5 seconds in case a listing shows up late. One page usually covers a poll, so live polling takes about one
+request every 1.5 seconds. A listing is read once: the listener remembers the last 200,000 listings it read and
+judges each only the first time. Within a poll the listings go to the price window oldest first. A listing's
+tick is stamped with the time its page arrived, like every other tick.
+
+A poll reads at most 10 pages. When more listings than that arrived since the last poll, for example after a
+failed request, the rest becomes a gap for catching up, so a poll never waits on a long read back.
+
+Catching up reads a gap one page at a time between live polls, from the cursor where it stopped down to the gap's
+lower end. Requests are paced to 10 a second (`DMARKET_LISTENER_MAX_REQUESTS_PER_SECOND`), so catching up gets
+about 14 pages for every live poll. A request that fails ends the poll loop; the listener's feed loop starts it
+again after a second, doubling up to 30 seconds while it keeps failing, and reading carries on where it stopped.
+A live poll that fails part way moves nothing on, so the next poll reads the same stretch again in full and the
+resume point never names listings that were not read.
+
+Nothing is read until the DMarket baselines are in the edge Redis. After my PC was off the baseline loader fills
+it while the listener starts, and a listing read before then would be dropped as having no baseline and never
+read again, which would throw away the start of catching up.
 
 The edge Redis lives only in RAM, so after my PC was off it is empty, and anything kept only there is lost
-exactly when catching up needs it. The listener therefore keeps its resume point in two places. While it runs,
-the newest `createdAt` it has polled and the IDs of the listings in that second are in the edge Redis
-(`dmarket:resume`). When that key is missing, the listener asks the backend for the edge receive time of the
-newest DMarket listing in `live_market_ticks`, and the IDs recorded in the two minutes before it.
+exactly when catching up needs it. The listener therefore finds its resume point in two places.
 
-From the resume point the listener pages back, oldest listings last, until it reaches a listing created more
-than two minutes before the resume point, and skips the IDs it already recorded. The overlap covers clock drift
-between my PC and DMarket. A day off at 6 to 9 listings a second is up to 8,000 pages, about 13 minutes at the
-listener's 10 requests a second. Catching up runs next to the live poll, so new listings are still read on
-time. Listings that were sold or delisted while the PC was off are gone and cannot be recovered.
+1. While it runs, the listener writes `dmarket:resume` to the edge Redis after every page: the newest creation
+   time the live poll read, the IDs of the listings it recorded in the two minutes before it, and every gap
+   still open with its cursor. A restart of the listener alone reads it back and carries on, gaps included.
+2. When that key is missing, the listener asks the backend (`GET /api/v1/listings/dmarket/newest`) for the
+   receive time of the newest DMarket listing in `live_market_ticks` and the IDs of the listings recorded in
+   the two minutes before it. A receive time is never earlier than the listing's creation time.
+
+From the resume point the listener reads back to two minutes before it, which covers clock drift between my PC
+and DMarket, and skips the IDs it already recorded. It reads back at most 48 hours (`DMARKET_MAX_CATCH_UP_HOURS`).
+The first live poll after a restart reads up to 10 pages and leaves the rest of the stretch to catching up, by
+building a cursor from where the page stopped. Listings that were sold or delisted while the PC was off are gone
+and cannot be recovered.
+
+A gap still open when the PC goes off is lost, because the backend knows only the newest listing it recorded.
+With listings leaving the market as fast as they do, a gap is short: a 20 minute stretch took 59 pages and 21
+seconds to read back on 2026-10-25.
+
+`listener_dmarket_newest_listing_age_seconds` is the health metric of polling: it stays under about 20 seconds
+while polls succeed and grows while they fail. `listener_dmarket_catch_up_seconds` is the creation time still
+to read back through, `listener_dmarket_requests_total{poll, outcome}` counts pages by live poll or catching up,
+and `listener_dmarket_rate_limited_total` counts 429s. The Grafana dashboard shows them in the Live Feeds row.
 
 ## Baselines
 
@@ -250,19 +313,22 @@ fill sells about 7% lower, by an amount that moves with the share of buy order f
 
 ## Labels
 
-DMarket listings are labeled with `label_outcomes.py --venue dmarket` under a new label version. A label
+DMarket listings are to be labeled with `label_outcomes.py --venue dmarket` under a new label version. A label
 compares a listing with the `Offer` sales of the same item in the 14 days after it, read from `venue_sales`, and
-prices the trade with DMarket's fees for that item. `v1` is not reused.
+prices the trade with DMarket's fees for that item. `v1` is not reused. This is the last part of #339 and is not
+built yet.
 
 ## Volume
 
 | Stream | Estimate (continuous uptime) |
 |---|---|
-| Recorded listings to `live_market_ticks` | about 1.4 a second, roughly 120,000 rows a day |
-| Raw payloads to `feed_events` | one row per 500 recorded listings or 10 seconds |
+| Recorded listings to `live_market_ticks` | 1.4 to 2 a second, roughly 120,000 to 170,000 rows a day |
+| Raw payloads to `feed_events` | one row per 500 recorded listings or 10 seconds, about 1.2 KB a listing |
+| Catching up after downtime | about a quarter of the listings still for sale from the time the PC was off |
 | Sales to `venue_sales` | 90 days of history once, then the sales of each day |
 
-These come from 5 minutes of traffic on a Sunday afternoon. Measure again after a day of uptime with
+These come from 5 minutes of traffic on a Sunday afternoon and a few minutes of the live listener that evening.
+Measure again after a day of uptime with
 `sum(increase(listener_feed_events_filtered_total{listener="dmarket",outcome="recorded"}[1d]))`.
 
 ## Not verified yet

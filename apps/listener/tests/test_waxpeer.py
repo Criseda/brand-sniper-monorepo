@@ -7,19 +7,21 @@ import pytest
 from listener_telemetry import feed_connected, feed_events_filtered_total
 from models import FeedEvent, MarketTick, TickKind
 from scrapers.factory import ScraperFactory
-from scrapers.waxpeer import (
-    DEFAULT_RECEIVE_TIMEOUT_SECONDS,
+from scrapers.listing_filter import (
     OUTCOME_ABOVE_RESALE_PRICE,
     OUTCOME_MALFORMED,
     OUTCOME_NO_BASELINE,
-    OUTCOME_NOT_A_PRICE_CUT,
     OUTCOME_RECORDED,
-    OUTCOME_UNTRACKED_REMOVAL,
     RAW_BATCH_EVENT_TYPE,
-    FeedConnectionLost,
     RawEventBatch,
-    RecordingFilter,
     ResalePrices,
+)
+from scrapers.waxpeer import (
+    DEFAULT_RECEIVE_TIMEOUT_SECONDS,
+    OUTCOME_NOT_A_PRICE_CUT,
+    OUTCOME_UNTRACKED_REMOVAL,
+    FeedConnectionLost,
+    RecordingFilter,
     WaxpeerScraper,
     listing_tick,
     listing_url,
@@ -363,7 +365,7 @@ def test_followed_listings_are_capped_least_recent_first():
 
 
 def test_raw_batch_is_handed_on_when_full():
-    raw_batch = RawEventBatch(max_events=2, max_seconds=10)
+    raw_batch = RawEventBatch("waxpeer", {"channel": "csgo"}, max_events=2, max_seconds=10)
     raw_batch.add("new", {"item_id": "1"}, RECEIVED_AT_MS)
     assert raw_batch.take_if_due(RECEIVED_AT_MS) is None
     raw_batch.add("removed", {"item_id": "1"}, RECEIVED_AT_MS + 5)
@@ -385,7 +387,7 @@ def test_raw_batch_is_handed_on_when_full():
 
 
 def test_raw_batch_is_handed_on_when_old_enough():
-    raw_batch = RawEventBatch(max_events=500, max_seconds=10)
+    raw_batch = RawEventBatch("waxpeer", max_events=500, max_seconds=10)
     assert raw_batch.take_if_due(RECEIVED_AT_MS) is None
     raw_batch.add("new", {"item_id": "1"}, RECEIVED_AT_MS)
 

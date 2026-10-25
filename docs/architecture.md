@@ -62,6 +62,7 @@ It ingests real-time market data ticks via:
 
 - **REST polling** — Skinport asset directory stream
 - **Live feeds** — each venue's Socket.IO feed, read directly over an aiohttp websocket (`scrapers/skinport_socket.py`, `scrapers/waxpeer.py`)
+- **Listing polls** — DMarket's newest listings through its signed Trading API, read back from a resume point after downtime (`scrapers/dmarket.py`, [`dmarket_api.md`](dmarket_api.md))
 
 Incoming prices are written concurrently to an edge-local Redis hot-cache (sliding window, port **6380**).
 Each venue has its own window per item (`price_window:<venue>:<item>`) and its own dedup state, so prices

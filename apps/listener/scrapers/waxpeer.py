@@ -36,7 +36,6 @@ from models import LISTED_EVENT_TYPE, MAX_LISTING_URL_LENGTH, FeedEvent, MarketT
 from pydantic import ValidationError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from rules_engine import STICKER_PREMIUM_MAX_PERCENT, STICKER_VALUE_MIN_CENTS
 from scrapers.base import (
     BaseScraper,
     FeedConnectionLost,
@@ -44,15 +43,15 @@ from scrapers.base import (
     optional_non_negative_int,
     optional_wear,
 )
-from shared_utils import (
-    applied_sticker_name,
-    build_versioned_name,
-    edge_baseline_meta_key,
-    edge_baselines_key,
-    edge_sticker_prices_key,
-    get_logger,
-    resale_venue_for,
+from scrapers.listing_filter import (
+    OUTCOME_ABOVE_RESALE_PRICE,
+    OUTCOME_MALFORMED,
+    OUTCOME_NO_BASELINE,
+    OUTCOME_RECORDED,
+    RawEventBatch,
+    ResalePrices,
 )
+from shared_utils import applied_sticker_name, build_versioned_name, get_logger, resale_venue_for
 
 logger = get_logger("listener.waxpeer")
 
@@ -74,13 +73,10 @@ UPDATE_EVENT = "update"
 REMOVED_EVENT = "removed"
 REMOVED_EVENT_TYPE = "removed"
 
-# What the recording filter did with a feed event (the `outcome` label of listener_feed_events_filtered_total).
-OUTCOME_RECORDED = "recorded"
-OUTCOME_NO_BASELINE = "no_baseline"  # The resale venue has no baseline for the item
-OUTCOME_ABOVE_RESALE_PRICE = "above_resale_price"  # Not below the item's resale price
+# What the recording filter did with a feed event (the `outcome` label of listener_feed_events_filtered_total):
+# the outcomes of scrapers/listing_filter.py, plus two only a feed that reports price changes and removals has.
 OUTCOME_NOT_A_PRICE_CUT = "not_a_price_cut"  # A followed listing whose price rose or stayed the same
 OUTCOME_UNTRACKED_REMOVAL = "untracked_removal"  # Removal of a listing that was never recorded
-OUTCOME_MALFORMED = "malformed"
 FEED_OUTCOMES = (
     OUTCOME_RECORDED,
     OUTCOME_NO_BASELINE,
@@ -93,11 +89,6 @@ FEED_OUTCOMES = (
 # Recorded listings the filter follows for later price cuts and removal (LRU). The feed records roughly
 # 11 listings a second, so this covers several hours; an evicted listing is simply judged afresh.
 TRACKED_LISTINGS_MAX = int(os.getenv("WAXPEER_TRACKED_LISTINGS_MAX", "200000"))
-
-# Raw payloads of recorded events are grouped into one feed_events row, so PostgreSQL compresses them.
-RAW_BATCH_EVENT_TYPE = "batch"
-RAW_BATCH_MAX_EVENTS = 500
-RAW_BATCH_MAX_SECONDS = 10
 
 # How often the scraper checks the edge Redis for a newer resale venue baseline build, and how often while it
 # holds none yet (the baseline loader fills the edge Redis while the feed connects).
@@ -210,80 +201,8 @@ def socketio_event(frame: str) -> tuple[str, Any] | None:
     return packet[0], packet[1] if len(packet) > 1 else None
 
 
-def _text(value: str | bytes) -> str:
-    """A Redis reply as str, whether or not the client decodes responses."""
-    return value.decode("utf-8") if isinstance(value, bytes) else value
-
-
 def subscribe_frame(channel: str) -> str:
     return SOCKET_EVENT + json.dumps(["sub", {"name": channel}], separators=(",", ":"))
-
-
-class ResalePrices:
-    """
-    The resale venue's latest price per item and its sticker prices, held in memory for the recording filter.
-
-    Read from the edge Redis hashes the baseline loader fills, and read again whenever the loader has stored a
-    different build. The feed is too fast to ask Redis once per event.
-    """
-
-    def __init__(self, venue: str) -> None:
-        self.venue = venue
-        self.build_id: str | None = None
-        self.latest_price_cents: dict[str, int] = {}
-        self.sticker_prices_cents: dict[str, int] = {}
-
-    async def refresh(self, cache: Redis) -> bool:
-        """Loads the build in the edge Redis when it differs from the one held. Returns True when it loaded one."""
-        meta = {
-            _text(field): _text(value) for field, value in (await cache.hgetall(edge_baseline_meta_key(self.venue))).items()
-        }
-        build_id = meta.get("build_id")
-        if build_id is None or build_id == self.build_id:
-            return False
-        baselines = await cache.hgetall(edge_baselines_key(self.venue))
-        sticker_prices = await cache.hgetall(edge_sticker_prices_key(self.venue))
-
-        latest_price_cents: dict[str, int] = {}
-        for name, document in baselines.items():
-            try:
-                price = json.loads(document).get("latest_price_cents")
-            except (ValueError, AttributeError):
-                continue
-            if isinstance(price, int) and price > 0:
-                latest_price_cents[_text(name)] = price
-        sticker_prices_cents: dict[str, int] = {}
-        for name, price_text in sticker_prices.items():
-            try:
-                sticker_prices_cents[_text(name)] = int(price_text)
-            except ValueError:
-                continue
-
-        self.latest_price_cents = latest_price_cents
-        self.sticker_prices_cents = sticker_prices_cents
-        self.build_id = build_id
-        return True
-
-    def judge(self, tick: MarketTick) -> str:
-        """
-        OUTCOME_RECORDED when the listing is worth recording and scoring, else why not.
-
-        A listing is worth it when it costs less than the item's resale price, or when its stickers are worth
-        enough that the DRE's sticker rules could approve it above that price.
-        """
-        resale_price_cents = self.latest_price_cents.get(tick.market_hash_name)
-        if resale_price_cents is None:
-            return OUTCOME_NO_BASELINE
-        if tick.price_cents < resale_price_cents:
-            return OUTCOME_RECORDED
-        sticker_value_cents = sum(self.sticker_prices_cents.get(sticker.get("name", ""), 0) for sticker in tick.stickers)
-        premium_cents = tick.price_cents - resale_price_cents
-        if (
-            sticker_value_cents > STICKER_VALUE_MIN_CENTS
-            and premium_cents * 100 <= STICKER_PREMIUM_MAX_PERCENT * sticker_value_cents
-        ):
-            return OUTCOME_RECORDED
-        return OUTCOME_ABOVE_RESALE_PRICE
 
 
 @dataclass(frozen=True, slots=True)
@@ -370,37 +289,6 @@ class RecordingFilter:
         return OUTCOME_RECORDED, tick
 
 
-class RawEventBatch:
-    """Raw payloads of recorded events, handed on as one FeedEvent per RAW_BATCH_MAX_EVENTS or RAW_BATCH_MAX_SECONDS."""
-
-    def __init__(self, max_events: int = RAW_BATCH_MAX_EVENTS, max_seconds: float = RAW_BATCH_MAX_SECONDS) -> None:
-        self.max_events = max_events
-        self.max_age_ms = int(max_seconds * 1000)
-        self._events: list[dict[str, Any]] = []
-
-    def add(self, event: str, payload: Any, received_at_ms: int) -> None:
-        self._events.append({"event": event, "received_at_ms": received_at_ms, "data": payload})
-
-    def take_if_due(self, now_ms: int) -> FeedEvent | None:
-        if not self._events:
-            return None
-        oldest_ms = self._events[0]["received_at_ms"]
-        if len(self._events) >= self.max_events or now_ms - oldest_ms >= self.max_age_ms:
-            return self.take()
-        return None
-
-    def take(self) -> FeedEvent | None:
-        """The pending events as one FeedEvent (received at the first event's time), or None when empty."""
-        if not self._events:
-            return None
-        events, self._events = self._events, []
-        return FeedEvent(
-            event_type=RAW_BATCH_EVENT_TYPE,
-            received_at_ms=events[0]["received_at_ms"],
-            payload={"venue": VENUE, "channel": GAME_CHANNEL, "events": events},
-        )
-
-
 class WaxpeerScraper(BaseScraper):
     """
     Records Waxpeer listings from its public Socket.IO feed. There is no REST poll: the feed reports every new
@@ -445,7 +333,7 @@ class WaxpeerScraper(BaseScraper):
             logger.warning("[WAXPEER] WAXPEER_API_KEY is not set; connecting to the public feed without it.")
         cache = self._open_cache()
         session = self._open_session()
-        raw_batch = RawEventBatch()
+        raw_batch = RawEventBatch(VENUE, {"channel": GAME_CHANNEL})
         try:
             try:
                 async with session.ws_connect(SOCKET_URL, headers=self._headers(), heartbeat=None) as ws:

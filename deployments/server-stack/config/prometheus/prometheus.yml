@@ -20,6 +20,8 @@ scrape_configs:
         labels: { listener: 'skinport' }
       - targets: ['listener-waxpeer:9100']
         labels: { listener: 'waxpeer' }
+      - targets: ['listener-dmarket:9100']
+        labels: { listener: 'dmarket' }
 
   - job_name: 'sniper-redis'
     static_configs:

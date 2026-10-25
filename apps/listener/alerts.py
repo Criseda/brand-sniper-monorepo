@@ -54,7 +54,7 @@ STICKERS_SHOWN = 5
 DISCORD_SUPPRESS_EMBEDS = 1 << 2
 TELEGRAM_API_URL = "https://api.telegram.org"
 
-VENUE_NAMES = {"skinport": "Skinport", "waxpeer": "Waxpeer"}
+VENUE_NAMES = {"skinport": "Skinport", "waxpeer": "Waxpeer", "dmarket": "DMarket"}
 # A REST snapshot names no listing, so its alert links to the venue's market filtered to the item.
 MARKET_SEARCH_URLS = {"skinport": "https://skinport.com/market?search={name}"}
 

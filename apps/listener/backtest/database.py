@@ -71,7 +71,7 @@ _BUILDS_QUERY = text(
 _BUILD_ROWS_QUERY = text(
     """
     SELECT market_hash_name, support_floor_cents, latest_price_cents, rolling_30d_avg_cents, volatility_cents,
-           drift_percent, avg_volume_30d
+           drift_percent, avg_volume_30d, seller_fee_bps
     FROM venue_baselines
     WHERE build_id = :build_id
     ORDER BY market_hash_name
@@ -146,7 +146,7 @@ async def load_build_snapshot(build_id: int, built_at: str, engine: AsyncEngine 
     sticker_prices: dict[str, int] = {}
     async with engine.connect() as connection:
         result = await connection.execute(_BUILD_ROWS_QUERY, {"build_id": build_id})
-        for name, support_floor, latest_price, rolling_30d_avg, volatility, drift, volume in result:
+        for name, support_floor, latest_price, rolling_30d_avg, volatility, drift, volume, seller_fee_bps in result:
             baselines[name] = edge_baseline_payload(
                 support_floor_cents=support_floor,
                 latest_price_cents=latest_price,
@@ -154,6 +154,7 @@ async def load_build_snapshot(build_id: int, built_at: str, engine: AsyncEngine 
                 volatility_cents=volatility,
                 drift_percent=drift,
                 avg_volume_30d=volume,
+                seller_fee_bps=seller_fee_bps,
             )
             sticker_name = applied_sticker_name(name)
             if sticker_name is not None:

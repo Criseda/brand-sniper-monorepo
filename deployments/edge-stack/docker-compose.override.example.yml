@@ -22,6 +22,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  listener-dmarket:
+    environment:
+      COMPUTE_NODE_IP: ${COMPUTE_NODE_IP:?Set COMPUTE_NODE_IP in the edge-stack .env or shell}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 # The base stack already exposes Redis on loopback port 6380. To change that
 # binding without also publishing 6380, use an explicit full Compose file set
 # rather than a partial override that only appends another ports entry.

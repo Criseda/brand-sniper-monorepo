@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timedelta
 from typing import Any, TypedDict
 
 import aiohttp
@@ -412,4 +413,48 @@ async def get_latest_baseline_build(venue: str, after_build_id: int | None = Non
         item_count=build.item_count,
         baselines=baselines,
         sticker_prices=sticker_prices,
+    )
+
+
+class NewestListings(TypedDict):
+    """Where a polling listener's recording stopped: its newest recorded listing, and those just before it."""
+
+    venue: str
+    observed_at_ms: int  # Edge receive time of the newest recorded listing, Unix milliseconds
+    listing_ids: list[str]  # Listings recorded in the window before it, newest included
+
+
+_EPOCH = datetime(1970, 1, 1)
+
+
+async def get_newest_listings(venue: str, window_seconds: int) -> NewestListings | None:
+    """
+    The receive time of the newest listing recorded for `venue`, and every listing recorded in the
+    `window_seconds` up to it. None when the venue has no recorded listing.
+
+    A listener that polls its venue (DMarket) resumes from here when the edge Redis was emptied, for
+    example after the PC was off (#339). The filters match the partial index on (venue, event_type,
+    observed_at), so both reads stay index scans.
+    """
+    listed = (
+        col(LiveMarketTick.venue) == venue,
+        col(LiveMarketTick.event_type) == "listed",
+        col(LiveMarketTick.listing_id).is_not(None),
+        col(LiveMarketTick.observed_at).is_not(None),
+    )
+    async with session_scope() as session:
+        newest_stmt = select(func.max(col(LiveMarketTick.observed_at))).where(*listed)
+        newest: datetime | None = (await _exec_result(session, newest_stmt)).scalar()
+        if newest is None:
+            return None
+        ids_stmt = (
+            select(col(LiveMarketTick.listing_id))
+            .where(*listed, col(LiveMarketTick.observed_at) >= newest - timedelta(seconds=window_seconds))
+            .distinct()
+        )
+        listing_ids = sorted(str(listing_id) for listing_id in (await _exec_result(session, ids_stmt)).scalars())
+    return NewestListings(
+        venue=venue,
+        observed_at_ms=(newest - _EPOCH) // timedelta(milliseconds=1),
+        listing_ids=listing_ids,
     )

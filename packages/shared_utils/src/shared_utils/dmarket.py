@@ -12,10 +12,16 @@ What the live API returns, and where it differs from DMarket's reference, is in 
   "1550" when the cents are zero). Both are parsed with Decimal, never through a float.
 - The seller fee is 10% unless the title is on the reduced list (`customized-fees`), which renews every
   few days and caps each reduced fee at a maximum price.
+- Listings page newest first through a cursor that is base64 JSON of a creation time in milliseconds and
+  an offer ID. A cursor built from any time starts the page at that time, and paging has no depth limit.
 """
 
 import asyncio
+import base64
+import binascii
+import json
 import os
+import re
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -41,6 +47,11 @@ CUSTOMIZED_FEES_PATH = "/exchange/v1/customized-fees"
 SIGNATURE_PREFIX = "dmar ed25519 "
 LAST_SALES_PAGE_SIZE = 20  # The most `last-sales` returns per request
 FEES_PAGE_SIZE = 100
+OFFERS_PAGE_SIZE = 100  # The most `offers` returns per request
+
+# `offerType` of a listing held by a DMarket bot, the only kind the API can buy. A person to person
+# listing is `p2p`.
+OFFER_TYPE_BOT = "dmarket"
 
 SALE_TYPE_OFFER = "offer"  # Someone bought a listing
 SALE_TYPE_TARGET = "target"  # A seller sold into a buy order
@@ -230,6 +241,140 @@ def sale_keys(sales: Iterable[DMarketSale]) -> list[str]:
     return keys
 
 
+# An RFC 3339 time as listings carry it: whole seconds for bot held listings, nanoseconds for person to person ones.
+_RFC3339 = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$")
+
+
+def created_at_ms(value: object) -> int | None:
+    """A listing's `createdAt` in Unix milliseconds (finer digits dropped); None when unusable."""
+    if not isinstance(value, str):
+        return None
+    match = _RFC3339.match(value.strip())
+    if match is None:
+        return None
+    whole, fraction, zone = match.groups()
+    try:
+        moment = datetime.fromisoformat(whole + ("+00:00" if zone == "Z" else zone))
+    except ValueError:
+        return None
+    milliseconds = int((fraction or "0")[:3].ljust(3, "0"))
+    return int(moment.timestamp()) * 1000 + milliseconds
+
+
+@dataclass(frozen=True, slots=True)
+class DMarketOffer:
+    """One listing from `offers`."""
+
+    offer_id: str
+    created_at_ms: int
+    price_cents: int
+    offer_type: str  # OFFER_TYPE_BOT or "p2p"
+    title: str  # Market hash name without the phase
+    market_hash_name: str  # Versioned name (phase included), as ticks carry it
+    float_value: float | None
+    paint_seed: int | None
+    paint_index: int | None
+    phase: str | None
+    sticker_names: tuple[str, ...]  # Applied stickers, named the way Skinport names them
+
+
+def _optional_wear_text(value: object) -> float | None:
+    """A float given as a decimal string ("0.2313"); None when missing, out of range, or "0" (an item without wear)."""
+    number = _decimal(value)
+    if number is None or not 0 < number <= 1:
+        return None
+    return float(number)
+
+
+def parse_offer(entry: object) -> DMarketOffer | None:
+    """One `offers` entry; None when it has no offer ID, creation time, price or title."""
+    if not isinstance(entry, Mapping):
+        return None
+    offer_id = entry.get("offerId")
+    created = created_at_ms(entry.get("createdAt"))
+    price_cents = cents_to_int(entry.get("priceCents"))
+    attributes = entry.get("attributes")
+    if not isinstance(attributes, Mapping):
+        return None
+    title = attributes.get("title")
+    if not isinstance(offer_id, str) or not offer_id or created is None or price_cents is None:
+        return None
+    if not isinstance(title, str) or not title:
+        return None
+    cs2 = attributes.get("cs2")
+    if not isinstance(cs2, Mapping):
+        cs2 = {}
+    phase = phase_version(cs2.get("phase"))
+    stickers = cs2.get("stickers")
+    sticker_names = tuple(
+        sticker["name"]
+        for sticker in (stickers if isinstance(stickers, list) else [])
+        if isinstance(sticker, Mapping) and isinstance(sticker.get("name"), str) and sticker["name"]
+    )
+    offer_type = entry.get("offerType")
+    float_value = _optional_wear_text(cs2.get("float"))
+    # Items without wear (cases, stickers) send 0 for the pattern and the finish too.
+    paint_index = _optional_seed(cs2.get("paintIndex"))
+    return DMarketOffer(
+        offer_id=offer_id,
+        created_at_ms=created,
+        price_cents=price_cents,
+        offer_type=offer_type if isinstance(offer_type, str) else "",
+        title=title,
+        market_hash_name=build_versioned_name(title, phase),
+        float_value=float_value,
+        paint_seed=_optional_seed(cs2.get("paintSeed")) if float_value is not None else None,
+        paint_index=paint_index or None,
+        phase=phase,
+        sticker_names=sticker_names,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class OffersPage:
+    """One page of `offers`: the raw entries, newest first, and the cursor of the next page (None at the end)."""
+
+    entries: list[Any]
+    cursor: str | None
+
+
+def parse_offers_page(payload: object) -> OffersPage:
+    entries = payload.get("items") if isinstance(payload, Mapping) else None
+    cursor = payload.get("cursor") if isinstance(payload, Mapping) else None
+    return OffersPage(
+        entries=entries if isinstance(entries, list) else [],
+        cursor=cursor if isinstance(cursor, str) and cursor else None,
+    )
+
+
+def offers_cursor(created_at_ms: int, offer_id: str = "") -> str:
+    """
+    A cursor that starts a page of listings, newest first, at `created_at_ms`.
+
+    DMarket's own cursors are base64 JSON of the last listing's creation time in milliseconds and its offer
+    ID. One built from a time alone starts at that time (checked live on 2026-10-25), which lets catching up
+    jump straight to where it stopped.
+    """
+    return base64.b64encode(json.dumps([created_at_ms, offer_id], separators=(",", ":")).encode()).decode()
+
+
+def cursor_created_at_ms(cursor: str) -> int | None:
+    """
+    The creation time a cursor points at; None for a cursor that is not DMarket's base64 JSON. The URL safe
+    alphabet (`-` and `_`) is read too, in case DMarket ever sends it.
+    """
+    try:
+        position = json.loads(base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True))
+    except (binascii.Error, ValueError):
+        return None
+    if not isinstance(position, list) or not position:
+        return None
+    created = position[0]
+    if isinstance(created, bool) or not isinstance(created, int):
+        return None
+    return created
+
+
 def fraction_to_bps(value: object) -> int | None:
     """A fee fraction ("0.02") in basis points; None when unusable or outside [0, 1)."""
     number = _decimal(value)
@@ -371,7 +516,11 @@ class DMarketClient:
                     continue
                 if response.status != 200:
                     raise DMarketAPIError(response.status, (await response.text())[:300])
-                return await response.json(content_type=None)
+                try:
+                    return await response.json(content_type=None)
+                except ValueError as err:
+                    # A 200 that is not JSON (a maintenance page from a proxy) fails like any other answer.
+                    raise DMarketAPIError(response.status, f"the answer is not JSON: {err}") from err
         raise DMarketAPIError(429, f"still rate limited after {self._max_retries} retries")
 
     async def last_sales(self, title: str, offset: int = 0, game_id: str = CS2_GAME_ID) -> tuple[list[DMarketSale], int]:
@@ -380,6 +529,19 @@ class DMarketClient:
             LAST_SALES_PATH, {"gameId": game_id, "title": title, "limit": LAST_SALES_PAGE_SIZE, "offset": offset}
         )
         return parse_sales(title, payload), _entries(payload, "sales")
+
+    async def offers(self, cursor: str | None = None, game_id: str = CS2_GAME_ID) -> OffersPage:
+        """One page of bot held listings, newest first, starting at `cursor` (the newest listings without one)."""
+        params: dict[str, Any] = {
+            "gameId": game_id,
+            "limit": OFFERS_PAGE_SIZE,
+            "orderBy": "createdAt",
+            "orderDir": "desc",
+            "currency": "USD",
+        }
+        if cursor is not None:
+            params["cursor"] = cursor
+        return parse_offers_page(await self.get(OFFERS_PATH, params))
 
     async def fee_schedule(self, game_id: str = CS2_GAME_ID) -> FeeSchedule:
         """The default seller fee and every reduced fee, read page by page."""
