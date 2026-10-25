@@ -208,12 +208,53 @@ feed_tracked_listings = Gauge(
     registry=feed_registry,
 )
 
-_registries_exporting_feed: set[int] = set()
+# DMarket polling (#339), exported only by the DMarket listener (`export_dmarket_metrics`). DMarket has no live
+# feed, so the listener polls its newest listings and, after downtime, reads back through the listings created
+# while it was off (docs/dmarket_api.md).
+dmarket_registry = CollectorRegistry(auto_describe=True)
+
+dmarket_rate_limited_total = Counter(
+    "listener_dmarket_rate_limited_total",
+    "DMarket requests refused with HTTP 429 (each is retried after Retry-After)",
+    registry=dmarket_registry,
+)
+
+dmarket_requests_total = Counter(
+    "listener_dmarket_requests_total",
+    "Listing pages requested from DMarket, by poll (live, catch_up) and outcome (ok, failed)",
+    labelnames=["poll", "outcome"],
+    registry=dmarket_registry,
+)
+
+dmarket_newest_listing_age_seconds = Gauge(
+    "listener_dmarket_newest_listing_age_seconds",
+    "Time since the newest listing the live poll has read was created; it grows while polls fail",
+    registry=dmarket_registry,
+)
+
+dmarket_catch_up_seconds = Gauge(
+    "listener_dmarket_catch_up_seconds",
+    "Listing creation time still to read back through after downtime (0 when caught up)",
+    registry=dmarket_registry,
+)
+
+_exported: set[tuple[int, int]] = set()
+
+
+def _export(extra: CollectorRegistry, registry: CollectorRegistry) -> None:
+    """Adds `extra`'s metrics to what `registry` exports. Safe to call more than once."""
+    key = (id(extra), id(registry))
+    if key in _exported:
+        return
+    registry.register(extra)
+    _exported.add(key)
 
 
 def export_feed_metrics(registry: CollectorRegistry = REGISTRY) -> None:
     """Adds the feed metrics to what `registry` exports. Safe to call more than once."""
-    if id(registry) in _registries_exporting_feed:
-        return
-    registry.register(feed_registry)
-    _registries_exporting_feed.add(id(registry))
+    _export(feed_registry, registry)
+
+
+def export_dmarket_metrics(registry: CollectorRegistry = REGISTRY) -> None:
+    """Adds the DMarket polling metrics to what `registry` exports. Safe to call more than once."""
+    _export(dmarket_registry, registry)

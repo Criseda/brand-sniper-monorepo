@@ -179,8 +179,8 @@ sticker prices use the listing's naming.
 ## Venues
 
 Fees for each venue live in `packages/shared_utils/src/shared_utils/pnl.py` (`VenueFees`, `fees_for`),
-described in section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport and Waxpeer
-(#261) are connected, and DMarket (#339) comes next. CSFloat (#33) was dropped because its terms forbid
+described in section 4.2 of [`docs/roadmap_proven_edge.md`](roadmap_proven_edge.md). Skinport, Waxpeer
+(#261) and DMarket (#339) are connected. CSFloat (#33) was dropped because its terms forbid
 automated collection of listings, so I read a venue's terms before building anything for it. When picking a
 venue I prefer an official API with a key over a feed built for a website, which is what Skinport's is: it
 expects a browser's headers.
@@ -194,5 +194,7 @@ DMarket has an official Trading API with a key, and it publishes up to a year of
 Waxpeer it gets baselines and labels of its own, and its listings are priced as bought and resold on DMarket.
 Its seller fee depends on the item (2% on a list of popular titles, 10% on the rest), so each DMarket baseline
 carries the fee of its item. The listener records only bot held listings priced below the item's DMarket
-baseline, because all of them would be over half a million rows a day. The details are in
+baseline, because all of them would be over half a million rows a day. DMarket has no live feed, so the
+listener polls for new listings, and after my PC was off it reads back through the listings created meanwhile
+that are still for sale. Those sold while it was off are missing from the record. The details are in
 [`dmarket_api.md`](dmarket_api.md).

@@ -1,4 +1,5 @@
 from scrapers.base import BaseScraper
+from scrapers.dmarket import DMarketScraper
 from scrapers.skinport import SkinportScraper
 from scrapers.waxpeer import WaxpeerScraper
 
@@ -10,6 +11,7 @@ class ScraperFactory:
     _registry: dict[str, type[BaseScraper]] = {
         "skinport": SkinportScraper,
         "waxpeer": WaxpeerScraper,
+        "dmarket": DMarketScraper,
     }
 
     _instances: dict[str, BaseScraper] = {}

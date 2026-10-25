@@ -883,6 +883,48 @@ def test_latest_baselines_requires_the_api_key(client):
     assert response.status_code == 401
 
 
+def _listed(listing_id: str, observed_at_ms: int, event_type: str = "listed") -> dict:
+    return {
+        "market_hash_name": "AK-47 | Redline (Field-Tested)",
+        "price_cents": 900,
+        "timestamp": observed_at_ms // 1000,
+        "observed_at_ms": observed_at_ms,
+        "event_type": event_type,
+        "listing_id": listing_id,
+        "stickers": [],
+    }
+
+
+def test_newest_listings_name_the_resume_point_of_a_polling_listener(client):
+    venue = f"venue-{uuid4().hex[:8]}"
+    newest_ms = 1_792_935_778_250
+    ticks = [
+        _listed("old", newest_ms - 121_000),
+        _listed("near", newest_ms - 119_000),
+        _listed("newest", newest_ms),
+        _listed("near", newest_ms - 60_000),  # The same listing recorded twice is named once
+        _listed("sold", newest_ms + 5_000, event_type="sold"),
+        {"market_hash_name": "AK-47 | Redline (Field-Tested)", "price_cents": 950, "timestamp": newest_ms // 1000 + 9},
+    ]
+    response = client.post("/api/v1/ingest/bulk", json={"batch_id": str(uuid4()), "venue": venue, "ticks": ticks})
+    assert response.status_code == 201
+
+    body = client.get(f"/api/v1/listings/{venue}/newest").json()
+
+    # Only listed ticks count: a sale or a REST snapshot received later does not move the resume point.
+    assert body == {"venue": venue, "observed_at_ms": newest_ms, "listing_ids": ["near", "newest"]}
+    narrow = client.get(f"/api/v1/listings/{venue}/newest", params={"window_seconds": 1}).json()
+    assert narrow["listing_ids"] == ["newest"]
+
+
+def test_newest_listings_are_not_found_for_a_venue_without_listings(client):
+    response = client.get("/api/v1/listings/nowhere/newest")
+
+    assert response.status_code == 404
+    assert "nowhere" in response.json()["detail"]
+    assert client.get("/api/v1/listings/nowhere/newest", params={"window_seconds": 0}).status_code == 422
+
+
 def test_bulk_ingest_still_accepts_the_pre_rename_source_field(client):
     """A listener that is not upgraded yet, or a batch it left in Redis, still sends `source`."""
     from shared_utils.models import FeedEvent

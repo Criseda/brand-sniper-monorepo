@@ -29,6 +29,7 @@ docker compose up -d
 | Backend | custom build | `sniper_backend` | always |
 | Skinport listener | custom build (listener image, `LISTENER_VENUE=skinport`) | `sniper_listener_skinport` | always |
 | Waxpeer listener | custom build (listener image, `LISTENER_VENUE=waxpeer`) | `sniper_listener_waxpeer` | always |
+| DMarket listener | custom build (listener image, `LISTENER_VENUE=dmarket`) | `sniper_listener_dmarket` | always |
 | Baseline builder | custom build (analytics image) | `sniper_baseline_builder` | always |
 | Analytics | custom build | `sniper_analytics` | manual (`docker compose run --rm analytics`) |
 
@@ -44,9 +45,15 @@ docker compose up -d
 | Redis 8 | `sniper_edge_redis` | Loopback port 6380, `--save "" --appendonly no` (volatile RAM only) |
 | Skinport listener | `sniper_listener_skinport` | Connects to a remote backend via `COMPUTE_NODE_IP` |
 | Waxpeer listener | `sniper_listener_waxpeer` | Same image with `LISTENER_VENUE=waxpeer`; shares the edge Redis ([`waxpeer_feed.md`](waxpeer_feed.md)) |
+| DMarket listener | `sniper_listener_dmarket` | Same image with `LISTENER_VENUE=dmarket`; needs the DMarket keys in `apps/listener/.env` ([`dmarket_api.md`](dmarket_api.md)) |
 
 One listener process runs per venue, and each compose service is named `listener-<venue>`. Prometheus labels
-their series `listener="skinport"` or `listener="waxpeer"`, and the dashboard and alerts split by that label.
+their series `listener="skinport"`, `listener="waxpeer"` or `listener="dmarket"`, and the dashboard and alerts
+split by that label.
+
+The DMarket listener stops at startup without `DMARKET_PUBLIC_KEY` and `DMARKET_SECRET_KEY` in
+`apps/listener/.env`, and reports unhealthy until a DMarket baseline build is loaded, so start
+`baseline-builder-dmarket` first. It shares the account's 30 requests a second with that builder, 10 each.
 
 Before #261 the only listener was the service `listener` (container `sniper_listener`). Compose does not
 rename a container, so stop the old one yourself before the first `up`, with its full drain time, then let

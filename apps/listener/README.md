@@ -37,6 +37,10 @@ The `SkinportScraper` reads Skinport's Socket.IO `saleFeed` itself (`scrapers/sk
 
 With `LISTENER_VENUE=waxpeer` the listener runs `WaxpeerScraper`, which reads Waxpeer's public Socket.IO feed directly over an aiohttp websocket and has no REST poll. It records and scores only listings priced below the item's Skinport price, then follows them for price cuts and removal, and judges them against the Skinport baselines it loads. Set `WAXPEER_API_KEY` in `.env`. See [`docs/waxpeer_feed.md`](../../docs/waxpeer_feed.md).
 
+### DMarket Listings
+
+With `LISTENER_VENUE=dmarket` the listener runs `DMarketScraper`. DMarket has no live feed, so it polls the newest bot held listings every 1.5 seconds through the signed Trading API, and after downtime reads back through the listings created meanwhile, from a resume point kept in the edge Redis or, when that is empty, asked of the backend. It records and scores only listings priced below the item's DMarket price, judged against the DMarket baselines it loads, and prices each with the item's own DMarket seller fee. Set `DMARKET_PUBLIC_KEY` and `DMARKET_SECRET_KEY` in `.env`. See [`docs/dmarket_api.md`](../../docs/dmarket_api.md).
+
 ### Trade Alerts
 
 There is no automated buying, so when the DRE approves a listing the listener sends me a message on Discord, Telegram or both (`alerts.py`, #18). The message names the item with its float, pattern and stickers, gives the listing price and the estimated net margin after fees (the same estimate the paper trade records), says which rule approved it with the Z score and its source, and links to the listing. A Skinport feed listing links to the item page, because the feed sends no sale ID. A Waxpeer listing links to the listing itself. A REST snapshot names no listing, so its alert links to a Skinport market search for the item.

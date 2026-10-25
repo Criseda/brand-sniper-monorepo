@@ -21,7 +21,7 @@ setup_service_environment(__file__)
 
 from api_errors import COMMON_ERROR_RESPONSES, problem_response, register_error_handlers
 from database import engine, session_scope
-from queries import close_http_session, get_item_market_context, get_latest_baseline_build
+from queries import close_http_session, get_item_market_context, get_latest_baseline_build, get_newest_listings
 from queries import search_macro_trends as query_macro_trends
 from schemas import BulkIngestionPayload, SearchTrendsPayload, SimulatedTradePayload, TradeAlertPayload
 from shared_utils import (
@@ -169,6 +169,25 @@ async def latest_baselines(venue: str, after_build_id: Annotated[int | None, Que
     if isinstance(build, int):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     return build
+
+
+@app.get(
+    "/api/v1/listings/{venue}/newest",
+    dependencies=[Depends(require_backend_api_key)],
+    responses={
+        status.HTTP_404_NOT_FOUND: problem_response("The venue has no recorded listing yet"),
+        **COMMON_ERROR_RESPONSES,
+    },
+)
+async def newest_listings(venue: str, window_seconds: Annotated[int, Query(ge=1, le=3600)] = 120):
+    """
+    The receive time of the venue's newest recorded listing and the listings recorded in the window before it,
+    for a polling listener (DMarket) to resume from after the edge Redis was emptied.
+    """
+    listings = await get_newest_listings(venue, window_seconds)
+    if listings is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No recorded listing for venue '{venue}'")
+    return listings
 
 
 from prometheus_client import make_asgi_app

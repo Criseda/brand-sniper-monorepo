@@ -330,25 +330,38 @@
     },
     {
       "type": "row",
-      "title": "Live Feeds (Waxpeer)",
+      "title": "Live Feeds (Waxpeer, DMarket)",
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "collapsed": false
     },
     {
       "type": "timeseries",
       "title": "Feed Events/min by Filter Outcome",
-      "description": "Live feed events per minute by what the recording filter did with them. Only 'recorded' reaches the database (docs/waxpeer_feed.md).",
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 36 },
+      "description": "Live feed events per minute by what the recording filter did with them. Only 'recorded' reaches the database (docs/waxpeer_feed.md, docs/dmarket_api.md). DMarket counts listings read by the live poll as 'listed' and those read while catching up after downtime as 'catch_up'.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
       "targets": [
         { "expr": "sum by (listener, event, outcome) (rate(listener_feed_events_filtered_total[5m])) * 60", "legendFormat": "{{listener}} {{event}} {{outcome}}", "refId": "A" }
       ],
       "fieldConfig": { "defaults": { "unit": "suffix: events/min", "min": 0 } }
     },
     {
+      "type": "timeseries",
+      "title": "DMarket Polling",
+      "description": "Newest listing age grows while polls fail; it stays under about 20 seconds while they succeed. Catch up left is the listing time still to read back through after downtime. 429s are refused requests, each retried after Retry-After (docs/dmarket_api.md).",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 36 },
+      "targets": [
+        { "expr": "listener_dmarket_newest_listing_age_seconds", "legendFormat": "newest listing age (s)", "refId": "A" },
+        { "expr": "listener_dmarket_catch_up_seconds", "legendFormat": "catch up left (s)", "refId": "B" },
+        { "expr": "sum(rate(listener_dmarket_rate_limited_total[5m])) * 60", "legendFormat": "429s/min", "refId": "C" },
+        { "expr": "sum(rate(listener_dmarket_requests_total{outcome=\"failed\"}[5m])) * 60", "legendFormat": "failed requests/min", "refId": "D" }
+      ],
+      "fieldConfig": { "defaults": { "min": 0 } }
+    },
+    {
       "type": "stat",
       "title": "Feed State",
-      "description": "Connected is 1 while the feed is subscribed. Resale prices is how many Skinport prices the filter holds; at 0 it records nothing.",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 36 },
+      "description": "Connected is 1 while the feed is subscribed (Waxpeer) or polls succeed (DMarket). Resale prices is how many resale venue prices the filter holds (Skinport for Waxpeer, DMarket for DMarket); at 0 it records nothing.",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 36 },
       "targets": [
         { "expr": "listener_feed_connected", "legendFormat": "{{listener}} connected", "refId": "A" },
         { "expr": "listener_feed_resale_prices", "legendFormat": "{{listener}} resale prices", "refId": "B" },

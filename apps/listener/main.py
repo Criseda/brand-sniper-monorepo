@@ -481,5 +481,5 @@ async def process_live_telemetry_stream(venue: str) -> None:
 
 
 if __name__ == "__main__":
-    # One listener process per venue (listener-skinport, listener-waxpeer).
+    # One listener process per venue (listener-skinport, listener-waxpeer, listener-dmarket).
     asyncio.run(process_live_telemetry_stream(os.getenv("LISTENER_VENUE", "skinport")))

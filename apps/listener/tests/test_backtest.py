@@ -690,8 +690,9 @@ async def test_build_snapshot_matches_what_the_listener_loads():
     engine = FakeEngine(
         {
             database._BUILD_ROWS_QUERY.text: [
-                (ITEM, 900, 1000, 1100, 110, 1.5, 2.5),
-                (f"Sticker | {VALUABLE_STICKER}", 400_000, 500_000, 480_000, 4800, 0.0, 12.0),
+                (ITEM, 900, 1000, 1100, 110, 1.5, 2.5, None),
+                (f"Sticker | {VALUABLE_STICKER}", 400_000, 500_000, 480_000, 4800, 0.0, 12.0, None),
+                ("Revolution Case", 40, 45, 44, 2, 0.0, 900.0, 200),
             ]
         }
     )
@@ -707,6 +708,8 @@ async def test_build_snapshot_matches_what_the_listener_loads():
         "avg_volume_30d": 2.5,
         "coefficient_of_variation": 0.1,
     }
+    # A DMarket item carries its own seller fee, as the backend serves it (#339).
+    assert snapshot.baselines["Revolution Case"]["seller_fee_bps"] == 200
     # Keyed the way a listing names the applied sticker, as the backend serves it.
     assert snapshot.sticker_prices == {VALUABLE_STICKER: 500_000}
     assert snapshot.as_of == _at(60).isoformat()
@@ -717,7 +720,7 @@ async def test_baseline_schedule_lists_builds_and_loads_them_on_demand():
     engine = FakeEngine(
         {
             database._BUILDS_QUERY.text: [(3, _at(0)), (4, _at(3600))],
-            database._BUILD_ROWS_QUERY.text: [(ITEM, 900, 1000, 1100, 110, 1.5, 2.5)],
+            database._BUILD_ROWS_QUERY.text: [(ITEM, 900, 1000, 1100, 110, 1.5, 2.5, None)],
         }
     )
 

@@ -106,6 +106,40 @@ services:
       start_period: 30s
       retries: 3
 
+  # DMarket listings (#339). Same image; it polls DMarket's Trading API with the keys in apps/listener/.env and
+  # judges listings against the DMarket baselines it loads into the shared Redis (docs/dmarket_api.md).
+  listener-dmarket:
+    build:
+      context: ../../
+      dockerfile: apps/listener/Dockerfile
+    container_name: sniper_listener_dmarket
+    env_file:
+      - ../../.env
+      - ../../apps/listener/.env
+    environment:
+      - LISTENER_VENUE=dmarket
+      - EDGE_REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - sniper_edge_network
+    restart: unless-stopped
+    stop_grace_period: 120s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
 networks:
   sniper_edge_network:
     driver: bridge

@@ -320,15 +320,19 @@ def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int
 
     The resale venue is the tick's own venue, except for a venue judged against another one (Waxpeer
     resells on Skinport). Without a baseline price there is nothing to resell against, so there is no estimate.
+    On a venue that charges each item its own seller fee (DMarket), the baseline carries that fee
+    (`seller_fee_bps`); without it the venue's default fee applies, which never overstates the margin.
     """
     resale_price_cents = baseline.get("latest_price_cents")
     if resale_price_cents is None:
         return None
+    item_fee_bps = baseline.get("seller_fee_bps")
     return net_resale_margin_cents(
         buy_price_cents=tick.price_cents,
         resale_price_cents=resale_price_cents,
         buy_fees=fees_for(tick.venue),
         sell_fees=fees_for(resale_venue_for(tick.venue)),
+        sell_item_fee_bps=item_fee_bps if isinstance(item_fee_bps, int) and not isinstance(item_fee_bps, bool) else None,
     )
 
 
