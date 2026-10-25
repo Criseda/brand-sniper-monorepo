@@ -397,6 +397,21 @@ Run it before the new backend image starts. A listener with alerts configured po
 `/api/v1/ingest/alert`, and an older backend answers that with 404, so update the backend before the listeners.
 The listener only logs and counts a failed record; the alerts themselves are still sent.
 
+Migration `a4d8e2f6c913` (#256) adds `live_market_ticks.observed_at`, the edge receive time to the millisecond,
+and a partial index on (`venue`, `event_type`, `observed_at`) for listing rows, built concurrently so ingest
+keeps running. The outcome labeler, the scorecard and the CFO calibration read listing events through that
+column, so roll it out in this order before their next run:
+
+1. `make migrate`.
+2. Rebuild the backend, so it writes `observed_at` from the `observed_at_ms` the new listeners send.
+3. Rebuild both listeners.
+4. From `apps/analytics`, `uv run python backfill_observed_at.py`. It fills the Skinport listing rows that have
+   no `observed_at` from their raw feed events, including batches an older listener delivered during the
+   rollout. It touches only empty rows, so running it twice is safe, and it logs how many rows are still empty.
+
+The backend still accepts batches without `observed_at_ms` (an older listener, or a batch it left in Redis) and
+leaves the column empty for them.
+
 ## Data Retention
 
 | Table | Policy | Status |

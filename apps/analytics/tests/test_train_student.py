@@ -9,7 +9,7 @@ import onnx
 import pytest
 import train_student
 from baseline_scorecard import DecisionLog, LoggedDecision, read_decision_log
-from label_outcomes import FinalLabels, LabelConfig
+from outcome_labels import FinalLabels, LabelConfig
 from shared_utils import FEATURE_NAMES, FEATURE_VERSION
 from train_student import (
     CALIBRATION_BLOCKS,

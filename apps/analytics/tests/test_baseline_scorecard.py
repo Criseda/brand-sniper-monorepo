@@ -41,7 +41,7 @@ from baseline_scorecard import (
     wilson_interval,
     would_trigger,
 )
-from label_outcomes import FeedSale, LabelConfig, SoldIndex
+from outcome_labels import FeedSale, LabelConfig, SoldIndex
 from shared_utils import purchase_keys
 
 START = datetime(2026, 10, 1)
@@ -260,10 +260,7 @@ def test_apply_listing_label(label, decided_at, expected):
 
 def test_rest_snapshots_are_labeled_with_the_v1_rule():
     phase_name = "★ Karambit | Doppler (Phase 2) (Factory New)"
-    sold = [
-        FeedSale(f"S{i}", phase_name, "★ Karambit | Doppler (Factory New)", 1500, START + 8 * DAY + timedelta(hours=i))
-        for i in range(3)
-    ]
+    sold = [FeedSale(f"S{i}", phase_name, 1500, START + 8 * DAY + timedelta(hours=i)) for i in range(3)]
     mature = trade(outcome=OUTCOME_PENDING, listing_id=None, price=1000)
     mature.market_hash_name = phase_name
     recent = trade(outcome=OUTCOME_PENDING, listing_id=None, at=AS_OF - DAY)
@@ -590,14 +587,14 @@ def _fake_database(monkeypatch, labels, profitable, sold=()):
     async def fake_volumes(trades):
         return {(3, NAME): 20.0}
 
-    async def fake_sold(event_type, start, end, names=None):
-        assert event_type == "sold"
+    async def fake_sold(venue, event_type, start, end, names=None):
+        assert (venue, event_type) == ("skinport", "sold")
         return list(sold)
 
     monkeypatch.setattr(baseline_scorecard, "fetch_listing_labels", fake_labels)
     monkeypatch.setattr(baseline_scorecard, "fetch_profitable_listings", fake_profitable)
     monkeypatch.setattr(baseline_scorecard, "fetch_volumes", fake_volumes)
-    monkeypatch.setattr(baseline_scorecard, "fetch_feed_sales", fake_sold)
+    monkeypatch.setattr(baseline_scorecard, "fetch_listing_events", fake_sold)
     monkeypatch.setattr(baseline_scorecard, "git_commit", lambda: "abc123")
 
 
@@ -619,7 +616,7 @@ async def test_scorecard_scores_approvals_against_their_labels(monkeypatch, tmp_
     rows.append(decision_row(None, START + timedelta(hours=1), approve=True, reason="macro_sigma", score=-2.5, price=790))
     rows.append(decision_row("early", TRADABLE_REST_FROM - DAY, approve=True, reason="support_floor"))
     profitable = {f"L{index}": START for index in range(40) if index % 4} | {f"M{index}": START for index in range(30)}
-    sold = [FeedSale(f"S{i}", NAME, NAME, 1000, START + 8 * DAY + timedelta(hours=i)) for i in range(3)]
+    sold = [FeedSale(f"S{i}", NAME, 1000, START + 8 * DAY + timedelta(hours=i)) for i in range(3)]
     _fake_database(monkeypatch, labels, profitable, sold)
     log = read_decision_log(
         write_log(tmp_path / "log.jsonl", rows, source=f"database:skinport:2026-09-20T00:00/{END.isoformat()}")

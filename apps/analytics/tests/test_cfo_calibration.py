@@ -50,7 +50,7 @@ from cfo_calibration import (
     sample_cases,
     score_variant,
 )
-from label_outcomes import FeedSale
+from outcome_labels import FeedSale
 from pydantic import ValidationError
 
 NAME = "AK-47 | Slate (Field-Tested)"
@@ -76,7 +76,6 @@ def sale(name, at, price, listing_id=None):
     return FeedSale(
         listing_id=listing_id or f"{name}-{at.isoformat()}",
         market_hash_name=name,
-        feed_name=name,
         price_cents=price,
         seen_at=at,
     )
@@ -578,7 +577,8 @@ async def test_load_cases_keeps_labeled_trades_and_cuts_market_data_at_the_last_
             "L2": {"is_profitable": None, "resale_net_margin_cents": None, "label_available_at": DECIDED_AT},
         }
 
-    async def fake_sales(event_type, start, end, names=None):
+    async def fake_sales(venue, event_type, start, end, names=None):
+        assert venue == "skinport" and names == [NAME]
         fetched.append((event_type, start, end))
         if event_type == "sold" and end > DECIDED_AT + timedelta(days=1):
             return [sale(NAME, DECIDED_AT + timedelta(days=8, hours=index), 1200, f"S{index}") for index in range(3)]
@@ -592,7 +592,7 @@ async def test_load_cases_keeps_labeled_trades_and_cuts_market_data_at_the_last_
         return [BaselineSnapshot(build_id=1, built_at=DECIDED_AT - HOUR, rows={NAME: baseline()})]
 
     monkeypatch.setattr(cfo_calibration, "fetch_listing_labels", fake_labels)
-    monkeypatch.setattr(cfo_calibration, "fetch_feed_sales", fake_sales)
+    monkeypatch.setattr(cfo_calibration, "fetch_listing_events", fake_sales)
     monkeypatch.setattr(cfo_calibration, "fetch_listing_details", fake_details)
     monkeypatch.setattr(cfo_calibration, "fetch_baseline_snapshots", fake_builds)
 

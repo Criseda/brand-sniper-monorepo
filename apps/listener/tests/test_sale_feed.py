@@ -150,13 +150,41 @@ def test_unusable_events_are_rejected(payload, received_at_ms):
         parse_sale_feed_event(payload, received_at_ms)
 
 
-def test_rest_snapshot_ticks_keep_the_legacy_batch_record():
+def test_rest_snapshot_ticks_keep_the_legacy_batch_record_plus_their_receive_time():
     tick = MarketTick(
         venue="skinport", kind=TickKind.REST_SNAPSHOT, market_hash_name="Item", price_usd=1.5, timestamp=1_700_000_000
     )
 
     assert tick.feeds_price_window
-    assert tick.to_batch_record() == {"market_hash_name": "Item", "price_cents": 150, "timestamp": 1_700_000_000}
+    # A REST poll knows its time to the second only, so observed_at_ms is that second (#256).
+    assert tick.to_batch_record() == {
+        "market_hash_name": "Item",
+        "price_cents": 150,
+        "timestamp": 1_700_000_000,
+        "observed_at_ms": 1_700_000_000_000,
+    }
+
+
+def test_feed_ticks_carry_the_millisecond_receive_time_of_their_event():
+    feed_event, (tick,) = parse_sale_feed_event(
+        {"eventType": "listed", "sales": [{"marketHashName": "Item", "salePrice": 150, "productId": 7}]}, 1_700_000_000_318
+    )
+
+    assert tick.timestamp == 1_700_000_000
+    # The same clock as feed_events.received_at, so a label read from the tick matches the raw event (#256).
+    assert tick.to_batch_record()["observed_at_ms"] == feed_event.received_at_ms == 1_700_000_000_318
+
+
+def test_observed_at_ms_must_fall_inside_the_timestamp_second():
+    with pytest.raises(ValidationError, match="not inside second"):
+        MarketTick(
+            venue="skinport",
+            kind=TickKind.REST_SNAPSHOT,
+            market_hash_name="Item",
+            price_usd=1.0,
+            timestamp=1_700_000_000,
+            observed_at_ms=1_700_000_001_000,
+        )
 
 
 @pytest.mark.parametrize(
@@ -221,6 +249,7 @@ def test_listing_tick_batch_record_carries_listing_fields():
         "market_hash_name": "Item",
         "price_cents": 150,
         "timestamp": 1_700_000_000,
+        "observed_at_ms": 1_700_000_000_000,
         "event_type": "listed",
         "listing_id": "42",
         "float_value": 0.1,
@@ -282,12 +311,12 @@ def test_edge_limits_match_the_backend_bulk_ingest_schema():
     def constraints(model, field_name: str) -> dict:
         found: dict = {}
         for item in model.model_fields[field_name].metadata:
-            for attribute in ("ge", "le", "max_length"):
+            for attribute in ("gt", "ge", "le", "max_length"):
                 if getattr(item, attribute, None) is not None:
                     found[attribute] = getattr(item, attribute)
         return found
 
-    shared_tick_fields = ["float_value", "pattern", "paint_index", "event_type", "listing_id", "listing_url"]
+    shared_tick_fields = ["float_value", "pattern", "paint_index", "event_type", "listing_id", "listing_url", "observed_at_ms"]
     for field_name in shared_tick_fields:
         edge = constraints(models.MarketTick, field_name)
         backend = constraints(schemas.BulkPriceTick, field_name)

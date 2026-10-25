@@ -438,6 +438,7 @@ def _listing_payload(batch_id: str) -> dict:
                 "market_hash_name": "Listing Level Item (Field-Tested)",
                 "price_cents": 397,
                 "timestamp": 1790000000,
+                "observed_at_ms": 1790000000123,
                 "event_type": "sold",
                 "listing_id": "58903454",
                 "float_value": 0.36,
@@ -477,6 +478,11 @@ def test_ingest_bulk_persists_listing_fields_and_raw_feed_events(client):
     assert sold.stickers == [{"name": "9z Team (Glitter) | Antwerp 2022", "slot": 2}]
     assert sold.listing_url == "https://skinport.com/item/listing-level-item-field-tested"
     assert (snapshot.event_type, snapshot.listing_id, snapshot.stickers) == (None, None, None)
+    # The listing tick keeps its event's millisecond receive time, the same value as feed_events.received_at (#256);
+    # a record without observed_at_ms (a listener older than #256) leaves it NULL.
+    assert sold.observed_at.isoformat() == "2026-09-21T14:13:20.123000"
+    assert sold.inserted_at.isoformat() == "2026-09-21T14:13:20"
+    assert snapshot.observed_at is None
 
     events = asyncio.run(_fetch_all(select(FeedEvent).where(FeedEvent.venue == "skinport")))
     assert len(events) == 1

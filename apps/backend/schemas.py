@@ -52,6 +52,8 @@ class BulkPriceTick(BaseModel):
     market_hash_name: str = Field(..., description="The asset identifier")
     price_cents: int = Field(..., gt=0, description="Item price normalized to integer cents")
     timestamp: int = Field(..., description="Unix timestamp of the ingestion event")
+    # Optional so a batch from a listener older than #256 (or one it left in Redis) is still accepted.
+    observed_at_ms: int | None = Field(default=None, gt=0, description="Edge receive time as Unix epoch milliseconds")
 
     # Listing-level context (#232); absent for aggregate REST snapshots.
     event_type: str | None = Field(default=None, max_length=32, description="Feed event type, e.g. 'listed' or 'sold'")

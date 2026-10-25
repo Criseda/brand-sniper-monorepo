@@ -115,7 +115,11 @@ scorecard (#249) and any training set must leave them out or report them apart.
 
 The listener reads the sale feed directly (`apps/listener/scrapers/skinport_socket.py`; a Node.js sidecar
 relayed it through Redis Pub/Sub until #175). Since 2026-09-24 21:58 UTC it records every `listed` and `sold` event, raw in `feed_events` and normalized in
-`live_market_ticks` with the listing ID, float, pattern, stickers and link. The receive times are exact.
+`live_market_ticks` with the listing ID, float, pattern, stickers and link. The receive times are exact: a
+listing row's `observed_at` holds the same millisecond as its raw event's `received_at` (#256), and
+`inserted_at` holds that time cut to whole seconds. Skinport listing rows written before #256 got their
+`observed_at` from their feed events (`apps/analytics/backfill_observed_at.py`); Waxpeer rows from before #256
+have none.
 
 The sales history endpoint (`/v1/sales/history`) feeds the current baselines, described above.
 

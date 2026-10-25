@@ -72,8 +72,10 @@ from baseline_scorecard import (
     scorable_start,
     wilson_interval,
 )
-from label_outcomes import LABEL_VERSION, VENUE, FeedSale, LabelConfig, SoldIndex, fetch_feed_sales
 from openai import pydantic_function_tool
+from outcome_data import fetch_listing_events
+from outcome_labels import LABEL_VENUE as VENUE
+from outcome_labels import LABEL_VERSION, FeedSale, LabelConfig, SoldIndex
 from pydantic import BaseModel, Field, ValidationError
 from shared_utils import get_logger, parse_version_from_name
 from shared_utils.db_connection import async_engine
@@ -917,12 +919,11 @@ async def load_cases(log: DecisionLog, as_of: datetime) -> tuple[list[TradeCase]
     mature = [trade for trade in snapshot_trades if matures_by(trade.decided_at, config, as_of)]
     sold_index = SoldIndex()
     if mature:
-        names = sorted({parse_version_from_name(trade.market_hash_name)[0] for trade in mature})
+        names = sorted({trade.market_hash_name for trade in mature})
         last = max(trade.decided_at for trade in mature)
         first = min(trade.decided_at for trade in mature)
-        sold_index = SoldIndex.build(
-            await fetch_feed_sales("sold", first, last + timedelta(seconds=config.horizon_seconds), names=names)
-        )
+        horizon_end = last + timedelta(seconds=config.horizon_seconds)
+        sold_index = SoldIndex.build(await fetch_listing_events(config.venue, "sold", first, horizon_end, names=names))
     label_snapshot_trades(snapshot_trades, sold_index, config, as_of)
 
     labeled = [trade for trade in trades if trade.outcome == OUTCOME_LABELED]
@@ -943,10 +944,12 @@ async def load_cases(log: DecisionLog, as_of: datetime) -> tuple[list[TradeCase]
     # Market data ends at the last decision. Each MarketView then cuts it at its own decision time.
     first_decision = min(case.trade.decided_at for case in cases)
     last_decision = max(case.trade.decided_at for case in cases)
-    feed_names = sorted({parse_version_from_name(case.trade.market_hash_name)[0] for case in cases})
-    sold = await fetch_feed_sales("sold", first_decision - timedelta(days=RECENT_SALES_DAYS), last_decision, names=feed_names)
-    listed = await fetch_feed_sales(
-        "listed", first_decision - timedelta(hours=RECENT_LISTINGS_HOURS), last_decision, names=feed_names
+    names = sorted({case.trade.market_hash_name for case in cases})
+    sold = await fetch_listing_events(
+        VENUE, "sold", first_decision - timedelta(days=RECENT_SALES_DAYS), last_decision, names=names
+    )
+    listed = await fetch_listing_events(
+        VENUE, "listed", first_decision - timedelta(hours=RECENT_LISTINGS_HOURS), last_decision, names=names
     )
     builds = await fetch_baseline_snapshots(last_decision)
     return cases, MarketHistory.build(builds, sold, listed)
