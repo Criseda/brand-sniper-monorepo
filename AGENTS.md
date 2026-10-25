@@ -36,7 +36,7 @@ Python 3.12 monorepo (uv workspaces) — algorithmic market sniping engine with 
 
 ### Execution Sequence Matrix
 
-Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18 may run in parallel. New venues (#33, #261) wait for #259, #260 and #270:
+Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18 may run in parallel. New venues (#261, #339) wait for #259, #260 and #270:
 
 | Step | Issue | Focus | Upstream Prerequisite |
 |:---:|:---:|:---|:---|
@@ -50,7 +50,6 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **8** | [#250](https://github.com/Criseda/brand-sniper-monorepo/issues/250) | `[PE-08]` CFO calibration experiment against realized outcomes | #233, #249 |
 | **9** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | `[PE-09]` Realized-performance & feature drift monitoring | #236 |
 | **10** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | `[PE-10]` Discord/Telegram alerts with direct listing links | #232 |
-| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260, #270 |
 | **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 |
 | **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 |
 | **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260, #270 |
@@ -64,8 +63,9 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 | **22** | [#308](https://github.com/Criseda/brand-sniper-monorepo/issues/308) | `[PE-22]` No approval on the macro Z score right after a restart | #269 |
 | **23** | [#331](https://github.com/Criseda/brand-sniper-monorepo/issues/331) | `[PE-23]` DRE fee floor: no approval when the deal loses money after the seller fee | #233, #248 |
 | **25** | [#333](https://github.com/Criseda/brand-sniper-monorepo/issues/333) | `[PE-25]` Student feature: price against the latest baseline price, judged on DRE approvals | #234, #331 |
+| **27** | [#339](https://github.com/Criseda/brand-sniper-monorepo/issues/339) | `[PE-27]` DMarket venue: listings, sales history, fees, baselines | #259, #260, #270, #256 |
 
-**Not planned**: #237, #238, #239 (compiled Rust edge engine) were closed after the #175 benchmark ([`docs/benchmarks/ingress_latency.md`](docs/benchmarks/ingress_latency.md)): the Python listener decides on a listing in 1.2 ms at the median, and most of that is Redis round trips a compiled runtime would not remove. Reopen #238 only if #236 shows in-process ONNX scoring breaks the latency budget.
+**Not planned**: #33 (CSFloat venue) was closed because CSFloat's Terms of Service forbid automated collection of listings; #339 (DMarket) replaces it. #237, #238, #239 (compiled Rust edge engine) were closed after the #175 benchmark ([`docs/benchmarks/ingress_latency.md`](docs/benchmarks/ingress_latency.md)): the Python listener decides on a listing in 1.2 ms at the median, and most of that is Redis round trips a compiled runtime would not remove. Reopen #238 only if #236 shows in-process ONNX scoring breaks the latency budget.
 
 ### Agent Instructions for Working on an Issue
 1. **Check Prerequisites**: Ensure preceding issues in the table are completed before starting downstream work.

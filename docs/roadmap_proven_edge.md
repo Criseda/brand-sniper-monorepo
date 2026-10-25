@@ -70,14 +70,17 @@ flowchart LR
 | **8** | [#250](https://github.com/Criseda/brand-sniper-monorepo/issues/250) | `[PE-08]` CFO calibration experiment | #233, #249 | `docs/benchmarks/cfo_calibration.md` |
 | **9** | [#235](https://github.com/Criseda/brand-sniper-monorepo/issues/235) | `[PE-09]` Realized-performance & feature drift monitoring | #236 | Prometheus metrics, alert rules |
 | **10** | [#18](https://github.com/Criseda/brand-sniper-monorepo/issues/18) | `[PE-10]` Discord/Telegram alerts with direct listing links | #232 | Alerting with one-click listing links |
-| **11** | [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) | `[PE-11]` CSFloat venue: listings, fees, baselines | #259, #260 | CSFloat listing ticks, `VenueFees`, baselines |
 | **12** | [#259](https://github.com/Criseda/brand-sniper-monorepo/issues/259) | `[PE-12]` Current baselines per venue, loaded when the listener starts | #232 | Baselines from Skinport sales history, stored with their build date, loaded at startup, with a health metric |
 | **13** | [#260](https://github.com/Criseda/brand-sniper-monorepo/issues/260) | `[PE-13]` P&L for buying and selling on different venues | #233 | Separate buy and sell venue fees in `shared_utils.pnl` |
 | **14** | [#261](https://github.com/Criseda/brand-sniper-monorepo/issues/261) | `[PE-14]` Waxpeer venue: live feed, fees, baselines | #259, #260 | Waxpeer listing ticks, `VenueFees`, scored against Skinport baselines |
+| **27** | [#339](https://github.com/Criseda/brand-sniper-monorepo/issues/339) | `[PE-27]` DMarket venue: listings, sales history, fees, baselines | #259, #260, #270, #256 | DMarket listing ticks, `VenueFees`, baselines from DMarket sales, `docs/dmarket_api.md` |
 
-**Parallelism:** after #232, the tracks #233, #248, #259 and #18 can run at the same time. In practice #259 goes first. The live baselines are Kaggle Steam prices from before the knife crash, and the edge has had none loaded since July 2026 (see [`data_sources.md`](data_sources.md)), so without it #249 would mostly measure broken baselines. New venues (#33, #261) wait for #259 and #260. #250 can run alongside #234 and #236.
+**Parallelism:** after #232, the tracks #233, #248, #259 and #18 can run at the same time. In practice #259 goes first. The live baselines are Kaggle Steam prices from before the knife crash, and the edge has had none loaded since July 2026 (see [`data_sources.md`](data_sources.md)), so without it #249 would mostly measure broken baselines. New venues (#261, #339) wait for #259 and #260. #250 can run alongside #234 and #236.
 
-**Not planned:** [#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237),
+**Not planned:** [#33](https://github.com/Criseda/brand-sniper-monorepo/issues/33) (CSFloat venue) was closed
+because CSFloat's Terms of Service forbid automated collection of listings. DMarket, whose terms allow automated
+trading, replaces it in [#339](https://github.com/Criseda/brand-sniper-monorepo/issues/339).
+[#237](https://github.com/Criseda/brand-sniper-monorepo/issues/237),
 [#238](https://github.com/Criseda/brand-sniper-monorepo/issues/238),
 [#239](https://github.com/Criseda/brand-sniper-monorepo/issues/239) (compiled Rust edge engine) were closed
 after the #175 benchmark ([`benchmarks/ingress_latency.md`](benchmarks/ingress_latency.md)). The Python
