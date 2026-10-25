@@ -41,8 +41,10 @@ from .models import (
     SimulatedTrade,
     TradeAlertRecord,
     VenueBaseline,
+    VenueSale,
 )
 from .pnl import (
+    DMARKET_FEES,
     PROFIT_ESTIMATE_BASIS_GROSS,
     PROFIT_ESTIMATE_BASIS_NET,
     RESALE_VENUES,
@@ -97,6 +99,7 @@ __all__ = [
     "LabelVersion",
     "BaselineBuild",
     "VenueBaseline",
+    "VenueSale",
     "BASELINE_METHOD",
     "ItemBaseline",
     "SalesHistory",
@@ -106,6 +109,7 @@ __all__ = [
     "edge_baseline_meta_key",
     "edge_baselines_key",
     "edge_sticker_prices_key",
+    "DMARKET_FEES",
     "SKINPORT_FEES",
     "WAXPEER_FEES",
     "VENUE_FEES",

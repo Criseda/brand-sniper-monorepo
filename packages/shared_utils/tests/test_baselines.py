@@ -1,4 +1,5 @@
 import math
+from datetime import datetime, timedelta
 
 import pytest
 from shared_utils.baselines import (
@@ -115,6 +116,56 @@ def test_edge_payload_matches_the_shared_document_shape():
         "avg_volume_30d": baseline.avg_volume_30d,
         "coefficient_of_variation": round(228 / 2929, 4),
     }
+
+
+def test_edge_payload_carries_a_per_item_seller_fee_when_set():
+    history = SalesHistory.from_skinport(REDLINE)
+    assert history is not None
+    baseline = build_item_baseline(history)
+    assert baseline is not None
+
+    assert "seller_fee_bps" not in baseline.edge_payload()
+    assert baseline.with_seller_fee(200).edge_payload()["seller_fee_bps"] == 200
+    assert baseline.with_seller_fee(200).seller_fee_bps == 200
+
+
+NOW = datetime(2026, 10, 25, 12, 0)
+
+
+def test_windows_from_individual_sales():
+    sales = [
+        (NOW - timedelta(hours=1), 100),
+        (NOW - timedelta(hours=23), 300),
+        (NOW - timedelta(days=3), 200),
+        (NOW - timedelta(days=20), 400),
+        (NOW - timedelta(days=60), 1000),
+        (NOW - timedelta(days=90), 5),  # exactly 90 days old: outside the 90 day window
+        (NOW + timedelta(minutes=1), 7),  # after now: ignored
+    ]
+    history = SalesHistory.from_sales("AK-47 | Redline (Field-Tested)", sales, NOW)
+
+    assert (history.last_24_hours.volume, history.last_24_hours.median_cents) == (2, 200)
+    assert (history.last_7_days.volume, history.last_7_days.median_cents) == (3, 200)
+    assert history.last_30_days == SalesWindow(min_cents=100, max_cents=400, avg_cents=250, median_cents=250, volume=4)
+    assert (history.last_90_days.volume, history.last_90_days.max_cents) == (5, 1000)
+
+
+def test_windows_without_sales_are_empty():
+    history = SalesHistory.from_sales("Revolution Case", [(NOW - timedelta(days=200), 20)], NOW)
+    assert history.last_90_days == SalesWindow(None, None, None, None, 0)
+    assert build_item_baseline(history) is None
+
+
+def test_sales_history_from_sales_feeds_the_same_baseline_rules():
+    # One sale a day for 30 days at 2500 cents, and today 6 sales at 2400: today's median is the latest price.
+    sales = [(NOW - timedelta(days=day, hours=2), 2500) for day in range(1, 30)]
+    sales += [(NOW - timedelta(hours=hour), 2400) for hour in range(1, 7)]
+    baseline = build_item_baseline(SalesHistory.from_sales("AK-47 | Redline (Field-Tested)", sales, NOW))
+
+    assert baseline is not None
+    assert baseline.latest_price_cents == 2400
+    assert baseline.volume_30d == 35
+    assert baseline.seller_fee_bps is None
 
 
 @pytest.mark.parametrize(

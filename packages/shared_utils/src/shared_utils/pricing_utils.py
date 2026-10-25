@@ -134,13 +134,16 @@ def edge_baseline_payload(
     volatility_cents: int,
     drift_percent: float,
     avg_volume_30d: float,
+    seller_fee_bps: int | None = None,
 ) -> dict:
     """The per-item baseline document the edge reads from `baseline:<market_hash_name>`.
 
     Built in one place so the Redis sync and the replay harness give the decision path identical inputs.
     `avg_volume_30d` (sales per day) is not used by the rules; it is a feature of the student model (#234).
+    `seller_fee_bps` is the item's own seller fee on a venue that charges per item (DMarket); the key is
+    left out where the venue's fee tiers apply.
     """
-    return {
+    document = {
         "support_floor_cents": support_floor_cents,
         "latest_price_cents": latest_price_cents,
         "rolling_30d_avg_cents": rolling_30d_avg_cents,
@@ -151,3 +154,6 @@ def edge_baseline_payload(
         if rolling_30d_avg_cents and volatility_cents
         else 0.0,
     }
+    if seller_fee_bps is not None:
+        document["seller_fee_bps"] = seller_fee_bps
+    return document

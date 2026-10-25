@@ -1,10 +1,17 @@
 """
-Baseline builder: current Skinport baselines from Skinport's sales history.
+Baseline builder: current baselines per venue from that venue's own sales.
 
-One request to `/v1/sales/history` returns recent sale statistics for every item. Each run turns them
-into one baseline per item (see shared_utils.baselines) and stores the result as a new, dated build in
-`baseline_builds` and `venue_baselines`. Builds are never overwritten. The backend serves the newest
-build and the listener loads it into the edge Redis.
+Skinport: one request to `/v1/sales/history` returns recent sale statistics for every item.
+
+DMarket (#339): DMarket publishes its sales one by one, so each run first copies every title's new sales
+into `venue_sales` (dmarket_sales.py), then computes the same statistics from the stored sales of the last
+90 days. Each item's baseline also carries its DMarket seller fee, read from `customized-fees` on every
+run, because DMarket's fee depends on the item (docs/dmarket_api.md). The first run reads 90 days of sales
+and takes a few hours; a run that stops carries on where it stopped.
+
+Each run turns the statistics into one baseline per item (see shared_utils.baselines) and stores the
+result as a new, dated build in `baseline_builds` and `venue_baselines`. Builds are never overwritten. The
+backend serves the newest build and the listener loads it into the edge Redis.
 
 The edge PC is not always on, so nothing here depends on running at a fixed time. A run only builds
 when the newest build is older than `--max-age-hours`, and `--loop` checks again every interval, so a
@@ -14,6 +21,7 @@ Usage (from apps/analytics):
     uv run python build_baselines.py            # build if the newest build is older than 20 hours
     uv run python build_baselines.py --force    # build now
     uv run python build_baselines.py --loop     # keep checking every hour (the baseline-builder service)
+    uv run python build_baselines.py --venue dmarket --loop   # the baseline-builder-dmarket service
 """
 
 import asyncio
@@ -30,6 +38,7 @@ from sqlmodel import col
 
 setup_script_environment(__file__)
 
+import dmarket_sales
 from prefect import flow, get_run_logger, task
 from shared_utils import (
     BASELINE_METHOD,
@@ -40,12 +49,17 @@ from shared_utils import (
     utc_now_naive,
     validate_required_env,
 )
+from shared_utils.baselines import VENUE_SALES_METHOD
 from shared_utils.db_connection import async_engine
+from shared_utils.dmarket import DMarketClient, DMarketKeys, FeeSchedule
+from shared_utils.item_classifier import parse_version_from_name
 from shared_utils.models import BaselineBuild, VenueBaseline
 
 logger = get_logger("analytics.build_baselines")
 
 VENUE = "skinport"
+DMARKET_VENUE = dmarket_sales.VENUE
+VENUES = (VENUE, DMARKET_VENUE)
 SALES_HISTORY_URL = "https://api.skinport.com/v1/sales/history"
 DEFAULT_MAX_AGE_HOURS = 20.0
 DEFAULT_CHECK_INTERVAL_MINUTES = 60.0
@@ -54,6 +68,14 @@ DAILY_MEDIAN_LOOKBACK_DAYS = 30
 _INSERT_CHUNK_SIZE = 1000
 # The --loop service touches this file after every successful check; its healthcheck reads the age.
 HEARTBEAT_PATH = Path("/tmp/baseline-builder.heartbeat")
+# The DMarket service has its own, touched during a long sales sync too.
+DMARKET_HEARTBEAT_PATH = Path("/tmp/baseline-builder-dmarket.heartbeat")
+# The DMarket builder's share of the account's 30 requests a second; the listener uses up to 10.
+DMARKET_REQUESTS_PER_SECOND = 10.0
+# The heartbeat is touched after every this many titles of a sales sync.
+DMARKET_HEARTBEAT_EVERY_TITLES = 100
+# A build is refused when more titles than this share failed to sync: the stored sales would be stale.
+DMARKET_MAX_FAILED_SHARE = 0.5
 # Three missed hourly checks in a row mark the service unhealthy.
 HEARTBEAT_MAX_AGE_SECONDS = 3 * 3600
 
@@ -140,15 +162,16 @@ def baseline_row(build_id: int, baseline: ItemBaseline) -> dict[str, Any]:
         "min_30d_cents": baseline.min_30d_cents,
         "volume_30d": baseline.volume_30d,
         "volume_90d": baseline.volume_90d,
+        "seller_fee_bps": baseline.seller_fee_bps,
     }
 
 
-async def save_build(venue: str, built_at: datetime, baselines: list[ItemBaseline]) -> int:
+async def save_build(venue: str, built_at: datetime, baselines: list[ItemBaseline], method: str = BASELINE_METHOD) -> int:
     """Store one build and its rows in a single transaction; returns the build ID."""
     async with async_engine.begin() as conn:
         result = await conn.execute(
             insert(BaselineBuild)
-            .values(venue=venue, method=BASELINE_METHOD, built_at=built_at, item_count=len(baselines))
+            .values(venue=venue, method=method, built_at=built_at, item_count=len(baselines))
             .returning(col(BaselineBuild.id))
         )
         # The model types the key as optional because it is unset before insert; RETURNING always has it.
@@ -192,6 +215,74 @@ async def build_venue_baselines(max_age_hours: float = DEFAULT_MAX_AGE_HOURS, fo
     return build_id
 
 
+def with_dmarket_fees(baselines: list[ItemBaseline], fees: FeeSchedule) -> list[ItemBaseline]:
+    """Each baseline with its item's DMarket seller fee at the baseline's latest price."""
+    priced = []
+    for baseline in baselines:
+        title = parse_version_from_name(baseline.market_hash_name)[0]
+        priced.append(baseline.with_seller_fee(fees.fee_bps(title, baseline.latest_price_cents)))
+    return priced
+
+
+@flow(name="baseline-builder-dmarket")
+async def build_dmarket_baselines(
+    max_age_hours: float = DEFAULT_MAX_AGE_HOURS,
+    force: bool = False,
+    requests_per_second: float = DMARKET_REQUESTS_PER_SECOND,
+    heartbeat_path: Path | None = None,
+) -> int | None:
+    """Sync DMarket's sales, then build and store a DMarket build unless a recent one exists."""
+    run_logger = get_run_logger()
+    now = utc_now_naive()
+    newest = await latest_build_time(DMARKET_VENUE)
+    if not force and newest is not None and now - newest < timedelta(hours=max_age_hours):
+        run_logger.info("[BASELINES] Newest %s build is from %s; nothing to do.", DMARKET_VENUE, newest.isoformat())
+        return None
+
+    titles = await dmarket_sales.skinport_titles(async_engine)
+    if not titles:
+        raise RuntimeError("No Skinport build to take the item titles from; build Skinport baselines first.")
+
+    def on_progress(done: int) -> None:
+        if heartbeat_path is not None and done % DMARKET_HEARTBEAT_EVERY_TITLES == 0:
+            record_heartbeat(heartbeat_path)
+        if done % 1000 == 0:
+            run_logger.info("[DMARKET] Sales synced for %d of %d titles.", done, len(titles))
+
+    timeout = aiohttp.ClientTimeout(total=60, connect=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        client = DMarketClient(DMarketKeys.from_env(), session, requests_per_second)
+        fees = await client.fee_schedule()
+        summary = await dmarket_sales.sync_sales(client, async_engine, titles, now, on_progress)
+    run_logger.info(
+        "[DMARKET] Synced %d titles in %d requests: %d sales read, %d titles failed.",
+        summary.titles,
+        summary.requests,
+        summary.sales_read,
+        len(summary.failed_titles),
+    )
+    if len(summary.failed_titles) > DMARKET_MAX_FAILED_SHARE * summary.titles:
+        failed = len(summary.failed_titles)
+        raise RuntimeError(f"{failed} of {summary.titles} DMarket titles failed to sync; not building on stale sales.")
+
+    histories = [history async for history in dmarket_sales.offer_sale_histories(async_engine, now)]
+    earlier = await load_daily_medians(DMARKET_VENUE, now - timedelta(days=DAILY_MEDIAN_LOOKBACK_DAYS))
+    baselines = with_dmarket_fees(build_baselines(histories, earlier, now.date()), fees)
+    if not baselines:
+        raise RuntimeError(f"No {DMARKET_VENUE} item had enough sales for a baseline; refusing to store an empty build.")
+
+    build_id = await save_build(DMARKET_VENUE, now, baselines, VENUE_SALES_METHOD)
+    run_logger.info(
+        "[BASELINES] Stored %s build %d: %d baselines from %d items with sales (%d titles on the reduced fee list).",
+        DMARKET_VENUE,
+        build_id,
+        len(baselines),
+        len(histories),
+        len(fees.reduced),
+    )
+    return build_id
+
+
 def record_heartbeat(path: Path = HEARTBEAT_PATH) -> None:
     path.touch()
 
@@ -204,12 +295,23 @@ def heartbeat_is_fresh(path: Path = HEARTBEAT_PATH, max_age_seconds: float = HEA
         return False
 
 
-async def run_forever(max_age_hours: float, check_interval_minutes: float) -> None:  # pragma: no cover - service loop
-    """The baseline-builder service: check on start, then every interval. A failed run is retried next time."""
+def heartbeat_path_for(venue: str) -> Path:
+    return DMARKET_HEARTBEAT_PATH if venue == DMARKET_VENUE else HEARTBEAT_PATH
+
+
+async def build_once(venue: str, max_age_hours: float, force: bool = False) -> int | None:
+    """One check of one venue's builder."""
+    if venue == DMARKET_VENUE:
+        return await build_dmarket_baselines(max_age_hours=max_age_hours, force=force, heartbeat_path=heartbeat_path_for(venue))
+    return await build_venue_baselines(max_age_hours=max_age_hours, force=force)
+
+
+async def run_forever(venue: str, max_age_hours: float, check_interval_minutes: float) -> None:  # pragma: no cover
+    """A baseline-builder service: check on start, then every interval. A failed run is retried next time."""
     while True:
         try:
-            await build_venue_baselines(max_age_hours=max_age_hours)
-            record_heartbeat()
+            await build_once(venue, max_age_hours)
+            record_heartbeat(heartbeat_path_for(venue))
         # Broad on purpose: one failed run (network, database) must not stop the service.
         except Exception:
             logger.exception("[BASELINES] Build failed; retrying in %.0f minutes.", check_interval_minutes)
@@ -219,7 +321,8 @@ async def run_forever(max_age_hours: float, check_interval_minutes: float) -> No
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     import argparse
 
-    parser = argparse.ArgumentParser(description="Build current Skinport baselines from Skinport's sales history.")
+    parser = argparse.ArgumentParser(description="Build current baselines for a venue from its own sales.")
+    parser.add_argument("--venue", choices=VENUES, default=VENUE, help=f"Venue to build (default: {VENUE})")
     parser.add_argument("--force", action="store_true", help="Build even if a recent build exists")
     parser.add_argument(
         "--max-age-hours",
@@ -236,8 +339,11 @@ if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via un
     )
     args = parser.parse_args()
 
-    validate_required_env(["DATABASE_URL"])
+    required_env = ["DATABASE_URL"]
+    if args.venue == DMARKET_VENUE:
+        required_env += ["DMARKET_PUBLIC_KEY", "DMARKET_SECRET_KEY"]
+    validate_required_env(required_env)
     if args.loop:
-        asyncio.run(run_forever(args.max_age_hours, args.check_interval_minutes))
+        asyncio.run(run_forever(args.venue, args.max_age_hours, args.check_interval_minutes))
     else:
-        asyncio.run(build_venue_baselines(max_age_hours=args.max_age_hours, force=args.force))
+        asyncio.run(build_once(args.venue, args.max_age_hours, force=args.force))

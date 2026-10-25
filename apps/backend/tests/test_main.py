@@ -850,6 +850,18 @@ def test_latest_baselines_serves_the_newest_build_with_sticker_prices(client):
     assert body["sticker_prices"] == {"Crown (Foil)": 90000}
 
 
+def test_latest_baselines_serve_a_per_item_seller_fee_only_where_it_is_set(client):
+    venue = f"venue-{uuid4().hex[:8]}"
+    reduced = {**_baseline_row("AK-47 | Redline (Field-Tested)", 2500), "seller_fee_bps": 200}
+    _store_build(venue, "2026-10-25T12:00:00", [reduced, _baseline_row("Revolution Case", 18)])
+
+    baselines = client.get(f"/api/v1/baselines/{venue}/latest").json()["baselines"]
+
+    # DMarket charges per item (#339); a venue with fee tiers sends no fee field.
+    assert baselines["AK-47 | Redline (Field-Tested)"]["seller_fee_bps"] == 200
+    assert "seller_fee_bps" not in baselines["Revolution Case"]
+
+
 def test_latest_baselines_returns_no_content_when_the_caller_is_current(client):
     venue = f"venue-{uuid4().hex[:8]}"
     build_id = _store_build(venue, "2026-09-26T12:00:00", [_baseline_row("AK-47 | Redline (Field-Tested)", 2739)])

@@ -1,5 +1,6 @@
 import pytest
 from shared_utils.pnl import (
+    DMARKET_FEES,
     RESALE_VENUES,
     SKINPORT_FEES,
     VENUE_FEES,
@@ -214,7 +215,13 @@ def test_waxpeer_fee_schedule():
 
 @pytest.mark.parametrize(
     ("venue", "expected"),
-    [("waxpeer", "skinport"), ("Waxpeer", "skinport"), ("skinport", "skinport"), ("SKINPORT", "skinport")],
+    [
+        ("waxpeer", "skinport"),
+        ("Waxpeer", "skinport"),
+        ("skinport", "skinport"),
+        ("SKINPORT", "skinport"),
+        ("dmarket", "dmarket"),
+    ],
 )
 def test_resale_venue(venue, expected):
     assert resale_venue_for(venue) == expected
@@ -230,3 +237,39 @@ def test_waxpeer_listing_resold_on_skinport():
     # Buy on Waxpeer for $10.00 (no buyer fee), resell on Skinport for $12.00 minus its 8% seller fee.
     margin = net_resale_margin_cents(1000, 1200, buy_fees=WAXPEER_FEES, sell_fees=fees_for(resale_venue_for("waxpeer")))
     assert margin == 1200 - 96 - 1000
+
+
+def test_dmarket_fee_schedule():
+    # 10% default seller fee, no buyer fee, 7 day hold until verified (checked 2026-10-25, docs/dmarket_api.md).
+    assert fees_for("dmarket") is DMARKET_FEES
+    assert seller_fee_cents(10_000, DMARKET_FEES) == 1_000
+    assert seller_fee_cents(1_000_000, DMARKET_FEES) == 100_000
+    assert buyer_fee_cents(10_000, DMARKET_FEES) == 0
+    assert DMARKET_FEES.hold_seconds == 7 * 86_400
+
+
+@pytest.mark.parametrize(
+    ("resale_price_cents", "item_fee_bps", "expected_fee_cents"),
+    [
+        (10_000, 200, 200),  # a title on DMarket's reduced list pays 2%
+        (10_001, 200, 201),  # 200.02 rounds up
+        (10_000, 1000, 1_000),  # the default, passed explicitly
+        (10_000, 0, 0),
+        (10_000, None, 1_000),  # no item fee: the venue tiers apply
+    ],
+    ids=["reduced", "round_up", "default", "zero", "tiers"],
+)
+def test_item_fee_replaces_the_venue_tiers(resale_price_cents, item_fee_bps, expected_fee_cents):
+    assert seller_fee_cents(resale_price_cents, DMARKET_FEES, item_fee_bps) == expected_fee_cents
+
+
+@pytest.mark.parametrize("item_fee_bps", [-1, 10_000])
+def test_out_of_range_item_fee_is_rejected(item_fee_bps):
+    with pytest.raises(ValueError, match="item_fee_bps"):
+        seller_fee_cents(1000, DMARKET_FEES, item_fee_bps)
+
+
+def test_dmarket_margin_with_the_item_fee():
+    # Buy for $10.00, resell on DMarket for $12.00: 2% on a reduced title, 10% on any other.
+    assert net_resale_margin_cents(1000, 1200, buy_fees=DMARKET_FEES, sell_item_fee_bps=200) == 1200 - 24 - 1000
+    assert net_resale_margin_cents(1000, 1200, buy_fees=DMARKET_FEES) == 1200 - 120 - 1000

@@ -3,7 +3,9 @@ Per venue item baselines: the normal price record the listener's Z score and DRE
 against, built from recent sales on that venue.
 
 Skinport baselines come from one `/v1/sales/history` entry per item (min, max, avg, median and volume
-over the last 24 hours, 7, 30 and 90 days). The mapping is described in docs/data_sources.md:
+over the last 24 hours, 7, 30 and 90 days). DMarket baselines come from the same statistics computed over
+the item's stored sales (`SalesHistory.from_sales`, docs/dmarket_api.md). The mapping is described in
+docs/data_sources.md:
 
 - latest price: 24 hour median when the day had enough sales, else the 7 day median, else the 30 day median
 - 30 and 90 day averages: the 30 and 90 day medians (sticker and pattern premiums pull the mean up)
@@ -16,14 +18,17 @@ An item with fewer than `MIN_SALES_30D` sales in 30 days gets no baseline, so th
 
 import math
 import statistics
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from typing import Any
 
 from .item_classifier import build_versioned_name
 from .pricing_utils import edge_baseline_payload, to_cents
 
 BASELINE_METHOD = "sales-history-v1"
+# Baselines computed from a venue's individual sales stored in `venue_sales` (DMarket).
+VENUE_SALES_METHOD = "venue-sales-v1"
 
 MIN_SALES_30D = 5
 MIN_SALES_24H_FOR_LATEST = 5
@@ -41,6 +46,7 @@ VOLATILITY_FROM_DAILY_MEDIANS = "daily_medians"
 STICKER_ITEM_PREFIX = "Sticker | "
 
 _WINDOW_KEYS = ("last_24_hours", "last_7_days", "last_30_days", "last_90_days")
+_WINDOW_LENGTHS = (timedelta(hours=24), timedelta(days=7), timedelta(days=30), timedelta(days=90))
 
 
 def edge_baselines_key(venue: str) -> str:
@@ -98,6 +104,19 @@ class SalesWindow:
             volume=volume if isinstance(volume, int) and volume > 0 else 0,
         )
 
+    @classmethod
+    def from_prices(cls, prices_cents: Sequence[int]) -> "SalesWindow":
+        """Statistics of the sales in one window. The median of an even count is the mean of the middle two, as Skinport's."""
+        if not prices_cents:
+            return cls(None, None, None, None, 0)
+        return cls(
+            min_cents=min(prices_cents),
+            max_cents=max(prices_cents),
+            avg_cents=round(statistics.fmean(prices_cents)),
+            median_cents=round(statistics.median(prices_cents)),
+            volume=len(prices_cents),
+        )
+
     def has_median(self, min_volume: int = 1) -> bool:
         return self.median_cents is not None and self.median_cents > 0 and self.volume >= min_volume
 
@@ -124,6 +143,20 @@ class SalesHistory:
         windows = [SalesWindow.from_skinport(entry.get(key)) for key in _WINDOW_KEYS]
         return cls(build_versioned_name(name, version if isinstance(version, str) else None), *windows)
 
+    @classmethod
+    def from_sales(cls, market_hash_name: str, sales: Iterable[tuple[datetime, int]], now: datetime) -> "SalesHistory":
+        """
+        The windows of Skinport's sales history computed from individual sales (sold_at, price in cents),
+        for a venue that publishes its sales one by one (DMarket). A window holds the sales in
+        (now - length, now]; sales after `now` are ignored.
+        """
+        ordered = [(sold_at, price) for sold_at, price in sales if sold_at <= now]
+        windows = [
+            SalesWindow.from_prices([price for sold_at, price in ordered if sold_at > now - length])
+            for length in _WINDOW_LENGTHS
+        ]
+        return cls(market_hash_name, *windows)
+
 
 @dataclass(frozen=True, slots=True)
 class ItemBaseline:
@@ -145,6 +178,11 @@ class ItemBaseline:
     min_30d_cents: int
     volume_30d: int
     volume_90d: int
+    # The item's own seller fee on a venue that charges per item (DMarket); None where the venue's tiers apply.
+    seller_fee_bps: int | None = None
+
+    def with_seller_fee(self, seller_fee_bps: int | None) -> "ItemBaseline":
+        return replace(self, seller_fee_bps=seller_fee_bps)
 
     def edge_payload(self) -> dict[str, Any]:
         """The document the edge reads for this item."""
@@ -155,6 +193,7 @@ class ItemBaseline:
             volatility_cents=self.volatility_cents,
             drift_percent=self.drift_percent,
             avg_volume_30d=self.avg_volume_30d,
+            seller_fee_bps=self.seller_fee_bps,
         )
 
 

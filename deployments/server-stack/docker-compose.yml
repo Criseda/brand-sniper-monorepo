@@ -331,6 +331,39 @@ services:
       start_period: 15m
       retries: 2
 
+  # DMarket baselines from DMarket's own sales (#339). Needs DMARKET_PUBLIC_KEY and DMARKET_SECRET_KEY
+  # in apps/analytics/.env. The first run reads 90 days of sales and takes a few hours; the heartbeat is
+  # touched every 100 titles while it runs.
+  baseline-builder-dmarket:
+    build:
+      context: ../../
+      dockerfile: apps/analytics/Dockerfile
+    container_name: sniper_baseline_builder_dmarket
+    command: ["uv", "run", "python", "build_baselines.py", "--venue", "dmarket", "--loop"]
+    env_file:
+      - ../../.env
+      - ../../apps/analytics/.env
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+    networks:
+      - application
+      - data
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import sys, build_baselines; sys.exit(0 if build_baselines.heartbeat_is_fresh(build_baselines.DMARKET_HEARTBEAT_PATH) else 1)"]
+      interval: 5m
+      timeout: 30s
+      start_period: 15m
+      retries: 2
+
   # ---------------------------------------------------------------------------
   # APPLICATION LAYER: Macro Analytics & Adversarial CFO Pipeline  (one-shot batch job)
   # Run manually: docker compose run analytics
