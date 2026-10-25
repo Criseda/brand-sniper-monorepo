@@ -170,6 +170,12 @@ To build right now, for example after changing the method:
 docker compose run --rm analytics uv run python build_baselines.py --force
 ```
 
+The `baseline-builder-dmarket` service does the same for DMarket (#339). It needs `DMARKET_PUBLIC_KEY` and
+`DMARKET_SECRET_KEY` in `apps/analytics/.env`, and a Skinport build to take the item titles from. Each run
+first copies every title's new sales into `venue_sales`, then builds from the stored sales, so its first run
+reads 90 days of sales and takes a few hours at 10 requests a second. If it stops, the next run carries on
+where it stopped. The details are in [`dmarket_api.md`](dmarket_api.md).
+
 The listener loads the newest build when it starts and checks for a newer one every 15 minutes
 (`BASELINE_REFRESH_SECONDS`). While it has no baselines, or the loaded build is older than
 `BASELINE_MAX_AGE_HOURS` (48), it logs an error every minute, `listener_baselines_loaded` or

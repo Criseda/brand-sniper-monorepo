@@ -34,6 +34,15 @@ Current Waxpeer parameters (checked 2026-09-30):
   when Steam's trade protection ends, and sale proceeds stay on the hold balance for 7 days
   (https://waxpeer.com/faq/trade-lock, https://waxpeer.com/faq/hold-balance).
 
+Current DMarket parameters (checked 2026-10-25, docs/dmarket_api.md):
+- Seller fee: 10% by default. `GET /exchange/v1/customized-fees` lists the titles with a reduced fee
+  (11,780 titles at 2% on 2026-10-25, each up to a maximum price), renewed every few days. The fee
+  depends on the item, so the DMarket baseline builder stores each item's fee with its baseline and
+  callers pass it as `item_fee_bps`. Without it the 10% default applies, which never overstates a margin.
+- Buyer fee: none on the listing price (DMarket FAQ, "the buyer pays no fees for this operation").
+- Trade hold: 7 days until a real purchase shows DMarket's hold. Bot held listings carry Steam's trade
+  lock of up to 7 days.
+
 A venue with no sales data of its own is judged against another venue: `resale_venue_for` names the
 venue whose baselines score its listings, whose sales label them, and whose seller fee applies on
 resale. Waxpeer publishes no sales, so its listings are judged against Skinport (docs/waxpeer_feed.md).
@@ -115,10 +124,20 @@ WAXPEER_FEES = VenueFees(
     min_margin_cents=0,
 )
 
+# The default fee only: most items pay a per item fee, passed as `item_fee_bps` (see the module docstring).
+DMARKET_FEES = VenueFees(
+    venue="dmarket",
+    fee_tiers=(FeeTier(min_price_cents=0, fee_bps=1000),),
+    buyer_fee_bps=0,
+    hold_seconds=7 * SECONDS_PER_DAY,
+    min_margin_cents=0,
+)
+
 # Every venue the system can price. A venue missing here cannot be traded or labeled.
 VENUE_FEES: dict[str, VenueFees] = {
     SKINPORT_FEES.venue: SKINPORT_FEES,
     WAXPEER_FEES.venue: WAXPEER_FEES,
+    DMARKET_FEES.venue: DMARKET_FEES,
 }
 
 # Venues whose listings are judged against, and resold on, another venue. Any other venue resells
@@ -143,11 +162,20 @@ def resale_venue_for(venue: str) -> str:
     return RESALE_VENUES.get(buy_venue, buy_venue)
 
 
-def seller_fee_cents(resale_price_cents: int, fees: VenueFees) -> int:
-    """Seller fee on a resale, rounded up to the next cent."""
+def seller_fee_cents(resale_price_cents: int, fees: VenueFees, item_fee_bps: int | None = None) -> int:
+    """Seller fee on a resale, rounded up to the next cent.
+
+    `item_fee_bps` is the item's own fee on a venue whose fee depends on the item (DMarket), and replaces
+    the venue's price tiers. Without it the tiers apply.
+    """
     if resale_price_cents < 0:
         raise ValueError("resale_price_cents must not be negative")
-    fee_bps = fees.seller_fee_bps(resale_price_cents)
+    if item_fee_bps is None:
+        fee_bps = fees.seller_fee_bps(resale_price_cents)
+    elif 0 <= item_fee_bps < BASIS_POINTS:
+        fee_bps = item_fee_bps
+    else:
+        raise ValueError(f"item_fee_bps must be in [0, {BASIS_POINTS}), got {item_fee_bps}")
     return _fee_rounded_up_cents(resale_price_cents, fee_bps)
 
 
@@ -167,15 +195,17 @@ def net_resale_margin_cents(
     resale_price_cents: int,
     buy_fees: VenueFees,
     sell_fees: VenueFees | None = None,
+    sell_item_fee_bps: int | None = None,
 ) -> int:
     """Profit in cents from buying at `buy_price_cents` and reselling at `resale_price_cents`, after fees.
 
     `buy_fees` belongs to the venue the item is bought on and `sell_fees` to the venue it is resold on.
-    Without `sell_fees` the item is resold on the venue it was bought on.
+    Without `sell_fees` the item is resold on the venue it was bought on. `sell_item_fee_bps` is the
+    item's seller fee on the sell venue when that venue charges per item (see `seller_fee_cents`).
     """
     if sell_fees is None:
         sell_fees = buy_fees
-    proceeds_cents = resale_price_cents - seller_fee_cents(resale_price_cents, sell_fees)
+    proceeds_cents = resale_price_cents - seller_fee_cents(resale_price_cents, sell_fees, sell_item_fee_bps)
     cost_cents = buy_price_cents + buyer_fee_cents(buy_price_cents, buy_fees)
     return proceeds_cents - cost_cents
 

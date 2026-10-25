@@ -1,0 +1,78 @@
+{
+ "defaultFee": {
+  "minAmount": 1,
+  "fraction": "0.1"
+ },
+ "reducedFees": [
+  {
+   "title": "Sticker | Twistzz | London 2018",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "Sticker | TRY (Gold) | Rio 2022",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "StatTrak™ MP5-SD | Phosphor (Field-Tested)",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "Sticker | Twistzz (Gold) | Austin 2025",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "Desert Eagle | Directive (Minimal Wear)",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "Office Pin",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "Sticker Slab | apEX (Gold, Champion) | Paris 2023",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "AWP | POP AWP (Field-Tested)",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "P250 | Mint Kimono (Minimal Wear)",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  },
+  {
+   "title": "Sticker | Edward (Foil) | London 2018",
+   "fraction": "0.02",
+   "minPrice": 0,
+   "maxPrice": 50000,
+   "expiresAt": 1793131200
+  }
+ ]
+}

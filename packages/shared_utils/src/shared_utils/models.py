@@ -196,6 +196,42 @@ class VenueBaseline(SQLModel, table=True):
     volume_30d: int = Field(nullable=False)
     volume_90d: int = Field(nullable=False)
 
+    # The item's seller fee on a venue that charges per item (DMarket), in basis points. NULL where the
+    # venue's own fee tiers apply (shared_utils.pnl).
+    seller_fee_bps: int | None = Field(default=None)
+
+
+class VenueSale(SQLModel, table=True):
+    """
+    One sale from a venue's own sales history (DMarket's `last-sales`, #339). The DMarket baselines and
+    labels are computed from these rows. A sale names no listing.
+
+    The baseline builder reads each title back to its newest stored sale and inserts with ON CONFLICT DO
+    NOTHING on (`venue`, `title`, `sale_key`), so a stopped run carries on and a rerun stores nothing twice.
+    """
+
+    __tablename__: str = "venue_sales"
+
+    id: int | None = Field(default=None, sa_column=Column(BigIdentity, primary_key=True, autoincrement=True))
+    venue: str = Field(nullable=False, max_length=32)  # e.g. dmarket
+    title: str = Field(nullable=False)  # The venue's title as queried, without the Doppler phase
+    market_hash_name: str = Field(nullable=False)  # Versioned name (phase included), as ticks carry it
+    sold_at: NaiveDatetime = Field(nullable=False)  # The venue's sale time (UTC, whole seconds)
+    price_cents: int = Field(nullable=False)
+    sale_type: str = Field(nullable=False, max_length=16)  # offer (a listing was bought) or target (a buy order filled)
+    float_value: float | None = Field(default=None)
+    paint_seed: int | None = Field(default=None)
+    # Tells the sale apart from the title's other sales, including identical ones in the same second
+    # (shared_utils.dmarket.sale_keys).
+    sale_key: str = Field(nullable=False, max_length=128)
+    fetched_at: NaiveDatetime = Field(sa_column_kwargs={"server_default": text("TIMEZONE('utc', NOW())")})
+
+    __table_args__ = (
+        Index("uq_venue_sales_venue_title_sale_key", "venue", "title", "sale_key", unique=True),
+        # Baselines and labels read one item's sales over a time range.
+        Index("ix_venue_sales_venue_name_sold_at", "venue", "market_hash_name", "sold_at"),
+    )
+
 
 class SimulatedTrade(SQLModel, table=True):
     """
