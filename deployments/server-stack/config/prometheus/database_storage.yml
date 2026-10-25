@@ -1,0 +1,16 @@
+# PostgreSQL does not know how big the disk under a hosted database is, so the plan's storage size
+# is set here by hand. When the database moves to another plan or host, change the 32 (GiB) in the
+# first rule, then restart Prometheus (docker restart sniper_prometheus).
+#
+# Current plan: Azure Database for PostgreSQL Flexible Server, Burstable B1ms, 32 GiB storage.
+groups:
+  - name: sniper_database_storage
+    interval: 60s
+    rules:
+      - record: sniper:database_storage_limit_bytes
+        expr: vector(32 * 1024 * 1024 * 1024)
+
+      # Every database on the server plus the WAL. A hosted provider also counts its own server logs and
+      # temporary files, so its own figure reads a little higher than this.
+      - record: sniper:database_storage_used_bytes
+        expr: sum(pg_database_size_bytes) + sum(pg_wal_size_bytes)

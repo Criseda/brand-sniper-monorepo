@@ -4,6 +4,7 @@ global:
 
 rule_files:
   - /etc/prometheus/alerting_rules.yml
+  - /etc/prometheus/database_storage.yml
 
 scrape_configs:
   - job_name: 'sniper-backend'
@@ -23,3 +24,11 @@ scrape_configs:
   - job_name: 'sniper-redis'
     static_configs:
       - targets: ['redis-exporter:9121']
+
+  # Every scrape runs a few dozen queries against the database, so once a minute is enough
+  # for sizes and connections and keeps the load off a small hosted server.
+  - job_name: 'sniper-postgres'
+    scrape_interval: 60s
+    scrape_timeout: 30s
+    static_configs:
+      - targets: ['postgres-exporter:9187']

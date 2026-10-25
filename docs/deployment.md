@@ -25,6 +25,7 @@ docker compose up -d
 | Prometheus | `prom/prometheus:v3.13.2` | `sniper_prometheus` | always |
 | Grafana | `grafana/grafana:13.1.1` | `sniper_grafana` | always |
 | Redis exporter | `oliver006/redis_exporter:v1.88.0-alpine` | `sniper_redis_exporter` | always |
+| Postgres exporter | `quay.io/prometheuscommunity/postgres-exporter:v0.20.1` | `sniper_postgres_exporter` | always |
 | Backend | custom build | `sniper_backend` | always |
 | Skinport listener | custom build (listener image, `LISTENER_VENUE=skinport`) | `sniper_listener_skinport` | always |
 | Waxpeer listener | custom build (listener image, `LISTENER_VENUE=waxpeer`) | `sniper_listener_waxpeer` | always |
@@ -71,7 +72,7 @@ Memory limits are hard caps, not reservations:
 | Server Listener | 1 GiB |
 | Edge Listener | 768 MiB |
 | Prometheus, Grafana, Backend | 512 MiB each |
-| Redis exporter | 128 MiB |
+| Redis exporter, Postgres exporter | 128 MiB each |
 
 Use `docker compose ps` to inspect health and `docker stats` to observe live resource use. Adjust limits through an explicit deployment override only after measuring the target host.
 
@@ -454,6 +455,7 @@ The server stack separates service tiers across three bridge networks:
 | Prometheus | | | yes |
 | Grafana | | | yes |
 | Redis exporter | yes | | yes |
+| Postgres exporter | | | yes |
 | Backend | yes | yes | yes |
 | Listener | yes | yes | yes |
 | Analytics | yes | yes | |
@@ -467,7 +469,7 @@ The edge stack intentionally retains one bridge network because it contains only
 
 - Backend `8080` remains externally bound so authenticated remote edge nodes can ingest into it.
 - Grafana `3000`, Prefect `4200`, MLflow `5000`, and Prometheus `9090` bind to `127.0.0.1`.
-- Server Redis and Redis exporter are container-internal and have no host-published ports.
+- Server Redis, Redis exporter and Postgres exporter are container-internal and have no host-published ports.
 - Edge Redis binds to `127.0.0.1:6380`.
 - Optional local PostgreSQL binds to `127.0.0.1:5432`.
 
@@ -475,10 +477,39 @@ Use an authenticated reverse proxy, VPN, or SSH tunnel when an administrative UI
 
 ## Monitoring
 
-- **Prometheus** — `http://localhost:9090` — scrapes backend, listener, and Redis exporter metrics
+- **Prometheus** — `http://localhost:9090` — scrapes backend, listener, Redis exporter and Postgres exporter metrics
 - **Grafana** — `http://localhost:3000` — pre-built dashboards (using credentials in `.env`)
 - **MLflow** — `http://localhost:5000` — model registry, CFO audit traces
 - **Prefect** — `http://localhost:4200` — pipeline runs and task logs
+
+### Database monitoring
+
+The Postgres exporter feeds the Database row of the Grafana dashboard: storage used against the plan,
+growth per day and time until full, the largest and fastest growing tables, connections, cache hit ratio,
+transactions, the longest open transaction, deadlocks and dead rows. It works with any PostgreSQL the apps
+use. It connects with `DATABASE_URL` and drops the `+asyncpg` driver suffix, so moving the database to
+another host needs no change here.
+
+PostgreSQL cannot see how big the disk under a hosted database is, so I set the plan's storage size by hand
+in `config/prometheus/database_storage.yml` (32 GiB for the Azure B1ms plan). When the plan or host changes,
+I change that number and run `docker restart sniper_prometheus`. Used storage counts every database on the
+server plus the WAL; the provider also counts its own logs, so its figure reads a little higher. Alerts fire at
+80% and 90% of the limit, and when the growth of the last 12 hours would fill it within a week.
+
+The exporter reuses the app's database user by default. To give it a read only user instead, I create one and
+set `POSTGRES_EXPORTER_DSN` in the root `.env` (on Azure, `pg_monitor` can be granted by the admin user):
+
+```sql
+CREATE ROLE sniper_monitor WITH LOGIN PASSWORD 'choose-a-password';
+GRANT pg_monitor TO sniper_monitor;
+```
+
+```bash
+POSTGRES_EXPORTER_DSN="postgresql://sniper_monitor:choose-a-password@host:5432/brand_sniper?sslmode=require"
+```
+
+Every scrape runs a few dozen queries, so Prometheus scrapes the exporter once a minute instead of every 5
+seconds. Graphs have gaps while the PC running the server stack is off.
 
 ## Production Considerations
 

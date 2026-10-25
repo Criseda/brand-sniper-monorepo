@@ -20,6 +20,46 @@ groups:
         labels: { severity: warning }
         annotations: { summary: "Redis exporter is unreachable" }
 
+      - alert: PostgresExporterDown
+        expr: up{job="sniper-postgres"} == 0
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "Postgres exporter is unreachable" }
+
+      - alert: DatabaseUnreachable
+        expr: pg_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "The exporter cannot connect to PostgreSQL", description: "Check DATABASE_URL (or POSTGRES_EXPORTER_DSN) and the database host's firewall" }
+
+  # The storage limit is set by hand in database_storage.yml.
+  - name: sniper_database
+    interval: 60s
+    rules:
+      - alert: DatabaseStorageHigh
+        expr: sniper:database_storage_used_bytes / scalar(sniper:database_storage_limit_bytes) > 0.8
+        for: 15m
+        labels: { severity: warning }
+        annotations: { summary: "Database storage above 80% of the plan limit", description: "{{ $value | humanizePercentage }} used. Free space or move to a bigger plan, then update database_storage.yml" }
+
+      - alert: DatabaseStorageCritical
+        expr: sniper:database_storage_used_bytes / scalar(sniper:database_storage_limit_bytes) > 0.9
+        for: 15m
+        labels: { severity: critical }
+        annotations: { summary: "Database storage above 90% of the plan limit", description: "{{ $value | humanizePercentage }} used. A hosted database usually turns read-only when it fills up" }
+
+      - alert: DatabaseStorageFullWithinAWeek
+        expr: predict_linear(sniper:database_storage_used_bytes[12h], 7 * 86400) > scalar(sniper:database_storage_limit_bytes)
+        for: 1h
+        labels: { severity: warning }
+        annotations: { summary: "Database storage will reach the plan limit within 7 days at the current growth rate" }
+
+      - alert: DatabaseConnectionsHigh
+        expr: sum(pg_stat_database_numbackends) / scalar(pg_settings_max_connections) > 0.8
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "Database connections above 80% of max_connections", description: "{{ $value | humanizePercentage }} of max_connections in use" }
+
   - name: sniper_performance
     interval: 30s
     rules:

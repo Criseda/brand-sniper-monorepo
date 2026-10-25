@@ -1,12 +1,28 @@
 {
   "uid": "79c80f9c-f2f0-40bd-8eb8-301f8e7ab1f4",
-  "version": 5,
+  "version": 6,
   "title": "Brand Sniper Live Dashboard",
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "10s",
   "schemaVersion": 38,
   "tags": ["sniper", "csgo", "market"],
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "database",
+        "label": "Database",
+        "description": "The database the Postgres exporter connects to (from DATABASE_URL or POSTGRES_EXPORTER_DSN).",
+        "datasource": { "type": "prometheus" },
+        "query": { "query": "label_values(pg_stat_user_tables_table_size_bytes, datname)", "refId": "database" },
+        "definition": "label_values(pg_stat_user_tables_table_size_bytes, datname)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
   "panels": [
     {
       "type": "row",
@@ -263,7 +279,9 @@
       "targets": [
         { "expr": "up{job=\"sniper-backend\"}", "legendFormat": "Backend", "refId": "A" },
         { "expr": "up{job=\"sniper-listener\"}", "legendFormat": "Listener {{listener}}", "refId": "B" },
-        { "expr": "up{job=\"sniper-redis\"}", "legendFormat": "Redis", "refId": "C" }
+        { "expr": "up{job=\"sniper-redis\"}", "legendFormat": "Redis", "refId": "C" },
+        { "expr": "up{job=\"sniper-postgres\"}", "legendFormat": "Postgres exporter", "refId": "D" },
+        { "expr": "pg_up", "legendFormat": "Database", "refId": "E" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -337,6 +355,233 @@
         { "expr": "listener_feed_tracked_listings", "legendFormat": "{{listener}} tracked listings", "refId": "C" }
       ],
       "options": { "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "type": "row",
+      "title": "Database (PostgreSQL)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "collapsed": false
+    },
+    {
+      "type": "gauge",
+      "title": "Storage Used",
+      "description": "Every database on the server plus the WAL, against the plan's storage size set by hand in config/prometheus/database_storage.yml. The hosting provider also counts its own logs, so its figure reads a little higher.",
+      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 45 },
+      "targets": [
+        { "expr": "sniper:database_storage_used_bytes / scalar(sniper:database_storage_limit_bytes)", "legendFormat": "Used", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 0.8 },
+            { "color": "red", "value": 0.9 }
+          ]}
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Storage",
+      "description": "Plan limit is the storage size set in config/prometheus/database_storage.yml. Change it there when the plan or host changes.",
+      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 45 },
+      "targets": [
+        { "expr": "sniper:database_storage_used_bytes", "legendFormat": "Used", "refId": "A" },
+        { "expr": "sniper:database_storage_limit_bytes - sniper:database_storage_used_bytes", "legendFormat": "Left", "refId": "B" },
+        { "expr": "sniper:database_storage_limit_bytes", "legendFormat": "Plan limit", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1 } },
+      "options": { "colorMode": "none", "graphMode": "none", "textMode": "value_and_name" }
+    },
+    {
+      "type": "stat",
+      "title": "Growth and Time Left",
+      "description": "Growth is the average over the last day. Time until full assumes that rate holds; it is empty while the database is not growing. Gaps while the PC is off are skipped, not counted as zero growth.",
+      "gridPos": { "h": 5, "w": 4, "x": 10, "y": 45 },
+      "targets": [
+        { "expr": "deriv(sniper:database_storage_used_bytes[1d]) * 86400", "legendFormat": "Growth per day", "refId": "A" },
+        { "expr": "(sniper:database_storage_limit_bytes - sniper:database_storage_used_bytes) / (deriv(sniper:database_storage_used_bytes[1d]) > 0)", "legendFormat": "Time until full", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "decimals": 1, "noValue": "Not growing" },
+        "overrides": [
+          { "matcher": { "id": "byFrameRefID", "options": "A" }, "properties": [ { "id": "unit", "value": "bytes" } ] },
+          { "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [ { "id": "unit", "value": "s" } ] }
+        ]
+      },
+      "options": { "colorMode": "none", "graphMode": "none", "textMode": "value_and_name" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Storage Used vs Plan Limit",
+      "gridPos": { "h": 5, "w": 10, "x": 14, "y": 45 },
+      "targets": [
+        { "expr": "sniper:database_storage_used_bytes", "legendFormat": "Used", "refId": "A" },
+        { "expr": "sniper:database_storage_limit_bytes", "legendFormat": "Plan limit", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "min": 0 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Plan limit" }, "properties": [
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+            { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+          ]}
+        ]
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Largest Tables",
+      "description": "The ten largest tables in $database, counting the table, its TOAST data and its indexes.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "targets": [
+        {
+          "expr": "topk(10, pg_stat_user_tables_table_size_bytes{datname=\"$database\"} + pg_stat_user_tables_index_size_bytes{datname=\"$database\"})",
+          "instant": true,
+          "legendFormat": "{{schemaname}}.{{relname}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1, "min": 0, "color": { "mode": "continuous-BlYlRd" } } },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Table Growth per Day",
+      "description": "Tables in $database growing by more than 1 MiB a day, table plus indexes, averaged over 6 hours.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "targets": [
+        { "expr": "(deriv(pg_stat_user_tables_table_size_bytes{datname=\"$database\"}[6h]) + deriv(pg_stat_user_tables_index_size_bytes{datname=\"$database\"}[6h])) * 86400 > 1048576", "legendFormat": "{{schemaname}}.{{relname}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections",
+      "description": "Open connections per database against max_connections. Some of max_connections is reserved for superusers and the provider.",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 58 },
+      "targets": [
+        { "expr": "sum by (datname) (pg_stat_database_numbackends{datname!~\"template.*\"}) > 0", "legendFormat": "{{datname}}", "refId": "A" },
+        { "expr": "pg_settings_max_connections", "legendFormat": "max_connections", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "none", "min": 0, "decimals": 0 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "max_connections" }, "properties": [
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+            { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+          ]}
+        ]
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Cache Hit Ratio",
+      "description": "Share of block reads in $database served from shared buffers instead of disk, over 5 minutes. Below about 90% the server is short on memory for the working set.",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 58 },
+      "targets": [
+        { "expr": "rate(pg_stat_database_blks_hit{datname=\"$database\"}[5m]) / (rate(pg_stat_database_blks_hit{datname=\"$database\"}[5m]) + rate(pg_stat_database_blks_read{datname=\"$database\"}[5m]))", "legendFormat": "Hit ratio", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "orange", "value": 0.9 },
+            { "color": "green", "value": 0.98 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Transactions/sec",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 58 },
+      "targets": [
+        { "expr": "rate(pg_stat_database_xact_commit{datname=\"$database\"}[5m])", "legendFormat": "commits", "refId": "A" },
+        { "expr": "rate(pg_stat_database_xact_rollback{datname=\"$database\"}[5m])", "legendFormat": "rollbacks", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "suffix: tx/s", "min": 0 } }
+    },
+    {
+      "type": "stat",
+      "title": "Longest Open Transaction",
+      "description": "The oldest transaction still open on the server. A long one holds back vacuum, so dead rows pile up.",
+      "gridPos": { "h": 5, "w": 3, "x": 18, "y": 58 },
+      "targets": [
+        { "expr": "max(pg_stat_activity_max_tx_duration)", "legendFormat": "Longest", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 300 },
+            { "color": "red", "value": 1800 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "type": "stat",
+      "title": "Deadlocks (selected range)",
+      "gridPos": { "h": 5, "w": 3, "x": 21, "y": 58 },
+      "targets": [
+        { "expr": "round(increase(pg_stat_database_deadlocks{datname=\"$database\"}[$__range]))", "instant": true, "legendFormat": "Deadlocks", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "colorMode": "value", "graphMode": "none" }
+    },
+    {
+      "type": "bargauge",
+      "title": "Dead Rows Waiting for Vacuum",
+      "description": "Deleted or updated rows in $database that still take space until autovacuum reclaims them. Ten tables with the most.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 63 },
+      "targets": [
+        { "expr": "topk(10, pg_stat_user_tables_n_dead_tup{datname=\"$database\"}) > 0", "instant": true, "legendFormat": "{{schemaname}}.{{relname}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "min": 0, "noValue": "No dead rows" } },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows Written/sec by Table",
+      "description": "Inserts, updates and deletes per second for each table in $database that is being written to.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 63 },
+      "targets": [
+        { "expr": "sum by (schemaname, relname) (rate(pg_stat_user_tables_n_tup_ins{datname=\"$database\"}[5m]) + rate(pg_stat_user_tables_n_tup_upd{datname=\"$database\"}[5m]) + rate(pg_stat_user_tables_n_tup_del{datname=\"$database\"}[5m])) > 0", "legendFormat": "{{schemaname}}.{{relname}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "suffix: rows/s", "min": 0 } }
     }
   ]
 }
