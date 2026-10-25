@@ -1,0 +1,649 @@
+{
+ "asiimov": {
+  "sales": [
+   {
+    "price": "97.64",
+    "date": "1792932659",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.348868727684021,
+     "paintSeed": 477,
+     "stickers": [
+      {
+       "collection": "Berlin 2019 | Autograph",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/berlin2019/sig_kennys_foil.20152dc4701c94c847c742cea23d15de8db4ab7c.png",
+       "name": "kennyS (Foil) | Berlin 2019",
+       "rarity": "Foil"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/community/community_2024/paper_bum_a_smoke.75785fcb78d33be977345b5c88db0c8b0a87a460.png",
+       "name": "Bum A Smoke",
+       "rarity": "Paper"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/cph2024/apex_holo.4918cf7c1ccdd43ce4be144afba8649ff65026bb.png",
+       "name": "Apeks (Holo) | Copenhagen 2024",
+       "rarity": "Holo"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/cph2024/apex_holo.4918cf7c1ccdd43ce4be144afba8649ff65026bb.png",
+       "name": "Apeks (Holo) | Copenhagen 2024",
+       "rarity": "Holo"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/cph2024/apex_holo.4918cf7c1ccdd43ce4be144afba8649ff65026bb.png",
+       "name": "Apeks (Holo) | Copenhagen 2024",
+       "rarity": "Holo"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "90.73",
+    "date": "1792909511",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.3247779905796051,
+     "paintSeed": 502
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "91.07",
+    "date": "1792882688",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.28710702061653137,
+     "paintSeed": 483
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "96.5",
+    "date": "1792866990",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.3396622836589813,
+     "paintSeed": 566
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "94.39",
+    "date": "1792844949",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.3491562008857727,
+     "paintSeed": 210
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "93.93",
+    "date": "1792820074",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.36166495084762573,
+     "paintSeed": 746
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "179.9",
+    "date": "1792814062",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.20941273868083954,
+     "paintSeed": 421,
+     "stickers": [
+      {
+       "collection": "IEM Rio 2022",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/rio2022/vita_gold.aa78c33acaf6f11b5e058d00b4e5794ecc38d560.png",
+       "name": "Vitality (Gold) | Rio 2022",
+       "rarity": "Gold"
+      },
+      {
+       "collection": "Stockholm 2021",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/stockh2021/vita_gold.12434b492f3f5ab822ad18c6881b62f3078a21f7.png",
+       "name": "Vitality (Gold) | Stockholm 2021",
+       "rarity": "Gold"
+      },
+      {
+       "collection": "Stockholm 2021 | Autograph",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/stockh2021/sig_zywoo_gold.6393fdb6f5acb0b87b3bc33b6ad8cb52fa1d0fdc.png",
+       "name": "ZywOo (Gold) | Stockholm 2021",
+       "rarity": "Gold"
+      },
+      {
+       "collection": "Berlin 2019 | Autograph",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/berlin2019/sig_zywoo_gold.89860328b6fe6397b4a17d65aab7d66ea499f255.png",
+       "name": "ZywOo (Gold) | Berlin 2019",
+       "rarity": "Gold"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "92.05",
+    "date": "1792794211",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.36963868141174316,
+     "paintSeed": 676,
+     "stickers": [
+      {
+       "collection": "2020 RMR",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/rmr2020/vp_foil.59602a276e8bc5a011db6056448868aab46ca77e.png",
+       "name": "Virtus.pro (Foil) | 2020 RMR",
+       "rarity": "Foil"
+      },
+      {
+       "collection": "2020 RMR",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/rmr2020/vp_foil.59602a276e8bc5a011db6056448868aab46ca77e.png",
+       "name": "Virtus.pro (Foil) | 2020 RMR",
+       "rarity": "Foil"
+      },
+      {
+       "collection": "2020 RMR",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/rmr2020/vp_foil.59602a276e8bc5a011db6056448868aab46ca77e.png",
+       "name": "Virtus.pro (Foil) | 2020 RMR",
+       "rarity": "Foil"
+      },
+      {
+       "collection": "2020 RMR",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/rmr2020/vp_foil.59602a276e8bc5a011db6056448868aab46ca77e.png",
+       "name": "Virtus.pro (Foil) | 2020 RMR",
+       "rarity": "Foil"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "92.15",
+    "date": "1792794211",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.3685273230075836,
+     "paintSeed": 333
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "106.46",
+    "date": "1792780686",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.24948054552078247,
+     "paintSeed": 840,
+     "stickers": [
+      {
+       "collection": "Stockholm 2021 | Autograph",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/stockh2021/sig_s1mple_holo.4ecc068f96c0ac6a531e5f187c98ee403077cf9b.png",
+       "name": "s1mple (Holo) | Stockholm 2021",
+       "rarity": "Holo"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/cph2024/sig_m0nesy_holo.06b2bcea4a43dabed6ee44d35c5d89fab42a5654.png",
+       "name": "m0NESY (Holo) | Copenhagen 2024",
+       "rarity": "Holo"
+      },
+      {
+       "collection": "Antwerp 2022 | Autograph",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/antwerp2022/sig_jame_holo.9648d30ac37b44501e39bc767a4d3c20aa9486d7.png",
+       "name": "Jame (Holo) | Antwerp 2022",
+       "rarity": "Holo"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/sha2024/sig_m0nesy_glitter.5f0822fdcf243aabd2800e84bc39acb7af036fb5.png",
+       "name": "m0NESY (Glitter) | Shanghai 2024",
+       "rarity": "Glitter"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/aus2025/sig_jee.c3fb8b2bef78a763e7b0de9bfced5b10f63db6d8.png",
+       "name": "Jee | Austin 2025",
+       "rarity": "Paper"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "92",
+    "date": "1792771947",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.3601452708244324,
+     "paintSeed": 387,
+     "stickers": [
+      {
+       "collection": "Stockholm 2021",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/stockh2021/vp_holo.ab859180fbc575144283d709750e61fea6d67aa5.png",
+       "name": "Virtus.Pro (Holo) | Stockholm 2021",
+       "rarity": "Holo"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "93.78",
+    "date": "1792764280",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.35337501764297485,
+     "paintSeed": 326,
+     "stickers": [
+      {
+       "collection": "Paris 2023",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/paris2023/flux_glitter.60bf263d95f2085a0f7a10923d0c2751c7c0ba75.png",
+       "name": "Fluxo (Glitter) | Paris 2023",
+       "rarity": "Glitter"
+      },
+      {
+       "collection": "Paris 2023",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/paris2023/flux_glitter.60bf263d95f2085a0f7a10923d0c2751c7c0ba75.png",
+       "name": "Fluxo (Glitter) | Paris 2023",
+       "rarity": "Glitter"
+      },
+      {
+       "collection": "Paris 2023",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/paris2023/flux_glitter.60bf263d95f2085a0f7a10923d0c2751c7c0ba75.png",
+       "name": "Fluxo (Glitter) | Paris 2023",
+       "rarity": "Glitter"
+      },
+      {
+       "collection": "Paris 2023",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/paris2023/flux_holo.6fcbb284c6281860d9fc61d8a8f0add5526d9928.png",
+       "name": "Fluxo (Holo) | Paris 2023",
+       "rarity": "Holo"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "93.95",
+    "date": "1792733380",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.3242661952972412,
+     "paintSeed": 144
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "106.42",
+    "date": "1792706442",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.24159106612205505,
+     "paintSeed": 202
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "89.2",
+    "date": "1792696518",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.3537940979003906,
+     "paintSeed": 870
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "92.84",
+    "date": "1792693668",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "charms": [
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/keychains/missinglink_community_01/kc_missinglink_lilhatchling.d629b8e802e621c9f751f39c741411ed2e9d25eb.png",
+       "name": "Lil' Chirp",
+       "pattern": "54064"
+      }
+     ],
+     "floatValue": 0.26476335525512695,
+     "paintSeed": 96,
+     "stickers": [
+      {
+       "collection": "Espionage",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/community2022/salty_holo.1dd358e881e9d31f0d11c63865f2c7d0ed5be218.png",
+       "name": "Salty (Holo)",
+       "rarity": "Holo"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/sha2024/hero_holo.ede1e62869f28a04619fd74f1fcf5efa090ab24a.png",
+       "name": "HEROIC (Holo) | Shanghai 2024",
+       "rarity": "Holo"
+      }
+     ]
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "92",
+    "date": "1792684479",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.37378108501434326,
+     "paintSeed": 487,
+     "stickers": [
+      {
+       "collection": "10 Year Birthday",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/csgo10/baby_howl_paper.5558a059f209991e7f3feb953f12dca7fe63b913.png",
+       "name": "Baby Howl",
+       "rarity": "Paper"
+      },
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/cph2024/eter_glitter.46ac9aec13eeebc59b93a0ea79e0ed7c304b4b2b.png",
+       "name": "Eternal Fire (Glitter) | Copenhagen 2024",
+       "rarity": "Glitter"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "92.14",
+    "date": "1792668414",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "charms": [
+      {
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/keychains/cologne2026/kc_cologne2026.05d337fcc1a93e8c4eabedc73679b2b92ac8588e.png",
+       "name": "Cologne 2026 Highlight | m0NESY 3 Kills with 1v2 Clutch"
+      }
+     ],
+     "floatValue": 0.32004648447036743,
+     "paintSeed": 159
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "89.97",
+    "date": "1792635370",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.2975063621997833,
+     "paintSeed": 666,
+     "stickers": [
+      {
+       "collection": "Broken Fang",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/broken_fang/battle_scarred_holo.c750322c63efc7d935471b8b34da575ca6210162.png",
+       "name": "Battle Scarred (Holo)",
+       "rarity": "Holo"
+      }
+     ]
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "145.5",
+    "date": "1792606950",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.2077004313468933,
+     "paintSeed": 952,
+     "stickers": [
+      {
+       "collection": "Community Halloween 2014",
+       "image": "https://cdn.steamstatic.com/apps/730/icons/econ/stickers/community02/queenofpain.3e85e1597936ab2053264228078e0cccbddf182e.png",
+       "name": "Queen Of Pain",
+       "rarity": "Paper",
+       "wear": "0.93"
+      }
+     ]
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   }
+  ]
+ },
+ "karambit_doppler_fn": {
+  "sales": [
+   {
+    "price": "1135.01",
+    "date": "1792926111",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.0070445300079882145,
+     "paintSeed": 973,
+     "phaseTitle": "phase-3"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1550",
+    "date": "1792893268",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.011724414303898811,
+     "paintSeed": 661,
+     "phaseTitle": "phase-2"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1174.99",
+    "date": "1792889368",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.023456301540136337,
+     "paintSeed": 951,
+     "phaseTitle": "phase-1"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1107.19",
+    "date": "1792885278",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.046658389270305634,
+     "paintSeed": 280,
+     "phaseTitle": "phase-3"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1149",
+    "date": "1792877139",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.03397708013653755,
+     "paintSeed": 979,
+     "phaseTitle": "phase-1"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1107.05",
+    "date": "1792856697",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.022339720278978348,
+     "paintSeed": 132,
+     "phaseTitle": "phase-3"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1192.99",
+    "date": "1792847091",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.04683405160903931,
+     "paintSeed": 562,
+     "phaseTitle": "phase-3"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1140.5",
+    "date": "1792826992",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.018698113039135933,
+     "paintSeed": 56,
+     "phaseTitle": "phase-4"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1159.99",
+    "date": "1792807092",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.03579230606555939,
+     "paintSeed": 115,
+     "phaseTitle": "phase-3"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1148.99",
+    "date": "1792787919",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.021998409181833267,
+     "paintSeed": 336,
+     "phaseTitle": "phase-1"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1776",
+    "date": "1792786719",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.009074350818991661,
+     "paintSeed": 570,
+     "phaseTitle": "phase-2"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1203",
+    "date": "1792773941",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.06570009887218475,
+     "paintSeed": 199,
+     "phaseTitle": "phase-4"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1128.1",
+    "date": "1792717444",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.03227695822715759,
+     "paintSeed": 129,
+     "phaseTitle": "phase-4"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1204.99",
+    "date": "1792697388",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.0356704480946064,
+     "paintSeed": 203,
+     "phaseTitle": "phase-4"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1138.1",
+    "date": "1792697012",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.03838265687227249,
+     "paintSeed": 273,
+     "phaseTitle": "phase-4"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1098.01",
+    "date": "1792671548",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.022299904376268387,
+     "paintSeed": 934,
+     "phaseTitle": "phase-1"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1535",
+    "date": "1792622709",
+    "txOperationType": "Target",
+    "offerAttributes": {
+     "floatValue": 0.06919462233781815,
+     "paintSeed": 41,
+     "phaseTitle": "phase-2"
+    },
+    "orderAttributes": {
+     "isAdvanced": true
+    }
+   },
+   {
+    "price": "1203",
+    "date": "1792607109",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.05245909094810486,
+     "paintSeed": 710,
+     "phaseTitle": "phase-4"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1649.99",
+    "date": "1792600868",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.03129376843571663,
+     "paintSeed": 852,
+     "phaseTitle": "phase-2"
+    },
+    "orderAttributes": {}
+   },
+   {
+    "price": "1132.25",
+    "date": "1792595981",
+    "txOperationType": "Offer",
+    "offerAttributes": {
+     "floatValue": 0.04334557428956032,
+     "paintSeed": 418,
+     "phaseTitle": "phase-1"
+    },
+    "orderAttributes": {}
+   }
+  ]
+ }
+}
