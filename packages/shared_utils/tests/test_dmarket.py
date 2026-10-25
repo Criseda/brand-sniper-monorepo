@@ -509,3 +509,21 @@ async def test_client_asks_for_the_newest_bot_listings_from_a_cursor():
     url, _headers = session.requests[0]
     assert url.startswith(f"https://api.dmarket.com{OFFERS_PATH}?gameId=a8db&limit=100&orderBy=createdAt&orderDir=desc")
     assert "&cursor=" in url
+
+
+def test_a_listing_without_item_details_has_no_wear_phase_or_stickers():
+    entry = {"offerId": "a", "createdAt": "2026-10-25T13:42:58Z", "priceCents": "45", "attributes": {"title": "X"}}
+
+    offer = parse_offer(entry)
+
+    assert offer is not None
+    assert (offer.float_value, offer.phase, offer.sticker_names, offer.offer_type) == (None, None, (), "")
+
+
+@pytest.mark.asyncio
+async def test_client_asks_for_the_newest_listings_without_a_cursor():
+    client, session, _clock = make_client([FakeResponse(200, {"items": [], "cursor": ""})])
+
+    await client.offers()
+
+    assert "cursor=" not in session.requests[0][0]

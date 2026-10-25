@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,7 +33,13 @@ from scrapers.dmarket import (
     parse_resume_document,
     raw_listing,
 )
-from scrapers.listing_filter import OUTCOME_ABOVE_RESALE_PRICE, OUTCOME_MALFORMED, OUTCOME_NO_BASELINE, OUTCOME_RECORDED
+from scrapers.listing_filter import (
+    OUTCOME_ABOVE_RESALE_PRICE,
+    OUTCOME_MALFORMED,
+    OUTCOME_NO_BASELINE,
+    OUTCOME_RECORDED,
+    RawEventBatch,
+)
 from shared_utils import edge_baseline_meta_key, edge_baselines_key, edge_sticker_prices_key
 from shared_utils.dmarket import DMarketAPIError, DMarketKeys, OffersPage, offers_cursor, parse_offer
 
@@ -174,6 +181,18 @@ def test_too_long_names_get_no_link_and_too_long_ids_no_tick():
     assert offer is not None and listing_tick(offer, RECEIVED_AT_MS) is None
 
 
+def test_a_listing_the_tick_model_refuses_gets_no_tick():
+    offer = parse_offer(_entry("w", T0_MS))
+    assert offer is not None
+    assert listing_tick(dataclasses.replace(offer, float_value=1.5), RECEIVED_AT_MS) is None
+
+
+def test_raw_listing_without_item_details_keeps_its_attributes():
+    entry = _entry("a", T0_MS)
+    del entry["attributes"]["cs2"]
+    assert raw_listing(entry)["attributes"] == {"id": "asset-a", "title": REDLINE, "tradable": True, "tradeLockDays": 0}
+
+
 def test_raw_listing_keeps_what_describes_it_and_drops_account_ids_and_links():
     raw = raw_listing(_entry("a", T0_MS))
 
@@ -272,6 +291,27 @@ async def test_catching_up_stops_at_the_lower_end_of_its_gap():
 
     assert read == ["n000", "n001", "n002", "n003", "n004"]
     assert len(market.cursors) == 3
+
+
+@pytest.mark.asyncio
+async def test_an_empty_market_leaves_the_poller_where_it_was():
+    poller = ListingPoller()
+
+    assert await poller.live_poll(FakeMarket([]).offers, Clock()) == []
+    assert poller.newest_ms is None and not poller.started
+    assert json.loads(poller.resume_document())["newest_ms"] is None
+
+
+@pytest.mark.asyncio
+async def test_catching_up_hands_on_an_unparsable_entry_without_an_offer():
+    market = FakeMarket(_listings(2, T0_MS), page_size=5)
+    market.entries.insert(1, {"offerId": "broken"})
+    poller = ListingPoller()
+    poller.gaps.append(CatchUpGap(cursor=offers_cursor(T0_MS + 1_000), until_ms=T0_MS - 30_000))
+
+    read = await poller.catch_up_page(market.offers, Clock())
+
+    assert [offer.offer_id if offer else None for offer, _entry, _received in read] == ["n000", None, "n001"]
 
 
 def test_the_listings_read_are_remembered_up_to_a_limit():
@@ -648,3 +688,82 @@ async def test_a_reconnect_keeps_reading_where_the_poll_stopped(monkeypatch):
     # In memory state survives the reconnect: the resume point is not read again and "a" is not recorded twice.
     assert [tick.listing_id for tick in ticks] == ["b"]
     assert len(session.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failure_before_anything_was_read_stores_no_resume_point(monkeypatch):
+    market = FakeMarket(_listings(2, T0_MS), fail_after=0)
+    cache = FakeCache(_dmarket_baselines({REDLINE: 1_000}))
+
+    ticks, events, ended = await _collect(_scraper(market, cache))
+
+    assert (ticks, events) == ([], [])
+    assert isinstance(ended, FeedConnectionLost)
+    assert RESUME_KEY not in cache.values
+
+
+@pytest.mark.parametrize(
+    "document",
+    [{"observed_at_ms": "soon", "listing_ids": []}, {"observed_at_ms": T0_MS, "listing_ids": "a"}, ["not", "an", "object"]],
+    ids=["time_not_a_number", "ids_not_a_list", "not_an_object"],
+)
+@pytest.mark.asyncio
+async def test_an_unreadable_backend_answer_is_no_resume_point(document):
+    scraper = DMarketScraper(keys=KEYS, backend_base_url="http://backend:8080")
+    assert await scraper._backend_resume_point(FakeSession(FakeBackendResponse(200, document))) is None
+
+
+@pytest.mark.asyncio
+async def test_raw_listings_are_handed_on_while_polling_once_a_batch_is_due(monkeypatch):
+    monkeypatch.setattr(dmarket, "POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(dmarket, "RawEventBatch", lambda venue: RawEventBatch(venue, max_events=1))
+    market = FakeMarket([_entry("a", T0_MS, price_cents=500)], page_size=10, fail_after=1)
+
+    _ticks, events, _ended = await _collect(_scraper(market, FakeCache(_dmarket_baselines({REDLINE: 1_000}))))
+
+    assert [event.payload["events"][0]["data"]["offerId"] for event in events] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_between_live_polls_the_scraper_sleeps_when_there_is_nothing_to_catch_up(monkeypatch):
+    monkeypatch.setattr(dmarket, "POLL_INTERVAL_SECONDS", 3_600)
+    sleeps: list[float] = []
+
+    async def sleep_once(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) > 1:
+            raise StopPolling
+
+    # An empty market: no listing read yet, so there is no newest listing age to report either.
+    scraper = _scraper(FakeMarket([]), FakeCache())
+    scraper._sleep = sleep_once
+
+    await _collect(scraper)
+
+    assert len(sleeps) == 2 and 0 < sleeps[0] <= 3_600
+
+
+@pytest.mark.asyncio
+async def test_polling_that_ends_without_an_error_still_reports_the_lost_connection():
+    async def no_polls(_client, _cache, _raw_batch):
+        return
+        yield
+
+    scraper = _scraper(FakeMarket([]), FakeCache())
+    scraper._poll = no_polls
+
+    _ticks, _events, ended = await _collect(scraper)
+
+    assert isinstance(ended, FeedConnectionLost) and "polling stopped" in str(ended)
+
+
+@pytest.mark.asyncio
+async def test_the_scraper_has_no_separate_rest_poll_and_opens_its_own_session_and_cache():
+    scraper = DMarketScraper(keys=KEYS, backend_base_url="http://backend:8080")
+
+    assert [tick async for tick in scraper.poll_market_stream()] == []
+    session = scraper._open_session()
+    assert session.timeout.total == dmarket.REQUEST_TIMEOUT_SECONDS
+    await session.close()
+    cache = scraper._open_cache()
+    await cache.aclose()

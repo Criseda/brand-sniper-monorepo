@@ -305,10 +305,11 @@ class ListingPoller:
                 break
             cursor = page.cursor
         else:
-            # The poll fell behind (after a reconnect): catching up reads from the last page to the floor.
-            if cursor is not None and floor_ms is not None:
-                skip_ids = frozenset(listing_id for listing_id, created in self._recorded.items() if created >= floor_ms)
-                self.gaps.append(CatchUpGap(cursor=cursor, until_ms=floor_ms, skip_ids=skip_ids))
+            # The poll fell behind (after a reconnect): catching up reads from the last page to the floor. Every
+            # page that did not end the loop had a floor and a cursor.
+            assert cursor is not None and floor_ms is not None
+            skip_ids = frozenset(listing_id for listing_id, created in self._recorded.items() if created >= floor_ms)
+            self.gaps.append(CatchUpGap(cursor=cursor, until_ms=floor_ms, skip_ids=skip_ids))
 
         if self.newest_ms is not None:
             self._next_floor_ms = self.newest_ms - LIVE_OVERLAP_MS
