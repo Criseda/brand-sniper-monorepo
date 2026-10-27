@@ -273,12 +273,12 @@ class FakeEngine:
 @pytest.mark.asyncio
 async def test_fetch_listing_events_reads_normalized_ticks_by_venue_and_names(monkeypatch):
     seen_at = T0 + timedelta(milliseconds=318)
-    engine = FakeEngine([(seen_at, "1", NAME, 500)])
+    engine = FakeEngine([(seen_at, "1", NAME, 500, 0.25, 12)])
     monkeypatch.setattr(outcome_data, "async_engine", engine)
 
     sales = await fetch_listing_events("skinport", "sold", T0, T0 + DAY, names=[NAME])
 
-    assert sales == [FeedSale("1", NAME, 500, seen_at)]
+    assert sales == [FeedSale("1", NAME, 500, seen_at, float_value=0.25, pattern=12)]
     stmt, params = engine.conn.executed[0]
     sql = str(stmt)
     assert "FROM live_market_ticks" in sql and "ANY(:names)" in sql

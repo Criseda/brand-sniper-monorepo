@@ -313,10 +313,63 @@ fill sells about 7% lower, by an amount that moves with the share of buy order f
 
 ## Labels
 
-DMarket listings are to be labeled with `label_outcomes.py --venue dmarket` under a new label version. A label
-compares a listing with the `Offer` sales of the same item in the 14 days after it, read from `venue_sales`, and
-prices the trade with DMarket's fees for that item. `v1` is not reused. This is the last part of #339 and is not
-built yet.
+DMarket listings are labeled under their own version, `v1-dmarket`:
+
+```bash
+uv run python label_outcomes.py --venue dmarket --label-version v1-dmarket
+```
+
+The rule is the one `v1` uses (`docs/roadmap_proven_edge.md`, section 4.3), with three differences, because the
+listener sees no DMarket sales and the sales come from DMarket's own history instead.
+
+- **Sales from `venue_sales`.** A label compares a listing with the `Offer` sales of the same versioned name
+  between the end of the 7 day hold and the 14 day horizon. Buy order fills are left out, as in the baselines.
+- **The item's own seller fee.** The resale pays the fee the item had in the DMarket build in force when the
+  listing was recorded (`venue_baselines.seller_fee_bps`), the same fee the listener priced it with. An item
+  without a fee in that build pays the 10% default.
+- **Waiting for the sales.** The baseline builder fetches the sales, and only while my PC is on. A listing is
+  labeled once a sales sync started at least a day after its horizon. A sync stores its build only after it
+  read every title, so its start time is how far the sales are complete, and the extra day covers sales that
+  show up in the history late. Until the first sync after the horizon, nothing is labeled; after a long
+  downtime, run the labeler with `--start` over the days it missed.
+
+A sale names no listing, so a listing's own sale is found through its item. A float has 14 or more digits, so
+with the name and the paint seed it tells one item from every other. The listing's own sale is the first
+`Offer` sale of that item from a minute before the listing was recorded, when that sale
+
+- comes before the item was recorded again as another listing, because DMarket's bots delist and relist all the
+  time and a sale after the relist is the relist's, and
+- is at the listing's price, because a new price is a new listing: a first sale at another price is the item
+  sold under a listing the listener did not record, one priced above the DMarket price.
+
+A listing with no such sale is censored, as on Skinport: not seen to sell, never "did not sell". A listing
+leaving the market is not a sale; most do, and most of them were delisted. Items without a float (cases,
+stickers, about one listing in ten) can never be matched and are always censored.
+
+I checked the rule on the 9,356 listings recorded from 2026-10-25 21:49 to 2026-10-27 00:07 against the sales
+synced up to then, with the labeler's own code. My PC was off from 25 October 23:29 to 26 October 23:55.
+
+| Outcome | Listings |
+|---|---|
+| No sale of the item yet | 7,625 |
+| No float, cannot be matched | 974 |
+| The item sold only after it was recorded again as another listing | 425 |
+| The item first sold at another price | 253 |
+| Own sale found | 79 |
+
+Half of the listings with a float had the same item recorded again later, which is the bots relisting. Of the
+253 first sales at another price, 252 happened while my PC was off, when a relist could not be recorded, and
+their prices were a median 0.7% below the listing price, the steps the bots undercut by. While the listener
+ran, a first sale at another price happened once. So the price check rejects relists, not sales recorded at a
+different price than the listing. An own sale came a median 4.1 hours after the listing (10th percentile 4
+minutes, 90th 20.9 hours).
+
+One case the rule cannot see: an item relisted at the same price while my PC is off and sold there is
+credited to the earlier listing, with a longer time to sell. While the listener ran, 25 of about 1,900 relisted
+items kept their price, so this is rare.
+
+The first DMarket listings were recorded on 2026-10-25 at 21:49 UTC, so the first labels can be written after a
+sales sync that starts on or after 2026-11-09 at 21:49 UTC.
 
 ## Volume
 
@@ -341,5 +394,5 @@ Measure again after a day of uptime with
   `offers-buy` accepts `type: p2p`. Testing it needs a purchase, and the listener does not record them.
 - How long a sale takes to show up in `last-sales`. The newest sales were hours old, which may be how often
   they happen or a delay. The labeler waits 14 days, so a delay of hours does not change a label.
-- Whether a listing that disappears was sold or delisted. Of the 4 listings I saw disappear in 30 minutes, none matched a
-  sale by float and paint seed in the 20 newest sales of its title.
+- Whether a listing that disappears was sold or delisted, one by one. Most delistings are relists (see
+  [Labels](#labels)), so a disappearance is never read as a sale; only a matching sale counts.

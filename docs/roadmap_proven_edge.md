@@ -170,7 +170,11 @@ The labeler reads the normalized listing rows of `live_market_ticks` (listing ID
 `observed_at`, the edge receive time to the millisecond), not the raw JSON in `feed_events` (#256). So a new
 venue needs no labeler change: once it has a fee schedule, `--venue <name> --label-version <version>` labels it
 against its own sales. The labeling rule is in `outcome_labels.py` (no I/O), the database access in
-`outcome_data.py`, and the flow and CLI in `label_outcomes.py`. Before `observed_at` existed, the labeler parsed
+`outcome_data.py`, and the flow and CLI in `label_outcomes.py`. A venue whose sales the listener never sees
+is the exception: DMarket's labels (`v1-dmarket`, #339) read its own sales history from `venue_sales`, price
+each resale with the item's own seller fee, wait for the baseline builder's sales sync, and find a listing's
+sale as the first sale of its item (float and paint seed) at its price before the item is listed again
+(`docs/dmarket_api.md`). Before `observed_at` existed, the labeler parsed
 `feed_events` itself; on Skinport listings from 2026-09-24 to 2026-10-10 both ways give the same 45,365 `v1`
 labels.
 

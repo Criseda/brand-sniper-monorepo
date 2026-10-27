@@ -13,6 +13,7 @@ from the production database on 2026-09-26.
 | Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Trade locked listings only until #275 (see below). Gaps whenever my PC was off. |
 | Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` with an `event_type` | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event with listing details (#232). Labels are built from this. |
 | Outcome labels | `listing_outcomes` | Skinport | Empty until about 2026-10-08 | A listing gets its label 14 days and 1 hour after it was seen (#233). |
+| Outcome labels `v1-dmarket` | `listing_outcomes` | DMarket | Empty until about 2026-11-09 | Against DMarket's own sales in `venue_sales`, once a sales sync started a day after the listing's horizon (#339, `docs/dmarket_api.md`). |
 
 ## The Kaggle dataset
 
