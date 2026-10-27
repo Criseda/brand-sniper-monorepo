@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- A baseline builder whose check failed waited the full hour before trying again, so after a boot, when Docker restarts it before the Prefect server is up, it sat idle for an hour: a failed check is now retried after 2 minutes, doubling up to the check interval while checks keep failing, and the heartbeat is still touched only after a successful check.
 - The VS Code workspace settings work on Windows, macOS and Linux: the Linux only `python.defaultInterpreterPath` is gone (the Python extension finds `.venv` itself) and Ruff is the Python formatter, so format on save matches `ruff format` (#344).
 - A hard kill of the listener loses at most 10 seconds of the feed (#252): a batch is also written to the edge Redis stream once its oldest record has waited `LISTENER_FLUSH_INTERVAL_SECONDS` (default 10), instead of only at `CHUNK_LIMIT` (about once per REST poll) or on shutdown; a test checks that every listener's compose `stop_grace_period` covers the shutdown drain.
 - A Skinport listener that fell far behind lost sale feed events without notice when Redis closed its Pub/Sub subscription (#326): the feed no longer goes through Pub/Sub, and a lost connection is logged and counted.

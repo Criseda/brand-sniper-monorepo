@@ -227,3 +227,47 @@ def test_heartbeat_is_fresh_only_after_a_recent_check(tmp_path):
 
     assert build_baselines.heartbeat_is_fresh(heartbeat) is True
     assert build_baselines.heartbeat_is_fresh(heartbeat, max_age_seconds=0) is False
+
+
+def test_retry_delay_doubles_from_a_few_minutes_up_to_the_check_interval():
+    delays = [build_baselines.retry_delay_minutes(failures, 60.0) for failures in range(0, 8)]
+
+    assert delays == [60.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0]
+    assert build_baselines.retry_delay_minutes(10_000, 60.0) == 60.0
+
+
+class _StopLoop(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_loop_retries_failed_checks_sooner_and_returns_to_the_interval(tmp_path, monkeypatch):
+    heartbeat = tmp_path / "heartbeat"
+    monkeypatch.setattr(build_baselines, "heartbeat_path_for", lambda venue: heartbeat)
+    # The Prefect server is not up for the first two checks after a boot, then the third succeeds.
+    outcomes = [RuntimeError("Failed to reach API"), RuntimeError("Failed to reach API"), None, None]
+    heartbeat_after_check: list[bool] = []
+
+    async def fake_build_once(venue, max_age_hours):
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+        return None
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds):
+        heartbeat_after_check.append(heartbeat.exists())
+        sleeps.append(seconds)
+        if not outcomes:
+            raise _StopLoop
+
+    monkeypatch.setattr(build_baselines, "build_once", fake_build_once)
+    monkeypatch.setattr(build_baselines.asyncio, "sleep", fake_sleep)
+
+    with pytest.raises(_StopLoop):
+        await build_baselines.run_forever(VENUE, max_age_hours=20.0, check_interval_minutes=60.0)
+
+    assert sleeps == [2 * 60, 4 * 60, 60 * 60, 60 * 60]
+    # Only a successful check touches the heartbeat, so failing checks still age the healthcheck.
+    assert heartbeat_after_check == [False, False, True, True]
