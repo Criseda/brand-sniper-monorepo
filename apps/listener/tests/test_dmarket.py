@@ -829,7 +829,8 @@ async def test_between_live_polls_the_scraper_sleeps_when_there_is_nothing_to_ca
 
     await _collect(scraper)
 
-    assert len(sleeps) == 2 and 0 < sleeps[0] <= 3_600
+    # At most the poll interval; the clock may not move between the two reads, and the float sum rounds.
+    assert len(sleeps) == 2 and 0 < sleeps[0] <= 3_600 + 1e-6
 
 
 @pytest.mark.asyncio

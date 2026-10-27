@@ -209,6 +209,9 @@ In a production environment, schedule these jobs to run once a day. For example,
 
 # Label listings whose 14-day outcome horizon has passed, at 02:00 every day (re-labels the last 3 matured days)
 0 2 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics uv run python label_outcomes.py >> /var/log/sniper_labels.log 2>&1
+
+# Label DMarket listings against DMarket's own sales; waits for the baseline builder's sales sync (docs/dmarket_api.md)
+30 2 * * * cd /path/to/deployments/server-stack && docker compose run --rm analytics uv run python label_outcomes.py --venue dmarket --label-version v1-dmarket >> /var/log/sniper_labels.log 2>&1
 ```
 
 ## Environment Variables
