@@ -63,6 +63,9 @@ VENUES = (VENUE, DMARKET_VENUE)
 SALES_HISTORY_URL = "https://api.skinport.com/v1/sales/history"
 DEFAULT_MAX_AGE_HOURS = 20.0
 DEFAULT_CHECK_INTERVAL_MINUTES = 60.0
+# A failed check is retried after this long, doubling while checks keep failing, up to the check interval.
+# After a boot Docker restarts the builders before the Prefect server is up, so the first check often fails.
+FAILED_CHECK_RETRY_MINUTES = 2.0
 # Earlier builds' 24 hour medians from this far back feed the volatility estimate.
 DAILY_MEDIAN_LOOKBACK_DAYS = 30
 _INSERT_CHUNK_SIZE = 1000
@@ -308,16 +311,36 @@ async def build_once(venue: str, max_age_hours: float, force: bool = False) -> i
     return await build_venue_baselines(max_age_hours=max_age_hours, force=force)
 
 
-async def run_forever(venue: str, max_age_hours: float, check_interval_minutes: float) -> None:  # pragma: no cover
-    """A baseline-builder service: check on start, then every interval. A failed run is retried next time."""
+def retry_delay_minutes(consecutive_failures: int, check_interval_minutes: float) -> float:
+    """Minutes to wait after this many failed checks in a row: short at first, doubling up to the interval."""
+    if consecutive_failures <= 0:
+        return check_interval_minutes
+    # The exponent is capped so weeks of failures cannot overflow the float.
+    doublings = min(consecutive_failures - 1, 32)
+    retry_delay = FAILED_CHECK_RETRY_MINUTES * 2**doublings
+    return min(retry_delay, check_interval_minutes)
+
+
+async def run_forever(venue: str, max_age_hours: float, check_interval_minutes: float) -> None:
+    """A baseline-builder service: check on start, then every interval. A failed check is retried sooner.
+
+    The heartbeat is touched only after a successful check, so the healthcheck still reports a service
+    whose checks keep failing as unhealthy.
+    """
+    consecutive_failures = 0
     while True:
         try:
             await build_once(venue, max_age_hours)
             record_heartbeat(heartbeat_path_for(venue))
+            consecutive_failures = 0
         # Broad on purpose: one failed run (network, database) must not stop the service.
         except Exception:
-            logger.exception("[BASELINES] Build failed; retrying in %.0f minutes.", check_interval_minutes)
-        await asyncio.sleep(check_interval_minutes * 60)
+            consecutive_failures += 1
+            logger.exception(
+                "[BASELINES] Build failed; retrying in %.0f minutes.",
+                retry_delay_minutes(consecutive_failures, check_interval_minutes),
+            )
+        await asyncio.sleep(retry_delay_minutes(consecutive_failures, check_interval_minutes) * 60)
 
 
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
