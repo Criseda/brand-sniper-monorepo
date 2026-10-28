@@ -35,7 +35,7 @@ services:
   # ORCHESTRATION LAYER: Prefect 3.0 Core Workflow Server
   # ---------------------------------------------------------------------------
   prefect-server:
-    image: prefecthq/prefect:3.8.9.dev6-python3.12
+    image: prefecthq/prefect:3.9.1.dev4-python3.12
     container_name: sniper_prefect_server
     command: prefect server start --host 0.0.0.0
     environment:
@@ -100,7 +100,7 @@ services:
   # OBSERVABILITY LAYER: Metrics and Dashboards
   # ---------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     container_name: sniper_prometheus
     ports:
       - "127.0.0.1:9090:9090"
@@ -152,7 +152,7 @@ services:
       retries: 5
 
   redis-exporter:
-    image: oliver006/redis_exporter:v1.94.0-alpine
+    image: oliver006/redis_exporter:v1.96.0-alpine
     container_name: sniper_redis_exporter
     env_file:
       - ../../.env
