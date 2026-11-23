@@ -128,6 +128,8 @@ async def load_daily_medians(venue: str, since: datetime) -> dict[str, dict[date
     async with async_engine.connect() as conn:
         result = await conn.execute(stmt)
         for built_at, name, median_cents in result:
+            if median_cents is None:
+                continue
             medians.setdefault(name, {})[built_at.date()] = median_cents
     return medians
 

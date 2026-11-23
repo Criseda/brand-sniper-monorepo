@@ -41,6 +41,7 @@ filterwarnings = [
 ]
 timeout = 60
 timeout_method = "thread"
+asyncio_default_fixture_loop_scope = "function"
 pythonpath = [
     "packages/shared_utils/src",
     "apps/analytics",
