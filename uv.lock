@@ -3436,8 +3436,8 @@ name = "pendulum"
 version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil", marker = "python_full_version < '3.14'" },
-    { name = "tzdata", marker = "python_full_version < '3.14'" },
+    { name = "python-dateutil", marker = "python_full_version < '3.13'" },
+    { name = "tzdata", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d8/3f/345b5bc712ce806f3b5fbce6eea141f46713b2c1a7654eaead1b2593d5a1/pendulum-3.3.0.tar.gz", hash = "sha256:9aceb5b24e9f55381df08187397e88546b5ba82f698b741cbf1a05c5e2369116", size = 87458, upload-time = "2026-10-12T20:54:11.461Z" }
 wheels = [
@@ -4840,6 +4840,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "cryptography" },
     { name = "python-dotenv" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
 ]
 
@@ -4855,6 +4856,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "cryptography", specifier = ">=46.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.9" },
     { name = "sqlmodel", specifier = ">=0.0.39" },
 ]
 

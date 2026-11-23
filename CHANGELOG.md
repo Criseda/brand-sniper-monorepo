@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- The backend image failed to start after the SQLAlchemy 2.1 upgrade: SQLAlchemy no longer installs greenlet, which its async engine needs, so `shared_utils` now depends on `sqlalchemy[asyncio]`.
 - `uv audit` failed the CI `quality` job on advisories for oauthlib and opentelemetry-api; every locked dependency is upgraded (oauthlib 4.0.1, opentelemetry-api 1.45.2, sqlalchemy 2.1.9, openai 3.3.0, among others), and the backend query helper is typed for SQLAlchemy 2.1's variadic `Select`.
 - A baseline builder whose check failed waited the full hour before trying again, so after a boot, when Docker restarts it before the Prefect server is up, it sat idle for an hour: a failed check is now retried after 2 minutes, doubling up to the check interval while checks keep failing, and the heartbeat is still touched only after a successful check.
 - The VS Code workspace settings work on Windows, macOS and Linux: the Linux only `python.defaultInterpreterPath` is gone (the Python extension finds `.venv` itself) and Ruff is the Python formatter, so format on save matches `ruff format` (#344).
