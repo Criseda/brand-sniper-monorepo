@@ -15,6 +15,7 @@ from functools import partial
 from typing import Any
 
 from alerts import AlertDispatcher, TradeAlert
+from baseline_loader import BaselineState
 from executor import ExecutionService
 from listener_telemetry import (
     anomalies_confirmed_total,
@@ -37,6 +38,7 @@ from shared_utils import (
     net_resale_margin_cents,
     resale_venue_for,
     unchanged_snapshot_enters_window,
+    utc_now_naive,
 )
 from shared_utils.pnl import BASIS_POINTS
 from task_supervisor import BoundedTaskPool
@@ -75,7 +77,10 @@ TICK_KINDS = (TICK_KIND_REST_SNAPSHOT, TICK_KIND_LISTING)
 # `reason` label on the rejection counter, and the replay's reason for the same rejection.
 REJECTED_BY_DRE = "dre_rejected"
 REJECTED_BELOW_FEE_FLOOR = "below_fee_floor"
-REJECTION_REASONS = (REJECTED_BY_DRE, REJECTED_BELOW_FEE_FLOOR)
+# No baselines loaded, or the loaded build is older than BASELINE_MAX_AGE_HOURS: prices have moved since, so
+# ordinary listings look cheap against it (#360).
+REJECTED_STALE_BASELINE = "stale_baseline"
+REJECTION_REASONS = (REJECTED_BY_DRE, REJECTED_BELOW_FEE_FLOOR, REJECTED_STALE_BASELINE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,12 +365,30 @@ async def evaluate_and_execute(
     baseline: dict | None = None,
     source: str = "local",
     alerts: AlertDispatcher | None = None,
+    baseline_state: BaselineState | None = None,
 ) -> None:
-    """Evaluates an anomaly locally on the edge, alerts a person, and executes the trade if valid."""
+    """
+    Evaluates an anomaly locally on the edge, alerts a person, and executes the trade if valid.
+
+    With `baseline_state`, nothing is approved while its baselines are missing or stale (#360).
+    """
+    tick_kind = tick_kind_label(tick)
+    baseline_problem = baseline_state.problem(utc_now_naive()) if baseline_state is not None else None
+    if baseline_problem is not None:
+        anomalies_rejected_total.labels(source=source, tick_kind=tick_kind, reason=REJECTED_STALE_BASELINE).inc()
+        logger.info(
+            "[ANOMALY] Not judged (%s, %s): %s at $%.2f, because %s.",
+            source,
+            tick_kind,
+            tick.market_hash_name,
+            tick.price_usd,
+            baseline_problem,
+        )
+        return
+
     _dre_t0 = time.monotonic()
     approval_reason = await dre_approval_reason(tick, cache, baseline)
     rules_engine_latency_seconds.observe(time.monotonic() - _dre_t0)
-    tick_kind = tick_kind_label(tick)
     if approval_reason is None:
         anomalies_rejected_total.labels(source=source, tick_kind=tick_kind, reason=REJECTED_BY_DRE).inc()
         logger.info(
@@ -438,6 +461,7 @@ async def update_window_and_detect(
     anomaly_pool: BoundedTaskPool,
     executor: ExecutionService,
     alerts: AlertDispatcher | None = None,
+    baseline_state: BaselineState | None = None,
 ) -> None:
     """Pushes a tick into the sliding price window and hands Z-score outliers to the Edge DRE."""
     await push_to_window(tick, cache)
@@ -468,5 +492,6 @@ async def update_window_and_detect(
             score.baseline,
             score.source,
             alerts,
+            baseline_state,
         )
     )

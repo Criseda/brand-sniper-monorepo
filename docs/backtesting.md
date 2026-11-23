@@ -131,7 +131,8 @@ Every listing-level tick is logged, so the log joins to `listing_outcomes` on (`
 
 `zscore_dre` reasons: `insufficient_history`, `macro_only` (scored with the macro Z score, which never
 triggers, see below), `below_threshold`, `dre_rejected`, `below_fee_floor` (a DRE approval that nets nothing
-after the seller fee, see below), and on approval the DRE
+after the seller fee, see below), `stale_baseline` (the build in force is older than `BASELINE_MAX_AGE_HOURS`,
+see below), and on approval the DRE
 rule that approved (`support_floor`, `macro_sigma`, `stickers_below_base`, `sticker_premium`). An
 approval's `features.estimated_net_profit_cents` is the fee-aware estimate the live paper trade records.
 
@@ -183,7 +184,13 @@ less the seller fee) is zero or less is logged with reason `below_fee_floor` and
 `features.dre_rule`, and is not traded. The sticker rules are left alone, because the estimate does not value
 stickers. Below the threshold the sweep strategy records `below_fee_floor` next to `dre_reason`, so the sweep
 keeps the floor at every threshold. The header's `fee_floor` says whether a run used it (`DRE_FEE_FLOOR`, true
-by default); a log without it is from before #331. What it changed is in
+by default); a log without it is from before #331.
+
+**Nothing is approved on a stale build.** Since #360 the live listener approves nothing while its baseline
+build is older than `BASELINE_MAX_AGE_HOURS` (48), as after a few days with the PC off. The replay does the
+same with the build in force at each event: a scored tick is logged with reason `stale_baseline` and keeps its
+Z score, so the sweep counts it as scored but never approves it at any threshold. The header records the limit
+as `stale_baseline_max_age_hours`; a log without it is from before #360. What it changed is in
 [benchmarks/fee_floor.md](benchmarks/fee_floor.md).
 
 **Dedup state and price windows are kept per venue.** Since #270 the header's `state_key` is

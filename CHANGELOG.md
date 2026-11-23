@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- A listener whose baseline build was older than `BASELINE_MAX_AGE_HOURS` (48) still approved and paper traded against it, so after days with the PC off ordinary listings looked cheap against old prices (213 Waxpeer trades in 12 minutes on 2026-11-23). It now rejects every anomaly with reason `stale_baseline` until a current build loads, and the replay applies the same rule to the build in force (#360).
 - The backend image failed to start after the SQLAlchemy 2.1 upgrade: SQLAlchemy no longer installs greenlet, which its async engine needs, so `shared_utils` now depends on `sqlalchemy[asyncio]`.
 - `uv audit` failed the CI `quality` job on advisories for oauthlib and opentelemetry-api; every locked dependency is upgraded (oauthlib 4.0.1, opentelemetry-api 1.45.2, sqlalchemy 2.1.9, openai 3.3.0, among others), and the backend query helper is typed for SQLAlchemy 2.1's variadic `Select`.
 - A baseline builder whose check failed waited the full hour before trying again, so after a boot, when Docker restarts it before the Prefect server is up, it sat idle for an hour: a failed check is now retried after 2 minutes, doubling up to the check interval while checks keep failing, and the heartbeat is still touched only after a successful check.

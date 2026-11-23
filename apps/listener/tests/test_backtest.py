@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 import detection
 import pytest
 import zscore
-from backtest import database
+from backtest import database, harness
 from backtest.harness import run_replay
 from backtest.sources import (
     POLL_GAP_MS,
@@ -34,6 +34,7 @@ from backtest.strategy import (
     REASON_DUPLICATE,
     REASON_INSUFFICIENT_HISTORY,
     REASON_MACRO_ONLY,
+    REASON_STALE_BASELINE,
     STRATEGIES,
     ZScoreDreFeaturesStrategy,
     ZScoreDreStrategy,
@@ -902,3 +903,33 @@ async def test_live_replay_and_training_compute_the_same_features(monkeypatch, s
         live_row = feature_vector(live_features[listing_id])
         for name, trained, live in zip(FEATURE_NAMES, training_row, live_row, strict=True):
             assert (math.isnan(trained) and math.isnan(live)) or trained == pytest.approx(live, abs=1e-6), (listing_id, name)
+
+
+@pytest.mark.asyncio
+async def test_replay_approves_nothing_while_the_build_in_force_is_stale(monkeypatch):
+    # 900 seconds instead of 48 hours, so the stream stays short.
+    monkeypatch.setattr(harness, "BASELINE_MAX_AGE_HOURS", 0.25)
+    high_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 900, "latest_price_cents": 1000}})
+    schedule = _schedule((1, 0, high_floor), (2, 1650, high_floor))
+    history = [_snapshot(offset, 1000 + offset % 7) for offset in range(0, 1600, 60)]
+    # The same dip twice: first while build 1 is 1601 seconds old, then 51 seconds after build 2.
+    events = [*history, _feed(1601, "listed", _sale(1, 850)), _feed(1701, "listed", _sale(2, 845))]
+
+    log_text, _ = await _replay(events, schedule, strategy=ZScoreDreSweepStrategy())
+
+    decisions = {row["listing_id"]: row for row in _rows(log_text)}
+    assert (decisions["1"]["approve"], decisions["1"]["reason"]) == (False, REASON_STALE_BASELINE)
+    assert decisions["1"]["score"] is not None
+    assert (decisions["2"]["approve"], decisions["2"]["reason"]) == (True, REASON_SUPPORT_FLOOR)
+
+
+@pytest.mark.asyncio
+async def test_replay_with_a_current_build_approves_the_same_dip():
+    high_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 900, "latest_price_cents": 1000}})
+    history = [_snapshot(offset, 1000 + offset % 7) for offset in range(0, 1600, 60)]
+
+    log_text, _ = await _replay([*history, _feed(1601, "listed", _sale(1, 850))], _schedule((1, 0, high_floor)))
+
+    header = json.loads(log_text.splitlines()[0])
+    assert header["config"]["stale_baseline_max_age_hours"] == 48
+    assert _rows(log_text)[0]["approve"] is True

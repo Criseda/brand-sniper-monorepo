@@ -11,6 +11,7 @@ from typing import Any, Protocol, cast
 import detection
 import zscore
 from backtest.store import InMemoryEdgeStore
+from baseline_loader import BASELINE_MAX_AGE_HOURS
 from models import MarketTick
 from redis.asyncio import Redis
 from rules_engine import dre_approval_reason
@@ -43,6 +44,8 @@ REASON_BELOW_FEE_FLOOR = detection.REJECTED_BELOW_FEE_FLOOR
 # Scored with the macro Z score only (the window is too short, as right after a restart), which never
 # triggers (#308, zscore.source_can_trigger).
 REASON_MACRO_ONLY = "macro_only"
+# The baseline build in force is older than BASELINE_MAX_AGE_HOURS, so live approves nothing (#360).
+REASON_STALE_BASELINE = detection.REJECTED_STALE_BASELINE
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,11 +56,17 @@ class Decision:
     features: Mapping[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class DecisionContext:
-    """Edge state at decision time: the price windows, baselines, and sticker prices."""
+    """
+    Edge state at decision time: the price windows, baselines, and sticker prices.
+
+    The harness sets `baseline_stale` before each event: whether the build in force is older than
+    BASELINE_MAX_AGE_HOURS at that moment.
+    """
 
     store: InMemoryEdgeStore
+    baseline_stale: bool = False
 
     @property
     def cache(self) -> Redis:
@@ -100,6 +109,7 @@ class ZScoreDreStrategy:
             "macro_prior_weight": zscore.MACRO_PRIOR_WEIGHT,
             "macro_zscore_triggers": zscore.MACRO_ZSCORE_TRIGGERS,
             "fee_floor": detection.FEE_FLOOR,
+            "stale_baseline_max_age_hours": BASELINE_MAX_AGE_HOURS,
         }
 
     async def decide(self, tick: MarketTick, context: DecisionContext) -> Decision:
@@ -120,6 +130,9 @@ class ZScoreDreStrategy:
         }
         if self.records_sweep_inputs:
             features["sticker_count"] = len(tick.stickers)
+        if context.baseline_stale:
+            # Live rejects only the anomalies, but no threshold can approve here, so the sweep reads the same.
+            return Decision(approve=False, reason=REASON_STALE_BASELINE, score=window_score.z_score, features=features)
         if not zscore.source_can_trigger(window_score.source):
             return Decision(approve=False, reason=REASON_MACRO_ONLY, score=window_score.z_score, features=features)
         if not zscore.should_trigger_anomaly(window_score.z_score, window_score.mean_cents, tick, window_score.source):

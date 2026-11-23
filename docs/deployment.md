@@ -186,7 +186,9 @@ where it stopped. The details are in [`dmarket_api.md`](dmarket_api.md).
 The listener loads the newest build when it starts and checks for a newer one every 15 minutes
 (`BASELINE_REFRESH_SECONDS`). While it has no baselines, or the loaded build is older than
 `BASELINE_MAX_AGE_HOURS` (48), it logs an error every minute, `listener_baselines_loaded` or
-`listener_baseline_build_age_seconds` show it in Prometheus, and its `/health` returns 503.
+`listener_baseline_build_age_seconds` show it in Prometheus, its `/health` returns 503, and it approves
+nothing: every anomaly is rejected with reason `stale_baseline` until a current build loads (#360). After a
+few days off, prices have moved away from the old build, and ordinary listings would look cheap against it.
 
 The Kaggle Steam history and its macro pipeline are retired: `historical_prices` was dropped and only the
 frozen `item_macro_baselines` remain as CFO context. Read [`data_sources.md`](data_sources.md) for why
