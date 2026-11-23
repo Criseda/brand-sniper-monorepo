@@ -76,8 +76,10 @@ price in the same windows, so compare runs on one side of it.
 
 **Baselines** come from the dated builds in `baseline_builds` (see [data_sources.md](data_sources.md)),
 shaped exactly as the backend serves them to the listener. A database replay loads every build that was in
-effect during the range, and switches to each one when replay time reaches its build time, so decisions use
-the baselines that were current then. Before the first build exists there is nothing honest to use, so the
+effect during the range, and switches to each one when replay time reaches the moment it was stored
+(`stored_at`), so decisions use the baselines the listener could have loaded then. A build is stored when its
+run ends, not when it starts (`built_at`): a DMarket run syncs sales for 20 to 80 minutes first. Builds from
+before `stored_at` existed were given their store time by migration `3683be323039`. Before the first build exists there is nothing honest to use, so the
 first build is used and that switch is marked `look_ahead` in the log. The CLI also warns when that
 happens. `--baselines FILE` replaces the schedule with one fixed snapshot.
 
@@ -184,14 +186,15 @@ less the seller fee) is zero or less is logged with reason `below_fee_floor` and
 `features.dre_rule`, and is not traded. The sticker rules are left alone, because the estimate does not value
 stickers. Below the threshold the sweep strategy records `below_fee_floor` next to `dre_reason`, so the sweep
 keeps the floor at every threshold. The header's `fee_floor` says whether a run used it (`DRE_FEE_FLOOR`, true
-by default); a log without it is from before #331.
+by default); a log without it is from before #331. What it changed is in
+[benchmarks/fee_floor.md](benchmarks/fee_floor.md).
 
 **Nothing is approved on a stale build.** Since #360 the live listener approves nothing while its baseline
 build is older than `BASELINE_MAX_AGE_HOURS` (48), as after a few days with the PC off. The replay does the
 same with the build in force at each event: a scored tick is logged with reason `stale_baseline` and keeps its
-Z score, so the sweep counts it as scored but never approves it at any threshold. The header records the limit
-as `stale_baseline_max_age_hours`; a log without it is from before #360. What it changed is in
-[benchmarks/fee_floor.md](benchmarks/fee_floor.md).
+Z score, so the sweep counts it as scored but never approves it at any threshold. The age counts from the
+build's `built_at`, as it does live, even though the build is only in force from when it was stored. The
+header records the limit as `stale_baseline_max_age_hours`; a log without it is from before #360.
 
 **Dedup state and price windows are kept per venue.** Since #270 the header's `state_key` is
 `venue_and_item`: each venue has its own dedup state and its own price window per item, and the dedup

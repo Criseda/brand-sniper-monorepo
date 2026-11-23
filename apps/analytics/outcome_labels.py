@@ -303,17 +303,19 @@ class SoldIndex:
 class ItemFees:
     """Each baseline build's seller fee per item, oldest build first, to find the fee in force at a moment."""
 
-    built_at: list[datetime] = field(default_factory=list)
+    # When each build was stored, the moment it came into force.
+    stored_at: list[datetime] = field(default_factory=list)
     fees_by_build: list[dict[str, int]] = field(default_factory=list)
 
     @classmethod
     def build(cls, builds: Iterable[tuple[datetime, dict[str, int]]]) -> "ItemFees":
+        """From (stored_at, fee per item) pairs, in any order."""
         ordered = sorted(builds, key=lambda build: build[0])
-        return cls(built_at=[built_at for built_at, _fees in ordered], fees_by_build=[fees for _built_at, fees in ordered])
+        return cls(stored_at=[stored_at for stored_at, _fees in ordered], fees_by_build=[fees for _stored_at, fees in ordered])
 
     def fee_bps(self, name: str, at: datetime) -> int | None:
         """The seller fee of `name` in the newest build stored at or before `at`; None without one."""
-        index = bisect.bisect_right(self.built_at, at) - 1
+        index = bisect.bisect_right(self.stored_at, at) - 1
         if index < 0:
             return None
         return self.fees_by_build[index].get(name)

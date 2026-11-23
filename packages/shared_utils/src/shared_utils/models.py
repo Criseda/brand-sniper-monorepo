@@ -138,7 +138,11 @@ class ItemMacroBaseline(SQLModel, table=True):
 class BaselineBuild(SQLModel, table=True):
     """
     One run of the baseline builder for one venue. Builds are never overwritten, so a replay can use
-    the baselines that were current at any past moment (the newest build with built_at at or before it).
+    the baselines that were current at any past moment (the newest build stored at or before it).
+
+    `built_at` is when the run started and its prices are as of; the listener measures a build's age from it.
+    `stored_at` is when the build was written, so the earliest the listener could load it: a DMarket run
+    syncs sales for 20 to 80 minutes in between. Readers fall back to `built_at` when it is NULL.
     """
 
     __tablename__: str = "baseline_builds"
@@ -147,6 +151,7 @@ class BaselineBuild(SQLModel, table=True):
     venue: str = Field(nullable=False, max_length=32, index=True)  # e.g. skinport
     method: str = Field(nullable=False, max_length=32)  # shared_utils.baselines.BASELINE_METHOD
     built_at: NaiveDatetime = Field(nullable=False, index=True)  # When the source data was fetched (naive UTC)
+    stored_at: NaiveDatetime | None = Field(default=None, nullable=True)  # When the build was written (naive UTC)
     item_count: int = Field(nullable=False)
 
 

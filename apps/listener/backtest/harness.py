@@ -120,7 +120,9 @@ class _BaselineSwitcher:
         if self._active is None:
             return False
         build = self._schedule.builds[self._active]
-        return time_ms - build.effective_from_ms > self._max_age_ms
+        # Like the listener, the age counts from when the build's prices are as of, not from when it was stored.
+        built_at_ms = build.built_at_ms if build.built_at_ms is not None else build.effective_from_ms
+        return time_ms - built_at_ms > self._max_age_ms
 
     async def advance(self, time_ms: int) -> None:
         index = self._schedule.active_index(time_ms)

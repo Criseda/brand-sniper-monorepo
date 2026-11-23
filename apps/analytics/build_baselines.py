@@ -178,7 +178,7 @@ async def save_build(venue: str, built_at: datetime, baselines: list[ItemBaselin
     async with async_engine.begin() as conn:
         result = await conn.execute(
             insert(BaselineBuild)
-            .values(venue=venue, method=method, built_at=built_at, item_count=len(baselines))
+            .values(venue=venue, method=method, built_at=built_at, stored_at=utc_now_naive(), item_count=len(baselines))
             .returning(col(BaselineBuild.id))
         )
         # The model types the key as optional because it is unset before insert; RETURNING always has it.

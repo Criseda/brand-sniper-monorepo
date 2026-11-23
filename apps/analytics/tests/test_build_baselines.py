@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import build_baselines
+import outcome_data
 import pytest
 import pytest_asyncio
 from aiohttp import web
@@ -271,3 +272,30 @@ async def test_loop_retries_failed_checks_sooner_and_returns_to_the_interval(tmp
     assert sleeps == [2 * 60, 4 * 60, 60 * 60, 60 * 60]
     # Only a successful check touches the heartbeat, so failing checks still age the healthcheck.
     assert heartbeat_after_check == [False, False, True, True]
+
+
+@pytest.mark.asyncio
+async def test_a_saved_build_records_when_it_was_stored(engine):
+    baselines = build_all(parse_sales_history(fixture_entries()), {}, NOW.date())
+
+    build_id = await save_build(VENUE, NOW - timedelta(minutes=30), baselines)
+
+    async with engine.connect() as conn:
+        build = (await conn.execute(select(BaselineBuild).where(BaselineBuild.id == build_id))).one()
+    assert (build.built_at, build.stored_at) == (NOW - timedelta(minutes=30), NOW)
+
+
+@pytest.mark.asyncio
+async def test_a_build_sets_item_fees_only_from_when_it_was_stored(engine, monkeypatch):
+    monkeypatch.setattr(outcome_data, "async_engine", engine)
+    baselines = build_all(parse_sales_history(fixture_entries()), {}, NOW.date())
+    stored_times = iter([NOW - timedelta(days=2) + timedelta(minutes=5), NOW])
+    monkeypatch.setattr(build_baselines, "utc_now_naive", lambda: next(stored_times))
+    # The old build, in force at the start of the range, then one that started 30 minutes before it was stored.
+    await save_build("dmarket", NOW - timedelta(days=2), [baseline.with_seller_fee(1000) for baseline in baselines])
+    await save_build("dmarket", NOW - timedelta(minutes=30), [baseline.with_seller_fee(200) for baseline in baselines])
+
+    item_fees = await outcome_data.fetch_item_fees("dmarket", NOW - timedelta(hours=1), NOW + timedelta(hours=1))
+
+    assert item_fees.fee_bps(REDLINE, NOW - timedelta(minutes=10)) == 1000
+    assert item_fees.fee_bps(REDLINE, NOW + timedelta(minutes=1)) == 200
