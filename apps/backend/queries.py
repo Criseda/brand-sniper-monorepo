@@ -24,7 +24,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 logger = get_logger("backend.queries")
 
 
-async def _exec_result(session: AsyncSession, stmt: Select[Any]) -> Result[Any]:
+async def _exec_result[*RowTypes](session: AsyncSession, stmt: Select[*RowTypes]) -> Result[*RowTypes]:
     """Runs a SELECT via SQLModel's exec() and returns a plain SQLAlchemy Result.
 
     exec() only unwraps to a ScalarResult for statements built with SQLModel's
