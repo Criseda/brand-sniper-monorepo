@@ -1,10 +1,12 @@
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import detection
 import pytest
 from backtest.store import InMemoryEdgeStore
+from baseline_loader import BaselineState, LoadedBuild
 from listener_telemetry import (
     anomalies_confirmed_total,
     anomalies_detected_total,
@@ -14,6 +16,7 @@ from listener_telemetry import (
 )
 from models import MarketTick, TickKind
 from redis.asyncio import Redis
+from shared_utils import utc_now_naive
 
 ITEM = "AK-47 | Slate (Field-Tested)"
 
@@ -617,5 +620,71 @@ def test_every_anomaly_counter_series_exists_before_the_first_anomaly():
     reasons = {"support_floor", "macro_sigma", "stickers_below_base", "sticker_premium"}
     assert label_values(anomalies_confirmed_total, "reason") == reasons
     assert label_values(anomalies_rejected_total, "tick_kind") == {"rest_snapshot", "listing"}
-    assert label_values(anomalies_rejected_total, "reason") == {"dre_rejected", "below_fee_floor"}
+    assert label_values(anomalies_rejected_total, "reason") == {"dre_rejected", "below_fee_floor", "stale_baseline"}
     assert label_values(anomalies_detected_total, "source") == {"local", "hybrid", "macro"}
+
+
+def _baseline_state(age: timedelta | None) -> BaselineState:
+    """A Skinport baseline state with a build of this age loaded, or nothing loaded when `age` is None."""
+    state = BaselineState("skinport", max_age=timedelta(hours=48))
+    if age is not None:
+        state.loaded = LoadedBuild(build_id=21, built_at=utc_now_naive() - age, item_count=8000)
+    return state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("age", "expected_log"),
+    [
+        (timedelta(hours=571), "skinport baseline build 21 is 571 hours old"),
+        (None, "no skinport baselines loaded"),
+    ],
+)
+async def test_nothing_is_approved_while_the_baselines_are_stale_or_missing(monkeypatch, caplog, age, expected_log):
+    dre = AsyncMock(return_value="support_floor")
+    monkeypatch.setattr(detection, "dre_approval_reason", dre)
+    executor = AsyncMock()
+    alerts = MagicMock()
+    rejected = anomalies_rejected_total.labels(source="hybrid", tick_kind="listing", reason="stale_baseline")
+    rejected_before = rejected._value.get()
+    listing = _tick(5.0, event_type="listed", listing_id="1")
+
+    with caplog.at_level("INFO", logger="listener.main"):
+        await detection.evaluate_and_execute(
+            listing, -3.0, MagicMock(), executor, {"latest_price_cents": 1050}, "hybrid", alerts, _baseline_state(age)
+        )
+
+    dre.assert_not_awaited()
+    executor.execute.assert_not_awaited()
+    alerts.submit.assert_not_called()
+    assert rejected._value.get() == rejected_before + 1
+    assert "Not judged (hybrid, listing)" in caplog.text
+    assert expected_log in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_current_baseline_lets_the_approval_through(monkeypatch):
+    monkeypatch.setattr(detection, "dre_approval_reason", AsyncMock(return_value="support_floor"))
+    executor = AsyncMock()
+    state = _baseline_state(timedelta(hours=47))
+
+    await detection.evaluate_and_execute(
+        _tick(5.0), -3.0, MagicMock(), executor, {"latest_price_cents": 1050}, baseline_state=state
+    )
+
+    executor.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_the_window_passes_the_baseline_state_on_to_the_decision(monkeypatch):
+    store = _store_with_baseline(support_floor_cents=900, latest_price_cents=1000)
+    await _fill_window(store, [1000, 1010, 990, 1005, 995, 1000, 1002, 998])
+    pool = AsyncMock()
+    state = _baseline_state(timedelta(hours=100))
+
+    await detection.update_window_and_detect(
+        _tick(5.0, timestamp=1_790_009_000), cast(Redis, store), pool, AsyncMock(), None, state
+    )
+
+    submitted = pool.submit.await_args.args[0]
+    assert submitted.args[-1] is state

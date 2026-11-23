@@ -21,6 +21,7 @@ import detection
 from backtest.sources import BaselineSchedule, BaselineSnapshot, RecordedEvent, expand_event
 from backtest.store import InMemoryEdgeStore
 from backtest.strategy import REASON_DUPLICATE, REASON_UNCHANGED_SNAPSHOT, Decision, DecisionContext, Strategy
+from baseline_loader import BASELINE_MAX_AGE_HOURS
 from models import FeedEvent, MarketTick
 
 LOG_FORMAT_VERSION = 2
@@ -112,6 +113,14 @@ class _BaselineSwitcher:
         self._store = store
         self._log = log
         self._active: int | None = None
+        self._max_age_ms = int(BASELINE_MAX_AGE_HOURS * 3_600_000)
+
+    def is_stale(self, time_ms: int) -> bool:
+        """Whether the build in force at `time_ms` is older than the live listener accepts (#360)."""
+        if self._active is None:
+            return False
+        build = self._schedule.builds[self._active]
+        return time_ms - build.effective_from_ms > self._max_age_ms
 
     async def advance(self, time_ms: int) -> None:
         index = self._schedule.active_index(time_ms)
@@ -198,6 +207,7 @@ async def run_replay(
         previous_time_ms = event.time_ms
         if switcher is not None:
             await switcher.advance(event.time_ms)
+            context.baseline_stale = switcher.is_stale(event.time_ms)
         summary.events += 1
         is_logged_period = log_from_ms is None or event.time_ms >= log_from_ms
 

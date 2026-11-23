@@ -250,8 +250,13 @@ async def tick_consumer(
     batch_store: RedisBatchStore,
     executor: ExecutionService,
     alerts: AlertDispatcher | None = None,
+    baseline_state: BaselineState | None = None,
 ) -> None:
-    """Processes stream items: records every tick and raw feed event, and scores live offers for anomalies."""
+    """
+    Processes stream items: records every tick and raw feed event, and scores live offers for anomalies.
+
+    With `baseline_state`, anomalies are not approved while its baselines are missing or stale (#360).
+    """
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
     cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
@@ -330,7 +335,7 @@ async def tick_consumer(
                                 snapshots_unchanged_windowed_total.inc()
                                 await push_to_window(item, cache)
                         else:
-                            await update_window_and_detect(item, cache, anomaly_pool, executor, alerts)
+                            await update_window_and_detect(item, cache, anomaly_pool, executor, alerts, baseline_state)
                     batch_buffer_size.set(len(batch_buffer))
                 # Broad on purpose: one bad tick must not kill the consumer loop.
                 except Exception as item_err:
@@ -427,7 +432,9 @@ async def process_live_telemetry_stream(venue: str) -> None:
                 logger.info("[WINDOWS] Moved %d price windows to venue keyed names (#270).", migrated_windows)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
-                    tick_consumer(queue, scraper.venue, anomaly_pool, batch_pool, batch_store, executor, alerts),
+                    tick_consumer(
+                        queue, scraper.venue, anomaly_pool, batch_pool, batch_store, executor, alerts, baseline_state
+                    ),
                     name="tick-consumer",
                 )
                 producer_tasks = [
