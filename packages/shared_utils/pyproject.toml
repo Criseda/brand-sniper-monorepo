@@ -12,6 +12,8 @@ dependencies = [
     "asyncpg>=0.31.0",
     "cryptography>=46.0.0",
     "python-dotenv>=1.0.0",
+    # The async engine needs greenlet, which SQLAlchemy 2.1 no longer installs by default.
+    "sqlalchemy[asyncio]>=2.1.9",
     "sqlmodel>=0.0.39",
 ]
 
