@@ -52,19 +52,21 @@ _SNAPSHOTS_QUERY = text(
     """
 )
 
-# Builds that can be in effect during [start, end): the newest one built at or before the start, and
-# every one built after it and before the end.
+# Builds that can be in effect during [start, end): the newest one stored at or before the start, and
+# every one stored after it and before the end. A build takes effect when it was stored, not when its run
+# started: a DMarket run syncs sales for 20 to 80 minutes first, and the listener cannot load it before.
 _BUILDS_QUERY = text(
     """
-    SELECT id, built_at
+    SELECT id, built_at, COALESCE(stored_at, built_at) AS effective_at
     FROM baseline_builds
     WHERE venue = :venue
-      AND built_at < :end
-      AND built_at >= COALESCE(
-          (SELECT MAX(built_at) FROM baseline_builds WHERE venue = :venue AND built_at <= :start),
+      AND COALESCE(stored_at, built_at) < :end
+      AND COALESCE(stored_at, built_at) >= COALESCE(
+          (SELECT MAX(COALESCE(stored_at, built_at)) FROM baseline_builds
+           WHERE venue = :venue AND COALESCE(stored_at, built_at) <= :start),
           :start
       )
-    ORDER BY built_at, id
+    ORDER BY effective_at, id
     """
 )
 
@@ -170,8 +172,13 @@ async def load_baseline_schedule(
     async with engine.connect() as connection:
         result = await connection.execute(_BUILDS_QUERY, {"venue": venue, "start": start, "end": end})
         builds = [
-            ScheduledBuild(build_id=build_id, built_at=built_at.isoformat(), effective_from_ms=_epoch_ms(built_at))
-            for build_id, built_at in result
+            ScheduledBuild(
+                build_id=build_id,
+                built_at=built_at.isoformat(),
+                effective_from_ms=_epoch_ms(effective_at),
+                built_at_ms=_epoch_ms(built_at),
+            )
+            for build_id, built_at, effective_at in result
         ]
     built_at_by_id = {build.build_id: build.built_at for build in builds}
 

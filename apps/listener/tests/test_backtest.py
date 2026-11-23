@@ -720,7 +720,8 @@ async def test_build_snapshot_matches_what_the_listener_loads():
 async def test_baseline_schedule_lists_builds_and_loads_them_on_demand():
     engine = FakeEngine(
         {
-            database._BUILDS_QUERY.text: [(3, _at(0)), (4, _at(3600))],
+            # Build 4 started at 3600 s and was stored at 5400 s, after its sales sync.
+            database._BUILDS_QUERY.text: [(3, _at(0), _at(0)), (4, _at(3600), _at(5400))],
             database._BUILD_ROWS_QUERY.text: [(ITEM, 900, 1000, 1100, 110, 1.5, 2.5, None)],
         }
     )
@@ -731,7 +732,8 @@ async def test_baseline_schedule_lists_builds_and_loads_them_on_demand():
         (3, _at(0).isoformat()),
         (4, _at(3600).isoformat()),
     ]
-    assert schedule.builds[1].effective_from_ms == database._epoch_ms(_at(3600))
+    assert schedule.builds[1].effective_from_ms == database._epoch_ms(_at(5400))
+    assert schedule.builds[1].built_at_ms == database._epoch_ms(_at(3600))
     assert (await schedule.load(4)).as_of == _at(3600).isoformat()
 
 
@@ -933,3 +935,50 @@ async def test_replay_with_a_current_build_approves_the_same_dip():
     header = json.loads(log_text.splitlines()[0])
     assert header["config"]["stale_baseline_max_age_hours"] == 48
     assert _rows(log_text)[0]["approve"] is True
+
+
+@pytest.mark.asyncio
+async def test_replay_uses_a_build_only_from_when_it_was_stored():
+    cheap_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 500, "latest_price_cents": 1000}})
+    high_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 900, "latest_price_cents": 1000}})
+
+    async def load(build_id: int) -> BaselineSnapshot:
+        return {1: cheap_floor, 2: high_floor}[build_id]
+
+    # Build 2 started at 100 s but was stored at 1650 s, as a DMarket build is after its sales sync.
+    schedule = BaselineSchedule(
+        builds=[
+            ScheduledBuild(1, "t+0", effective_from_ms=T0_MS, built_at_ms=T0_MS),
+            ScheduledBuild(2, "t+100", effective_from_ms=T0_MS + 1_650_000, built_at_ms=T0_MS + 100_000),
+        ],
+        load=load,
+    )
+    history = [_snapshot(offset, 1000 + offset % 7) for offset in range(0, 1600, 60)]
+    events = [*history, _feed(1601, "listed", _sale(1, 850)), _feed(1701, "listed", _sale(2, 845))]
+
+    log_text, _ = await _replay(events, schedule)
+
+    decisions = {row["listing_id"]: row for row in _rows(log_text)}
+    # Before build 2 was stored the listener still judged against build 1's lower floor.
+    assert decisions["1"]["approve"] is False
+    assert decisions["2"]["approve"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_build_stored_late_is_as_old_as_its_start(monkeypatch):
+    # 900 seconds instead of 48 hours. Build 2 started 1000 s before it was stored, so it is stale on arrival.
+    monkeypatch.setattr(harness, "BASELINE_MAX_AGE_HOURS", 0.25)
+    high_floor = BaselineSnapshot(baselines={ITEM: {"support_floor_cents": 900, "latest_price_cents": 1000}})
+
+    async def load(build_id: int) -> BaselineSnapshot:
+        return high_floor
+
+    schedule = BaselineSchedule(
+        builds=[ScheduledBuild(1, "t+600", effective_from_ms=T0_MS + 1_600_000, built_at_ms=T0_MS + 600_000)],
+        load=load,
+    )
+    history = [_snapshot(offset, 1000 + offset % 7) for offset in range(0, 1600, 60)]
+
+    log_text, _ = await _replay([*history, _feed(1601, "listed", _sale(1, 850))], schedule)
+
+    assert _rows(log_text)[0]["reason"] == REASON_STALE_BASELINE

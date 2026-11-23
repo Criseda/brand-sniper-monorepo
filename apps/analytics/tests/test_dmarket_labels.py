@@ -268,9 +268,10 @@ async def test_item_fees_are_grouped_by_build(monkeypatch):
 
     item_fees = await fetch_item_fees("dmarket", T0, T0 + 2 * DAY)
 
-    assert item_fees.built_at == [BUILT_BEFORE, later]
+    assert item_fees.stored_at == [BUILT_BEFORE, later]
     assert (item_fees.fee_bps(NAME, T0), item_fees.fee_bps(NAME, later), item_fees.fee_bps("Other", later)) == (200, 1000, None)
     sql, params = engine.executed[0]
+    assert "COALESCE(build.stored_at, build.built_at)" in sql
     assert "seller_fee_bps IS NOT NULL" in sql and params == {"venue": "dmarket", "start": T0, "end": T0 + 2 * DAY}
 
 

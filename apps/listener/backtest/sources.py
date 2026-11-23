@@ -115,14 +115,15 @@ class ScheduledBuild:
 
     build_id: int
     built_at: str  # ISO 8601, naive UTC
-    effective_from_ms: int
+    effective_from_ms: int  # When the build was stored, so the earliest the listener could load it
+    built_at_ms: int | None = None  # built_at in epoch ms, which a build's age counts from; None: effective_from_ms
 
 
 @dataclass(frozen=True, slots=True)
 class BaselineSchedule:
     """
     Dated baseline builds, oldest first. At any replayed moment the decision path sees the newest build
-    built at or before it, which is what the live listener had loaded (up to its refresh delay). Before
+    stored at or before it, which is what the live listener had loaded (up to its refresh delay). Before
     the first build, the first build is used; that is a look-ahead, and the log marks it.
     """
 

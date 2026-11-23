@@ -24,7 +24,7 @@ from outcome_labels import (
 from shared_utils import utc_now_naive
 from shared_utils.db_connection import async_engine
 from shared_utils.models import BaselineBuild, LabelVersion, ListingOutcome
-from sqlalchemy import func, select, text
+from sqlalchemy import DateTime, column, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlmodel import col
 
@@ -136,15 +136,19 @@ async def latest_sales_sync(venue: str) -> datetime | None:
 
 
 # The builds whose fees apply to listings recorded in [start, end]: the one in force at `start` and every later one.
+# A build is in force from when it was stored, the earliest the listener could load it (a DMarket run syncs sales
+# for 20 to 80 minutes after it starts).
 _ITEM_FEES_QUERY = """
-SELECT build.built_at, baseline.market_hash_name, baseline.seller_fee_bps
+SELECT COALESCE(build.stored_at, build.built_at) AS effective_at, baseline.market_hash_name, baseline.seller_fee_bps
 FROM baseline_builds AS build
 JOIN venue_baselines AS baseline ON baseline.build_id = build.id
 WHERE build.venue = :venue
   AND baseline.seller_fee_bps IS NOT NULL
-  AND build.built_at <= :end
-  AND build.built_at >= COALESCE(
-      (SELECT MAX(built_at) FROM baseline_builds WHERE venue = :venue AND built_at <= :start), :start
+  AND COALESCE(build.stored_at, build.built_at) <= :end
+  AND COALESCE(build.stored_at, build.built_at) >= COALESCE(
+      (SELECT MAX(COALESCE(stored_at, built_at)) FROM baseline_builds
+       WHERE venue = :venue AND COALESCE(stored_at, built_at) <= :start),
+      :start
   )
 """
 
@@ -152,11 +156,14 @@ WHERE build.venue = :venue
 async def fetch_item_fees(venue: str, start: datetime, end: datetime) -> ItemFees:
     """Each item's seller fee in every `venue` build that was in force for listings recorded in [start, end]."""
     async with async_engine.connect() as conn:
-        result = await conn.execute(text(_ITEM_FEES_QUERY), {"venue": venue, "start": start, "end": end})
+        query = text(_ITEM_FEES_QUERY).columns(
+            column("effective_at", DateTime()), column("market_hash_name"), column("seller_fee_bps")
+        )
+        result = await conn.execute(query, {"venue": venue, "start": start, "end": end})
         rows = result.fetchall()
     builds: dict[datetime, dict[str, int]] = {}
-    for built_at, market_hash_name, seller_fee_bps in rows:
-        builds.setdefault(built_at, {})[market_hash_name] = seller_fee_bps
+    for effective_at, market_hash_name, seller_fee_bps in rows:
+        builds.setdefault(effective_at, {})[market_hash_name] = seller_fee_bps
     return ItemFees.build(builds.items())
 
 
