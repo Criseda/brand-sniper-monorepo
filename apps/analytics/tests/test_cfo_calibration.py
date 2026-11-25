@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import baseline_scorecard
 import cfo_calibration
 import pytest
 from baseline_scorecard import (
@@ -592,7 +593,15 @@ async def test_load_cases_keeps_labeled_trades_and_cuts_market_data_at_the_last_
         return [BaselineSnapshot(build_id=1, built_at=DECIDED_AT - HOUR, rows={NAME: baseline()})]
 
     monkeypatch.setattr(cfo_calibration, "fetch_listing_labels", fake_labels)
+
+    async def fake_feed_minutes(venue, start, end):
+        first = start.replace(second=0, microsecond=0)
+        return [first + timedelta(minutes=index) for index in range(int((end - first).total_seconds() // 60) + 1)]
+
     monkeypatch.setattr(cfo_calibration, "fetch_listing_events", fake_sales)
+    # The REST snapshots are labeled by the scorecard's helper, which reads the sales and the feed itself.
+    monkeypatch.setattr(baseline_scorecard, "fetch_listing_events", fake_sales)
+    monkeypatch.setattr(baseline_scorecard, "fetch_feed_minutes", fake_feed_minutes)
     monkeypatch.setattr(cfo_calibration, "fetch_listing_details", fake_details)
     monkeypatch.setattr(cfo_calibration, "fetch_baseline_snapshots", fake_builds)
 

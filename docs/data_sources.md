@@ -12,7 +12,8 @@ from the production database on 2026-09-26.
 | Skinport sales history (`/v1/sales/history`) | `baseline_builds`, `venue_baselines` | Skinport | One build per day from 2026-09-26 | The live baselines (#259). |
 | Skinport REST snapshots (`/v1/items`) | `live_market_ticks` with no `event_type` | Skinport | 22 days between June and September 2026 | Lowest ask per item, not sales. Trade locked listings only until #275 (see below). Gaps whenever my PC was off. |
 | Skinport sale feed (WebSocket) | `feed_events`, `live_market_ticks` with an `event_type` | Skinport | From 2026-09-24 21:58 UTC | Every `listed` and `sold` event with listing details (#232). Labels are built from this. |
-| Outcome labels | `listing_outcomes` | Skinport | Empty until about 2026-10-08 | A listing gets its label 14 days and 1 hour after it was seen (#233). |
+| Outcome labels `v1` | `listing_outcomes` | Skinport | Listings from 2026-09-26 to 2026-10-14 | A listing gets its label 14 days and 1 hour after it was seen (#233). Each label saw only 9% to 29% of its resale window, because the feed was off the rest of the time. |
+| Outcome labels `v2` | `listing_outcomes` | Skinport | Empty until about 2026-12-09 | `v1` for listings whose resale window the feed covered for at least 90% (#368). The default label version. |
 | Outcome labels `v1-dmarket` | `listing_outcomes` | DMarket | Empty until about 2026-11-09 | Against DMarket's own sales in `venue_sales`, once a sales sync started a day after the listing's horizon (#339, `docs/dmarket_api.md`). |
 
 ## The Kaggle dataset
@@ -151,7 +152,9 @@ MLflow, Prometheus and Grafana. Only PostgreSQL on Azure stays up all the time. 
 
 1. The recorded data has gaps. The feed does not replay what happened while the PC was off, so those
    listings and sales are missing. Around a gap, labels see fewer comparable sales and mark more listings
-   `sale_censored`. A backtest should not read a gap as a quiet market.
+   `sale_censored`. A backtest should not read a gap as a quiet market. Label version `v2` (#368) labels a
+   listing only when the feed was up for most of its resale window. Since 2026-11-25 the server stack runs all
+   the time on another machine, so this applies to the data recorded before then.
 2. Jobs pinned to a fixed time skip days without anyone noticing. Jobs should instead process everything
    missed since their last successful run and be safe to run again. The outcome labeler already works like
    that.

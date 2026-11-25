@@ -1,3 +1,4 @@
+import dataclasses
 import importlib.util
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ import outcome_data
 import pytest
 from label_outcomes import label_listing_outcomes
 from outcome_data import (
+    fetch_feed_minutes,
     fetch_final_labels,
     fetch_listing_events,
     load_label_contract,
@@ -15,12 +17,15 @@ from outcome_data import (
     save_outcomes,
 )
 from outcome_labels import (
+    LABEL_V1,
+    FeedCoverage,
     FeedSale,
     LabelConfig,
     LabelVersionMismatchError,
     contract_differences,
     default_start,
     flatten_contract,
+    is_covered,
     iter_windows,
     label_listings,
     label_mlflow_params,
@@ -47,8 +52,21 @@ def comparable_sales(prices, start=T0 + 8 * DAY):
     return [sold(f"other-{i}", price, start + timedelta(hours=i)) for i, price in enumerate(prices)]
 
 
+def always_up_feed(monkeypatch):
+    """Makes the flow read a feed that was up every minute it asks about, and records what it asked."""
+    calls = []
+
+    async def fake_feed_minutes(venue, start, end):
+        calls.append((venue, start, end))
+        first = start.replace(second=0, microsecond=0)
+        return [first + timedelta(minutes=index) for index in range(int((end - first).total_seconds() // 60) + 1)]
+
+    monkeypatch.setattr(label_outcomes, "fetch_feed_minutes", fake_feed_minutes)
+    return calls
+
+
 def only_label(listed_sales, sold_sales, config=None, as_of=AS_OF):
-    rows = label_listings(listed_sales, sold_sales, config or LabelConfig(), as_of)
+    rows = label_listings(listed_sales, sold_sales, config or LABEL_V1, as_of).rows
     assert len(rows) == 1
     return rows[0]
 
@@ -144,11 +162,11 @@ def test_other_items_and_the_listing_itself_are_not_comparable():
 
 
 def test_listing_not_labeled_before_horizon_and_settle_time():
-    config = LabelConfig()
+    config = LABEL_V1
     ready_at = T0 + timedelta(seconds=config.horizon_seconds + config.settle_seconds)
 
-    assert label_listings([listed("L1", 1000)], [], config, ready_at - timedelta(seconds=1)) == []
-    assert len(label_listings([listed("L1", 1000)], [], config, ready_at)) == 1
+    assert label_listings([listed("L1", 1000)], [], config, ready_at - timedelta(seconds=1)).rows == []
+    assert len(label_listings([listed("L1", 1000)], [], config, ready_at).rows) == 1
 
 
 def test_duplicate_sightings_keep_the_first_listing_and_sale():
@@ -189,7 +207,9 @@ def test_min_margin_from_config_decides_profitability():
         hold_seconds=SKINPORT_FEES.hold_seconds,
         min_margin_cents=500,
     )
-    row = only_label([listed("L1", 1000)], comparable_sales([1500, 1500, 1500]), LabelConfig(fees=strict_fees))
+    row = only_label(
+        [listed("L1", 1000)], comparable_sales([1500, 1500, 1500]), LabelConfig(fees=strict_fees, min_feed_coverage=0.0)
+    )
 
     assert row["resale_net_margin_cents"] == 380
     assert row["is_profitable"] is False
@@ -199,8 +219,8 @@ def test_labels_are_deterministic_and_ordered():
     listings = [listed("L2", 900, at=T0 + timedelta(hours=1)), listed("L1", 1000)]
     sales = comparable_sales([1500, 1400, 1600])
 
-    first = label_listings(listings, sales, LabelConfig(), AS_OF + DAY)
-    second = label_listings(list(reversed(listings)), list(reversed(sales)), LabelConfig(), AS_OF + DAY)
+    first = label_listings(listings, sales, LABEL_V1, AS_OF + DAY).rows
+    second = label_listings(list(reversed(listings)), list(reversed(sales)), LABEL_V1, AS_OF + DAY).rows
 
     assert first == second
     assert [row["listing_id"] for row in first] == ["L1", "L2"]
@@ -209,7 +229,7 @@ def test_labels_are_deterministic_and_ordered():
 def test_default_config_uses_the_registered_skinport_fees():
     from shared_utils import SKINPORT_FEES
 
-    assert LabelConfig().fees is SKINPORT_FEES
+    assert LABEL_V1.fees is SKINPORT_FEES
 
 
 @pytest.mark.parametrize(
@@ -302,11 +322,22 @@ async def test_fetch_listing_events_without_names_has_no_name_filter(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_fetch_feed_minutes_reads_the_minutes_with_a_listing_or_a_sale(monkeypatch):
+    engine = FakeEngine([(T0,), (T0 + timedelta(minutes=1),)])
+    monkeypatch.setattr(outcome_data, "async_engine", engine)
+
+    assert await fetch_feed_minutes("skinport", T0, T0 + DAY) == [T0, T0 + timedelta(minutes=1)]
+    stmt, params = engine.conn.executed[0]
+    assert "event_type IN ('listed', 'sold')" in str(stmt)
+    assert params == {"venue": "skinport", "start": T0, "end": T0 + DAY}
+
+
+@pytest.mark.asyncio
 async def test_save_outcomes_upserts_keeping_the_earliest_sighting(monkeypatch):
     engine = FakeEngine()
     monkeypatch.setattr(outcome_data, "async_engine", engine)
-    rows = label_listings([listed("L1", 1000)], comparable_sales([1500, 1500, 1500]), LabelConfig(), AS_OF)
-    final_cutoff = LabelConfig().final_before(AS_OF)
+    rows = label_listings([listed("L1", 1000)], comparable_sales([1500, 1500, 1500]), LABEL_V1, AS_OF).rows
+    final_cutoff = LABEL_V1.final_before(AS_OF)
 
     await save_outcomes(rows, final_cutoff)
 
@@ -358,6 +389,7 @@ async def test_flow_labels_only_matured_listings_and_is_rerunnable(monkeypatch):
     monkeypatch.setattr(label_outcomes, "fetch_listing_events", fake_fetch)
     monkeypatch.setattr(label_outcomes, "save_outcomes", fake_save)
     monkeypatch.setattr(label_outcomes, "register_label_version", fake_register)
+    feed_calls = always_up_feed(monkeypatch)
 
     # As of T0 + 16 days only L1 has matured; L2 (listed on day 5) must wait until day 19.
     as_of = T0 + 16 * DAY
@@ -366,13 +398,16 @@ async def test_flow_labels_only_matured_listings_and_is_rerunnable(monkeypatch):
     second_total = await label_listing_outcomes(start=T0, end=T0 + 10 * DAY, as_of=as_of, window_hours=24)
 
     assert first_total == second_total == 1
-    assert registered == ["v1", "v1"]
-    assert list(store) == [("skinport", "L1", "v1")]
+    assert registered == ["v2", "v2"]
+    assert list(store) == [("skinport", "L1", "v2")]
     assert store == snapshot
-    # Sold events are read once per run, and never past the last scanned listing time plus the horizon.
-    last_listing_end = as_of - timedelta(seconds=LabelConfig().horizon_seconds + LabelConfig().settle_seconds)
+    # Sold events and the feed's up minutes are read once per run, and never past the last scanned listing time
+    # plus the horizon.
+    last_listing_end = as_of - timedelta(seconds=LABEL_V1.horizon_seconds + LABEL_V1.settle_seconds)
+    sold_end = last_listing_end + timedelta(seconds=LABEL_V1.horizon_seconds)
     sold_calls = [(venue, start, end) for venue, event_type, start, end, _ in fetch_calls if event_type == "sold"]
-    assert sold_calls == [("skinport", T0, last_listing_end + timedelta(seconds=LabelConfig().horizon_seconds))] * 2
+    assert sold_calls == [("skinport", T0, sold_end)] * 2
+    assert feed_calls == [("skinport", T0, sold_end)] * 2
 
 
 @pytest.mark.asyncio
@@ -392,7 +427,7 @@ async def test_flow_rejects_non_positive_window():
 
 
 def test_default_start_covers_the_last_matured_days():
-    config = LabelConfig()
+    config = LABEL_V1
     now = T0 + 30 * DAY
 
     start = default_start(now, 3, config)
@@ -448,7 +483,7 @@ async def test_cli_run_for_skinport_starts_from_the_matured_days_without_a_sales
     monkeypatch.setattr(label_outcomes, "latest_sales_sync", unexpected_sync)
     monkeypatch.setattr(label_outcomes, "label_listing_outcomes", fake_flow)
     monkeypatch.setattr(label_outcomes, "utc_now_naive", lambda: AS_OF)
-    config = LabelConfig()
+    config = LABEL_V1
 
     await label_outcomes.run_labeler(start=None, end=None, days_back=3, window_hours=24, config=config)
 
@@ -493,6 +528,94 @@ async def test_cli_run_with_a_start_labels_that_range_without_reading_the_sync(m
     assert (call["start"], call["end"], call["window_hours"]) == (T0, T0 + DAY, 6)
 
 
+# --- Feed coverage (v2, #368) ---
+
+
+def minutes(start, end):
+    """Every minute in [start, end)."""
+    return [start + timedelta(minutes=index) for index in range(int((end - start).total_seconds() // 60))]
+
+
+def test_feed_coverage_is_the_share_of_a_window_between_recorded_minutes():
+    # Up for the first 6 hours, down for 6, up for 12.
+    up = minutes(T0, T0 + timedelta(hours=6)) + minutes(T0 + timedelta(hours=12), T0 + DAY)
+    coverage = FeedCoverage.build(up, gap_seconds=900)
+
+    assert coverage.share(T0, T0 + DAY) == pytest.approx(0.75)
+    assert coverage.share(T0 + timedelta(hours=6, minutes=1), T0 + timedelta(hours=12)) == 0.0
+    assert coverage.share(T0, T0 + timedelta(hours=6)) == pytest.approx(1.0)
+    # Outside the minutes it was built from, the feed counts as down.
+    assert coverage.share(T0 - DAY, T0) == 0.0
+    assert coverage.share(T0, T0) == 0.0
+
+
+def test_a_quiet_spell_shorter_than_the_gap_counts_as_up():
+    # One event every 10 minutes: never more than 15 minutes apart, so up the whole time.
+    sparse = [T0 + timedelta(minutes=10 * index) for index in range(7)]
+
+    coverage = FeedCoverage.build(sparse, gap_seconds=900)
+
+    assert coverage.share(T0, T0 + timedelta(minutes=61)) == pytest.approx(1.0)
+    assert FeedCoverage.build(sparse, gap_seconds=300).share(T0, T0 + timedelta(minutes=61)) < 0.2
+
+
+def test_v2_labels_only_listings_whose_resale_window_the_feed_covered():
+    config = LabelConfig()
+    early = listed("EARLY", 1000)
+    late = listed("LATE", 1000, at=T0 + 2 * DAY)
+    sales = comparable_sales([1500, 1500, 1500], start=T0 + 9 * DAY) + comparable_sales([1500] * 3, start=T0 + 10 * DAY)
+    # The feed is up from T0 to T0 + 14 days and then down: EARLY's resale window (days 7 to 14) is covered,
+    # LATE's (days 9 to 16) only five sevenths.
+    coverage = FeedCoverage.build(minutes(T0, T0 + 14 * DAY), config.feed_gap_seconds)
+
+    labeled = label_listings([early, late], sales, config, T0 + 30 * DAY, feed_coverage=coverage)
+
+    assert [row["listing_id"] for row in labeled.rows] == ["EARLY"]
+    assert labeled.rows[0]["label_version"] == "v2"
+    assert labeled.uncovered == 1
+
+
+def test_v2_refuses_to_label_without_the_feed_coverage():
+    with pytest.raises(ValueError, match="needs the feed coverage"):
+        label_listings([listed("L1", 1000)], [], LabelConfig(), AS_OF)
+
+
+def test_v1_and_venue_sales_versions_need_no_feed_coverage():
+    assert is_covered(T0, LABEL_V1, None)
+    assert is_covered(T0, LabelConfig.for_venue("dmarket", "v1-dmarket"), None)
+
+
+def test_v2_contract_is_v1_plus_the_feed_coverage():
+    v2 = LabelConfig().contract()
+    v1 = LABEL_V1.contract()
+
+    assert {key: value for key, value in v2.items() if key != "feed_coverage"} == v1
+    assert v2["feed_coverage"] == {
+        "min_resale_window_share": 0.9,
+        "gap_seconds": 900,
+        "events": "listed and sold, by minute",
+    }
+    assert LabelConfig.for_venue("skinport", "v2") == LabelConfig()
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"min_feed_coverage": 1.5},
+        {"min_feed_coverage": -0.1},
+        {"feed_gap_seconds": 30},
+    ],
+)
+def test_invalid_feed_coverage_settings_are_rejected(kwargs):
+    with pytest.raises(ValueError):
+        LabelConfig(**kwargs)
+
+
+def test_feed_coverage_only_applies_to_sales_from_the_feed():
+    with pytest.raises(ValueError, match="only to sales from the feed"):
+        LabelConfig.for_venue("dmarket", "v1-dmarket", min_feed_coverage=0.5)
+
+
 # --- Label version contract ---
 
 MIGRATION = Path(__file__).resolve().parents[3] / "deployments" / "migrations" / "versions" / "7c4e2a9f1b38_label_versions.py"
@@ -506,7 +629,7 @@ def _load_migration():
 
 
 def test_v1_contract_lists_every_parameter():
-    assert LabelConfig().contract() == {
+    assert LABEL_V1.contract() == {
         "venue": "skinport",
         "fees": {
             "venue": "skinport",
@@ -525,12 +648,12 @@ def test_v1_contract_lists_every_parameter():
 def test_migration_registers_v1_with_the_labelers_default_config():
     # The migration keeps its own copy, so a change to LabelConfig's defaults fails here instead of
     # silently writing a different definition under v1.
-    assert _load_migration().V1_CONFIG == LabelConfig().contract()
+    assert _load_migration().V1_CONFIG == LABEL_V1.contract()
 
 
 def test_contract_differences_name_each_changed_parameter():
-    stored = LabelConfig().contract()
-    running = LabelConfig(min_comparable_sales=5).contract()
+    stored = LABEL_V1.contract()
+    running = dataclasses.replace(LABEL_V1, min_comparable_sales=5).contract()
 
     assert contract_differences(stored, stored) == []
     assert contract_differences(stored, running) == ["min_comparable_sales: stored 3, running 5"]
@@ -540,8 +663,8 @@ def test_contract_differences_name_each_changed_parameter():
 
 
 def test_flattened_contract_and_mlflow_params():
-    flat = flatten_contract(LabelConfig().contract())
-    params = label_mlflow_params("v1", LabelConfig().contract())
+    flat = flatten_contract(LABEL_V1.contract())
+    params = label_mlflow_params("v1", LABEL_V1.contract())
 
     assert flat["fees.hold_seconds"] == "604800"
     assert flat["fees.fee_tiers"] == '[{"fee_bps": 800, "min_price_cents": 0}, {"fee_bps": 600, "min_price_cents": 100000}]'
@@ -551,7 +674,7 @@ def test_flattened_contract_and_mlflow_params():
 
 
 def test_labels_become_final_after_settle_and_revision_time():
-    config = LabelConfig()
+    config = LABEL_V1
 
     assert config.final_before(AS_OF) == AS_OF - timedelta(hours=1) - 3 * DAY
     # The daily run re-labels exactly the labels that are not final yet.
@@ -568,10 +691,10 @@ class ContractEngine(FakeEngine):
 
 @pytest.mark.asyncio
 async def test_register_label_version_accepts_the_stored_config(monkeypatch):
-    engine = ContractEngine(LabelConfig().contract())
+    engine = ContractEngine(LABEL_V1.contract())
     monkeypatch.setattr(outcome_data, "async_engine", engine)
 
-    await register_label_version(LabelConfig())
+    await register_label_version(LABEL_V1)
 
     insert_sql = str(engine.conn.executed[0][0].compile(dialect=postgresql.dialect()))
     assert "INSERT INTO label_versions" in insert_sql
@@ -580,7 +703,7 @@ async def test_register_label_version_accepts_the_stored_config(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_register_label_version_refuses_a_different_config(monkeypatch):
-    monkeypatch.setattr(outcome_data, "async_engine", ContractEngine(LabelConfig().contract()))
+    monkeypatch.setattr(outcome_data, "async_engine", ContractEngine(LABEL_V1.contract()))
 
     with pytest.raises(LabelVersionMismatchError, match="min_comparable_sales: stored 3, running 5"):
         await register_label_version(LabelConfig(min_comparable_sales=5))
@@ -594,7 +717,7 @@ async def test_flow_writes_nothing_under_a_mismatched_version(monkeypatch):
     async def fail_save(rows, final_cutoff):
         raise AssertionError("must not write under a mismatched version")
 
-    monkeypatch.setattr(outcome_data, "async_engine", ContractEngine(LabelConfig().contract()))
+    monkeypatch.setattr(outcome_data, "async_engine", ContractEngine(LABEL_V1.contract()))
     monkeypatch.setattr(label_outcomes, "fetch_listing_events", fake_fetch)
     monkeypatch.setattr(label_outcomes, "save_outcomes", fail_save)
 
@@ -612,7 +735,7 @@ async def test_load_label_contract_of_an_unknown_version_fails(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_final_labels_uses_the_stored_finality_rule(monkeypatch):
-    stored = {**LabelConfig().contract(), "settle_seconds": 0, "revise_seconds": 86_400}
+    stored = {**LABEL_V1.contract(), "settle_seconds": 0, "revise_seconds": 86_400}
     loaded = []
 
     async def fake_load(version):
@@ -640,7 +763,7 @@ async def test_fetch_final_labels_uses_the_stored_finality_rule(monkeypatch):
 @pytest.mark.asyncio
 async def test_fetch_final_labels_can_include_revisable_labels_for_exploratory_runs(monkeypatch):
     async def fake_load(version):
-        return LabelConfig().contract()
+        return LABEL_V1.contract()
 
     engine = FakeEngine()
     monkeypatch.setattr(outcome_data, "async_engine", engine)
@@ -653,9 +776,9 @@ async def test_fetch_final_labels_can_include_revisable_labels_for_exploratory_r
 
 @pytest.mark.asyncio
 async def test_load_label_contract_returns_the_stored_config(monkeypatch):
-    monkeypatch.setattr(outcome_data, "async_engine", ContractEngine(LabelConfig().contract()))
+    monkeypatch.setattr(outcome_data, "async_engine", ContractEngine(LABEL_V1.contract()))
 
-    assert await load_label_contract("v1") == LabelConfig().contract()
+    assert await load_label_contract("v1") == LABEL_V1.contract()
 
 
 # --- Venues and module boundaries (#256) ---
@@ -673,6 +796,7 @@ FAKE_FEES = VenueFees(
 async def test_a_second_venue_is_labeled_by_passing_its_name(monkeypatch):
     monkeypatch.setitem(pnl.VENUE_FEES, FAKE_FEES.venue, FAKE_FEES)
     config = LabelConfig.for_venue("fakevenue", "v1-fakevenue")
+    always_up_feed(monkeypatch)
     # The fake venue's 2 day hold: sales from day 3 on are comparable.
     feed = {"listed": [listed("F1", 1000)], "sold": comparable_sales([1500, 1500, 1500], start=T0 + 3 * DAY)}
     venues = set()
@@ -710,7 +834,7 @@ def test_label_config_fees_must_belong_to_its_venue():
 
 
 def test_for_venue_with_the_default_venue_is_the_v1_config():
-    assert LabelConfig.for_venue("skinport", "v1") == LabelConfig()
+    assert LabelConfig.for_venue("skinport", "v1") == LABEL_V1
 
 
 def test_the_labeling_rule_imports_no_database_or_prefect():

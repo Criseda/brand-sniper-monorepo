@@ -22,6 +22,7 @@ from shared_utils import setup_script_environment
 setup_script_environment(__file__)
 
 from outcome_data import (
+    fetch_feed_minutes,
     fetch_item_fees,
     fetch_listing_events,
     fetch_venue_sales,
@@ -33,6 +34,7 @@ from outcome_labels import (
     LABEL_VENUE,
     LABEL_VERSION,
     SALES_FROM_VENUE_SALES,
+    FeedCoverage,
     ItemFees,
     LabelConfig,
     SoldIndex,
@@ -56,6 +58,7 @@ async def label_window(
     config: LabelConfig,
     item_fees: ItemFees | None = None,
     sales_synced_at: datetime | None = None,
+    feed_coverage: FeedCoverage | None = None,
 ) -> int:
     """Labels listings first seen in [start, end). Returns the number of labels written."""
     logger = get_run_logger()
@@ -67,14 +70,16 @@ async def label_window(
         logger.info("[LABELER] No %s listings in %s .. %s.", config.venue, start, end)
         return 0
 
-    rows = label_listings(listed, sold, config, as_of, item_fees, sales_synced_at)
+    labeled = label_listings(listed, sold, config, as_of, item_fees, sales_synced_at, feed_coverage)
+    rows = labeled.rows
     written = await save_outcomes(rows, config.final_before(as_of)) if rows else 0
     profitable = sum(1 for row in rows if row["is_profitable"] is True)
     neutral = sum(1 for row in rows if row["is_profitable"] is None)
     censored = sum(1 for row in rows if row["sale_censored"])
     logger.info(
         "[LABELER] %s .. %s: %d labels (%d profitable, %d neutral, %d censored) from %d listing sightings; "
-        "%d written, the others final or an earlier sighting.",
+        "%d written, the others final or an earlier sighting; %d not labeled, the feed was down for too much of "
+        "their resale window.",
         start,
         end,
         len(rows),
@@ -83,6 +88,7 @@ async def label_window(
         censored,
         len(listed),
         written,
+        labeled.uncovered,
     )
     return len(rows)
 
@@ -123,10 +129,14 @@ async def label_listing_outcomes(
     sold = SoldIndex.build(sold_sales)
     logger.info("[LABELER] %d %s sold events up to %s.", len(sold_sales), config.venue, end)
     item_fees = await fetch_item_fees(config.venue, start, end) if config.item_seller_fees else None
+    feed_coverage = None
+    if config.needs_feed_coverage:
+        # Resale windows run from start + hold to end + horizon, which sold_end already reaches.
+        feed_coverage = FeedCoverage.build(await fetch_feed_minutes(config.venue, start, sold_end), config.feed_gap_seconds)
 
     total = 0
     for window_start, window_end in iter_windows(start, end, timedelta(hours=window_hours)):
-        total += await label_window(window_start, window_end, as_of, sold, config, item_fees, sales_synced_at)
+        total += await label_window(window_start, window_end, as_of, sold, config, item_fees, sales_synced_at, feed_coverage)
     logger.info("[LABELER] Wrote %d labels (version %s) for %s .. %s.", total, config.version, start, end)
     return total
 

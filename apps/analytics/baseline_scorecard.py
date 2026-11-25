@@ -39,9 +39,17 @@ from shared_utils import setup_script_environment
 REPO_ROOT = setup_script_environment(__file__)
 
 from mlflow.client import MlflowClient
-from outcome_data import fetch_listing_events
+from outcome_data import fetch_feed_minutes, fetch_listing_events
 from outcome_labels import LABEL_VENUE as VENUE
-from outcome_labels import LABEL_VERSION, FeedSale, LabelConfig, SoldIndex, label_listing
+from outcome_labels import (
+    LABEL_VERSION,
+    FeedCoverage,
+    FeedSale,
+    LabelConfig,
+    SoldIndex,
+    is_covered,
+    label_listing,
+)
 from shared_utils import (
     get_logger,
     parse_item_meta,
@@ -314,9 +322,16 @@ def set_outcome(trade: Trade, is_profitable: bool | None, net_margin_cents: int 
     trade.net_margin_cents = net_margin_cents
 
 
-def label_snapshot_trades(trades: Sequence[Trade], sold: SoldIndex, config: LabelConfig, as_of: datetime) -> None:
+def label_snapshot_trades(
+    trades: Sequence[Trade],
+    sold: SoldIndex,
+    config: LabelConfig,
+    as_of: datetime,
+    feed_coverage: FeedCoverage | None = None,
+) -> None:
     """
-    Labels approved REST snapshots with the v1 rule, as if each lowest ask were a listing seen at decision time.
+    Labels approved REST snapshots with the label rule, as if each lowest ask were a listing seen at decision time.
+    A snapshot whose resale window the feed did not cover stays unlabeled, as a listing would (#368).
 
     The snapshot's own sale cannot be excluded from the comparable sales (a snapshot has no listing ID),
     which only matters when the lowest ask itself sold within the resale window.
@@ -324,6 +339,9 @@ def label_snapshot_trades(trades: Sequence[Trade], sold: SoldIndex, config: Labe
     for index, trade in enumerate(trades):
         if not matures_by(trade.decided_at, config, as_of):
             trade.outcome = OUTCOME_PENDING
+            continue
+        if not is_covered(trade.decided_at, config, feed_coverage):
+            trade.outcome = OUTCOME_UNLABELED
             continue
         listing = FeedSale(
             listing_id=f"rest-snapshot-{index}",
@@ -333,6 +351,24 @@ def label_snapshot_trades(trades: Sequence[Trade], sold: SoldIndex, config: Labe
         )
         label = label_listing(listing, sold, config)
         set_outcome(trade, label["is_profitable"], label["resale_net_margin_cents"])
+
+
+async def label_snapshot_trades_from_sales(trades: Sequence[Trade], config: LabelConfig, as_of: datetime) -> None:
+    """Reads the sold sales (and the feed coverage, when the version asks for it) that the matured snapshot
+    trades need, then labels them with `label_snapshot_trades`."""
+    mature = [trade for trade in trades if matures_by(trade.decided_at, config, as_of)]
+    if not mature:
+        label_snapshot_trades(trades, SoldIndex(), config, as_of)
+        return
+    first = min(trade.decided_at for trade in mature)
+    horizon_end = max(trade.decided_at for trade in mature) + timedelta(seconds=config.horizon_seconds)
+    names = sorted({trade.market_hash_name for trade in mature})
+    sold = await fetch_listing_events(config.venue, "sold", first, horizon_end, names=names)
+    feed_coverage = None
+    if config.needs_feed_coverage:
+        minutes = await fetch_feed_minutes(config.venue, first, horizon_end)
+        feed_coverage = FeedCoverage.build(minutes, config.feed_gap_seconds)
+    label_snapshot_trades(trades, SoldIndex.build(sold), config, as_of, feed_coverage)
 
 
 def _chunks(values: Sequence[Any]) -> Iterable[Sequence[Any]]:
@@ -680,17 +716,7 @@ async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
 
     notes: list[str] = []
     if inputs.label_version == config.version:
-        mature = [trade for trade in snapshot_trades if matures_by(trade.decided_at, config, inputs.as_of)]
-        if mature:
-            first = min(trade.decided_at for trade in mature)
-            last = max(trade.decided_at for trade in mature)
-            names = sorted({trade.market_hash_name for trade in mature})
-            sold = await fetch_listing_events(
-                config.venue, "sold", first, last + timedelta(seconds=config.horizon_seconds), names=names
-            )
-            label_snapshot_trades(snapshot_trades, SoldIndex.build(sold), config, inputs.as_of)
-        else:
-            label_snapshot_trades(snapshot_trades, SoldIndex(), config, inputs.as_of)
+        await label_snapshot_trades_from_sales(snapshot_trades, config, inputs.as_of)
     elif snapshot_trades:
         for trade in snapshot_trades:
             trade.outcome = OUTCOME_UNLABELED
@@ -713,8 +739,9 @@ async def build_scorecard(inputs: ScorecardInputs) -> dict[str, Any]:
     unlabeled = sum(1 for trade in listing_trades if trade.outcome == OUTCOME_UNLABELED)
     if unlabeled:
         notes.append(
-            f"{unlabeled} approved listings are past their label horizon but have no {inputs.label_version} label. "
-            "Run label_outcomes.py over the range, then run the scorecard again."
+            f"{unlabeled} approved listings are past their label horizon but have no {inputs.label_version} label: "
+            "either the feed was down for too much of their resale window (#368), or label_outcomes.py has not "
+            "run over the range yet."
         )
 
     overall = score_trades(trades)

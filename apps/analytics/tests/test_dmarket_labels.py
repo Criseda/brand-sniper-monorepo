@@ -51,7 +51,7 @@ def fees(fee_bps=200, built_at=BUILT_BEFORE, name=NAME):
 
 
 def only_label(listings, sales, item_fees=None, config=CONFIG):
-    rows = label_listings(listings, sales, config, AS_OF, item_fees if item_fees is not None else fees(), SYNCED_AT)
+    rows = label_listings(listings, sales, config, AS_OF, item_fees if item_fees is not None else fees(), SYNCED_AT).rows
     assert len(rows) == 1
     return rows[0]
 
@@ -120,13 +120,13 @@ def test_a_version_with_item_fees_refuses_to_label_without_them():
 
 def test_nothing_is_labelable_before_the_first_sales_sync():
     assert latest_labelable(AS_OF, CONFIG, None) == datetime.min
-    assert label_listings([listed()], comparable([1500] * 3), CONFIG, AS_OF, fees(), None) == []
+    assert label_listings([listed()], comparable([1500] * 3), CONFIG, AS_OF, fees(), None).rows == []
 
 
 def test_a_listing_waits_for_a_sync_a_day_after_its_horizon():
     early_sync = SYNCED_AT - timedelta(seconds=1)
-    assert label_listings([listed()], comparable([1500] * 3), CONFIG, AS_OF, fees(), early_sync) == []
-    assert len(label_listings([listed()], comparable([1500] * 3), CONFIG, AS_OF, fees(), SYNCED_AT)) == 1
+    assert label_listings([listed()], comparable([1500] * 3), CONFIG, AS_OF, fees(), early_sync).rows == []
+    assert len(label_listings([listed()], comparable([1500] * 3), CONFIG, AS_OF, fees(), SYNCED_AT).rows) == 1
     # The labeler's own settle time still applies when the sync is recent.
     assert latest_labelable(T0 + 14 * DAY, CONFIG, SYNCED_AT + 30 * DAY) == T0 - timedelta(hours=1)
 
@@ -159,7 +159,7 @@ def test_a_sale_after_the_item_was_listed_again_is_the_later_listings():
     relist = listed("L2", at=relist_at)
     own = sale("own", 1000, T0 + timedelta(hours=2), float_value=0.25, pattern=12)
 
-    rows = label_listings([first, relist], [own], CONFIG, AS_OF + DAY, fees(), SYNCED_AT + DAY)
+    rows = label_listings([first, relist], [own], CONFIG, AS_OF + DAY, fees(), SYNCED_AT + DAY).rows
 
     assert [(row["listing_id"], row["listing_sold_within_s"]) for row in rows] == [("L1", None), ("L2", 3_600)]
 

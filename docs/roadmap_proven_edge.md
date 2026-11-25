@@ -163,6 +163,21 @@ has passed, and only fetches sales up to $t + H$. It upserts, so re-running any 
 conflict the earliest sighting wins. Float tiers inside a wear bucket, stickers, and pattern premiums are
 not part of `v1` comparables; add them as a new label version.
 
+**Label version `v2`** (#368, the default since 2026-11-25) is `v1` plus one condition: a listing gets a label
+only when the feed was up for at least 90% of its resale window $[t + \text{hold},\ t + H]$. The labeler only
+sees the sales the listener recorded, so with the feed down a sale is missing, not absent, and `v1` could not
+tell a quiet market from a gap. I measure when the feed was up from the minutes in which the listener recorded
+a listing or a sale: the feed carries a median of 6 to 9 such events a minute, and its longest quiet spell
+while up was about 6 minutes, so a gap of more than 15 minutes between two of them counts as down. A listing
+the feed did not cover gets no row at all, so the scorecard counts it as unlabeled and training never sees it.
+The REST snapshots the scorecard labels itself follow the same rule. The coverage parameters are in the stored
+contract under `feed_coverage`; `v1`'s contract is unchanged.
+
+Under that rule none of the 66,751 `v1` labels (listings from 2026-09-26 to 2026-10-14) would exist. My PC was
+never on for a whole resale window: the feed covered between 9% and 29% of each window, 15% at the median. So
+every `v1` result rests on a sample of about a sixth of the sales. Since 2026-11-25 the stack runs all the time,
+and the first `v2` labels are for listings recorded from then, labelable from about 2026-12-09.
+
 Run it daily over the last few matured days (`uv run python label_outcomes.py`), or over an explicit
 range (`--start 2026-09-24 --end 2026-10-01`).
 
