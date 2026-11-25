@@ -8,9 +8,9 @@ A LightGBM model of whether a feed listing is profitable, trained on outcome lab
 - Labels: `v1` as of 2026-11-25T12:52:42.359769 UTC, final labels only.
 - Features: version 3, `price_to_window_mean`, `z_score`, `z_source`, `price_to_30d_avg`, `price_to_support_floor`, `macro_cv`, `avg_volume_30d`, `float_value`, `float_tier_boundary_distance`, `sticker_value_ratio`, `listings_per_hour_item`, `price_to_latest`.
 - Folds every 24 hours. A fold needs 1000 training listings and 100 of the rarer outcome; a metric needs 30 labeled trades.
-- Decision log sha256 `ab458a8da93a845bc5e9434f839c61f45b549002ca047bef4bfabead80a38fc5`, commit `caccc68df95e0496157f285eac2f1f5d47cd960f`.
+- Decision log sha256 `ab458a8da93a845bc5e9434f839c61f45b549002ca047bef4bfabead80a38fc5`, commit `be599d4a1159ebe817941189a3dfbe35d73cdbfc`.
 
-**Verdict:** candidate: beats the rules out of sample: precision 84.4% against 66.8% at the rules' volume.
+**Verdict:** not a candidate: on the DRE's deals the latest price ratio makes as much: $227.34 against $179.41 for the model at the fee floor's volume.
 
 ## Out of sample, all folds
 

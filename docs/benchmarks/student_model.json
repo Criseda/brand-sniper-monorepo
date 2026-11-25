@@ -1,6 +1,6 @@
 {
   "as_of": "2026-11-25T12:52:42.359769",
-  "candidate": true,
+  "candidate": false,
   "data": {
     "decision_log_sha256": "ab458a8da93a845bc5e9434f839c61f45b549002ca047bef4bfabead80a38fc5",
     "end": "2026-10-14T17:10:00",
@@ -466,7 +466,7 @@
       "validation_rows": 317
     }
   ],
-  "git_commit": "caccc68df95e0496157f285eac2f1f5d47cd960f",
+  "git_commit": "be599d4a1159ebe817941189a3dfbe35d73cdbfc",
   "labels": {
     "config": {
       "fees": {
@@ -751,5 +751,5 @@
     "min_sample": 30,
     "min_train_rows": 1000
   },
-  "verdict": "beats the rules out of sample: precision 84.4% against 66.8% at the rules' volume"
+  "verdict": "on the DRE's deals the latest price ratio makes as much: $227.34 against $179.41 for the model at the fee floor's volume"
 }

@@ -575,30 +575,41 @@ def _total(cell: dict[str, Any]) -> float | None:
     return cell["net_pnl_cents"]["total"] if cell["status"] == "ok" else None
 
 
-def _precision(cell: dict[str, Any]) -> float | None:
-    return cell["precision"]["value"] if cell["status"] == "ok" else None
-
-
-def candidate_verdict(comparison: dict[str, Any], exploratory: bool) -> tuple[bool, str]:
+def candidate_verdict(comparison: dict[str, Any], dre_approvals: dict[str, Any], exploratory: bool) -> tuple[bool, str]:
     """
-    A model is a candidate only when, out of sample, it makes more net P&L than the rules at its threshold,
-    or is more precise than the rules at the rules' volume, with enough labeled trades on both sides.
+    A model is a candidate only when, out of sample, it makes more money than the rules and more than the latest
+    price ratio on the DRE's deals, with enough labeled trades on every side.
+
+    Money means net P&L: at the model's own threshold, or at the rules' volume, where both sides make the same
+    number of trades. Precision alone is not enough; a more precise model can earn the same by picking cheaper
+    items with thinner margins. On the DRE's deals the model must also beat the one number ratio of the baseline's
+    latest price to the price at the fee floor's volume, or a model adds nothing a threshold would not (#236).
     """
     if exploratory:
         return False, "exploratory run: labels overlap the validation windows and include revisable ones"
     rules = comparison["rules"]
     if rules["status"] != "ok":
         return False, f"the rules have {rules['labeled']} labeled trades out of sample, fewer than {MIN_SAMPLE}"
+    rules_total = _total(rules)
     reasons = []
-    model_total, rules_total = _total(comparison["model_at_threshold"]), _total(rules)
-    if model_total is not None and rules_total is not None and model_total > rules_total:
-        reasons.append(f"net P&L {dollars(model_total)} against {dollars(rules_total)} for the rules")
-    model_precision, rules_precision = _precision(comparison["model_at_rules_volume"]), _precision(rules)
-    if model_precision is not None and rules_precision is not None and model_precision > rules_precision:
-        reasons.append(f"precision {percent(model_precision)} against {percent(rules_precision)} at the rules' volume")
-    if reasons:
-        return True, "beats the rules out of sample: " + "; ".join(reasons)
-    return False, "does not beat the rules out of sample on net P&L or on precision at equal volume"
+    for side, label in (("model_at_threshold", "at its threshold"), ("model_at_rules_volume", "at the rules' volume")):
+        model_total = _total(comparison[side])
+        if model_total is not None and rules_total is not None and model_total > rules_total:
+            reasons.append(f"net P&L {dollars(model_total)} {label} against {dollars(rules_total)} for the rules")
+    if not reasons:
+        return False, "does not make more net P&L than the rules out of sample, at its threshold or at equal volume"
+
+    model_on_deals = _total(dre_approvals["model_at_fee_floor_volume"])
+    ratio_on_deals = _total(dre_approvals["ratio_at_fee_floor_volume"])
+    if model_on_deals is None or ratio_on_deals is None:
+        return False, "too few labeled DRE deals to compare it with the latest price ratio"
+    if model_on_deals <= ratio_on_deals:
+        return False, (
+            f"on the DRE's deals the latest price ratio makes as much: {dollars(ratio_on_deals)} against "
+            f"{dollars(model_on_deals)} for the model at the fee floor's volume"
+        )
+    reasons.append(f"{dollars(model_on_deals)} on the DRE's deals against {dollars(ratio_on_deals)} for the ratio")
+    return True, "makes more money out of sample: " + "; ".join(reasons)
 
 
 # --- The run ---
@@ -683,7 +694,7 @@ def train_student(inputs: TrainingInputs) -> TrainingResult:
             "comparison": compare(pooled_rows, pooled_probabilities, pooled_approves),
             "dre_approvals": compare_on_dre_approvals(pooled_rows, pooled_probabilities),
         }
-        candidate, verdict = candidate_verdict(pooled["comparison"], inputs.exploratory)
+        candidate, verdict = candidate_verdict(pooled["comparison"], pooled["dre_approvals"], inputs.exploratory)
     else:
         notes.append("No fold had enough training listings to train on; see the size rule.")
 
