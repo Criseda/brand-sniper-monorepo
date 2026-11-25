@@ -170,6 +170,15 @@ feature module (#234) all use. The summary counts the unchanged snapshots that e
 before #269, when every poll entered). How I chose it, and what it did to the scorecard, is in
 [benchmarks/price_window.md](benchmarks/price_window.md).
 
+**Only the snapshots the listener used are stored.** Since #272 a duplicate REST snapshot, and an unchanged
+one that does not enter the price window, change nothing in the listener, not even its dedup state, and are
+not written to `live_market_ticks`. On 2026-11-25 that was 96% of the roughly 300,000 snapshot rows an hour.
+A replay of the stored rows therefore makes the decisions the listener made: a test replays the committed
+fixture from its stored snapshots alone (76 of 325) and gets the live run's DRE submissions and trades. One
+small difference stays: the database source stamps each poll with its first stored row (`PollClock`), which
+can be a second later than the poll's first snapshot when that one was not stored. Rows from before #272
+replay as before, under the same rule.
+
 A replay keeps every window across gaps in the data, while live the edge Redis is empty after my PC has been
 off. Right after a restart the live listener scores more items with the macro Z score than a replay does.
 

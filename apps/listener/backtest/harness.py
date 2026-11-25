@@ -229,9 +229,10 @@ async def run_replay(
             elif detection.is_unchanged_snapshot(item, dedup_cache):
                 # Live does not score the same lowest ask again, and windows it only while the window is
                 # short or once an hour.
+                # One that stays out of the window changes no state, and live does not store it (#272).
                 enters_window = await detection.unchanged_snapshot_enters_price_window(item, dedup_cache, context.cache)
-                detection.update_dedup_cache(item, dedup_cache, enters_window=enters_window)
                 if enters_window:
+                    detection.update_dedup_cache(item, dedup_cache, enters_window=True)
                     await detection.push_to_window(item, context.cache)
                     summary.unchanged_snapshots_windowed += 1
                 summary.unchanged_snapshots += 1

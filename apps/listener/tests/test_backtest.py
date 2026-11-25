@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import math
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -520,8 +521,10 @@ class RecordingExecutor(ExecutionService):
         raise AssertionError("approvals are recorded in execute, never placed")
 
 
-async def _live_run(monkeypatch, events, baselines) -> tuple[list[tuple], list[tuple]]:
-    """Drive the real tick_consumer over the stream; return (DRE submissions, executed trades)."""
+async def _live_run(monkeypatch, events, baselines, stored: list[dict] | None = None) -> tuple[list[tuple], list[tuple]]:
+    """Drive the real tick_consumer over the stream; return (DRE submissions, executed trades).
+
+    With `stored`, every tick record the listener would have written to the database is appended to it."""
     from backtest.store import InMemoryEdgeStore
 
     store = InMemoryEdgeStore()
@@ -529,6 +532,8 @@ async def _live_run(monkeypatch, events, baselines) -> tuple[list[tuple], list[t
     monkeypatch.setattr(listener_main.Redis, "from_url", lambda *_args, **_kwargs: store)
 
     async def discard_flush(source, buffer, *, batch_id, store, batch_pool, feed_event_buffer=None, student_scores=None):
+        if stored is not None:
+            stored.extend(buffer)
         buffer.clear()
         if feed_event_buffer is not None:
             feed_event_buffer.clear()
@@ -625,6 +630,50 @@ async def test_replay_decisions_match_the_live_consumer(
     replay_submissions, replay_trades = _replay_run(decided)
 
     assert len(live_trades) == expected_trades
+    assert replay_submissions == live_submissions
+    assert replay_trades == live_trades
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", ["recorded_fixture", "synthetic", "repeated_snapshots", "cold_start"])
+@pytest.mark.parametrize("macro_triggers", [False, True])
+async def test_replaying_only_the_stored_snapshots_makes_the_live_decisions(monkeypatch, stream, macro_triggers):
+    """#272: the listener stores only the REST snapshots it used. Replaying the feed events plus those stored
+    snapshots, as a replay from the database would, reaches the DRE and trades exactly as the live run did."""
+    monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", macro_triggers)
+    if stream == "recorded_fixture":
+        events = load_fixture(FIXTURE_DIR / "events.jsonl")
+        baselines = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
+    elif stream == "synthetic":
+        events, baselines = synthetic_stream()
+    elif stream == "repeated_snapshots":
+        events, baselines = repeated_snapshot_stream()
+    else:
+        events, baselines = cold_start_stream()
+
+    stored: list[dict] = []
+    live_submissions, live_trades = await _live_run(monkeypatch, events, baselines, stored)
+    kept = Counter(
+        (record["market_hash_name"], record["price_cents"], record["timestamp"])
+        for record in stored
+        if "event_type" not in record
+    )
+    stored_events = []
+    for event in events:
+        if isinstance(event, RecordedSnapshot):
+            key = (event.market_hash_name, event.price_cents, event.observed_at_ms // 1000)
+            if kept[key] == 0:
+                continue
+            kept[key] -= 1
+        stored_events.append(event)
+    _, decided = await _replay(stored_events, baselines)
+    replay_submissions, replay_trades = _replay_run(decided)
+
+    snapshots = sum(isinstance(event, RecordedSnapshot) for event in events)
+    stored_snapshots = sum(isinstance(event, RecordedSnapshot) for event in stored_events)
+    # The recorded fixture keeps 76 of its 325 snapshots, the repeated polls 22 of 118; the short streams keep all.
+    expected_stored = {"recorded_fixture": 76, "repeated_snapshots": 22}.get(stream, snapshots)
+    assert stored_snapshots == expected_stored
     assert replay_submissions == live_submissions
     assert replay_trades == live_trades
 
