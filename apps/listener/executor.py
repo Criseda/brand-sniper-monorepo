@@ -3,12 +3,14 @@ from collections import OrderedDict
 from dataclasses import dataclass
 
 import aiohttp
+from http_sessions import LazySession
 from listener_telemetry import trade_submissions_total
 from shared_utils import backend_api_headers, get_logger, purchase_keys, utc_now_naive
 
 logger = get_logger("listener.executor")
 
-_session: aiohttp.ClientSession | None = None
+# Paper trades wait on the backend inside the decision path, so they give up sooner than batch delivery.
+_backend_session = LazySession(aiohttp.ClientTimeout(total=5, connect=2), headers=backend_api_headers)
 
 # Purchases an executor remembers, to skip a repeat without asking the backend. Tens of buys an hour fit
 # for weeks. The memory is empty after a restart; the backend's unique purchase indexes are the guarantee.
@@ -16,18 +18,11 @@ BOUGHT_MEMORY_SIZE = 10_000
 
 
 async def _get_session() -> aiohttp.ClientSession:
-    global _session
-    if _session is None or _session.closed:
-        timeout = aiohttp.ClientTimeout(total=5, connect=2)
-        _session = aiohttp.ClientSession(headers=backend_api_headers(), timeout=timeout)
-    return _session
+    return await _backend_session.get()
 
 
 async def close_http_session() -> None:
-    global _session
-    if _session is not None and not _session.closed:
-        await _session.close()
-        _session = None
+    await _backend_session.close()
 
 
 class ExecutionError(RuntimeError):
