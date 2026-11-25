@@ -97,6 +97,28 @@ async def fetch_listing_events(
     ]
 
 
+# The minutes in which the listener recorded a listing or a sale of a venue: when its feed was up (#368). Served
+# by ix_live_market_ticks_listing_observed, once per event type.
+_FEED_MINUTES_QUERY = """
+SELECT DISTINCT date_trunc('minute', tick.observed_at) AS minute_start
+FROM live_market_ticks AS tick
+WHERE tick.venue = :venue
+  AND tick.event_type IN ('listed', 'sold')
+  AND tick.listing_id IS NOT NULL
+  AND tick.observed_at IS NOT NULL
+  AND tick.observed_at >= :start
+  AND tick.observed_at < :end
+ORDER BY minute_start
+"""
+
+
+async def fetch_feed_minutes(venue: str, start: datetime, end: datetime) -> list[datetime]:
+    """The minutes in [start, end) in which `venue`'s feed delivered a recorded listing or sale."""
+    async with async_engine.connect() as conn:
+        result = await conn.execute(text(_FEED_MINUTES_QUERY), {"venue": venue, "start": start, "end": end})
+        return [row[0] for row in result.fetchall()]
+
+
 # A venue's own sales of listings (#339): buy order fills (`target`) sell lower and are not what a listing
 # resells for. A sale names no listing, so each gets an ID of its own that never matches a listing's; its float and
 # paint seed tell which item sold (`own_sale_by_item`).

@@ -63,8 +63,7 @@ from baseline_scorecard import (
     fetch_listing_labels,
     git_commit,
     is_scorable,
-    label_snapshot_trades,
-    matures_by,
+    label_snapshot_trades_from_sales,
     mean_interval,
     parse_utc,
     percent,
@@ -75,7 +74,7 @@ from baseline_scorecard import (
 from openai import pydantic_function_tool
 from outcome_data import fetch_listing_events
 from outcome_labels import LABEL_VENUE as VENUE
-from outcome_labels import LABEL_VERSION, FeedSale, LabelConfig, SoldIndex
+from outcome_labels import LABEL_VERSION, FeedSale, LabelConfig
 from pydantic import BaseModel, Field, ValidationError
 from shared_utils import get_logger, parse_version_from_name
 from shared_utils.db_connection import async_engine
@@ -916,15 +915,7 @@ async def load_cases(log: DecisionLog, as_of: datetime) -> tuple[list[TradeCase]
     labels = await fetch_listing_labels([str(trade.listing_id) for trade in listing_trades], LABEL_VERSION)
     for trade in listing_trades:
         apply_listing_label(trade, labels.get(str(trade.listing_id)), config, as_of)
-    mature = [trade for trade in snapshot_trades if matures_by(trade.decided_at, config, as_of)]
-    sold_index = SoldIndex()
-    if mature:
-        names = sorted({trade.market_hash_name for trade in mature})
-        last = max(trade.decided_at for trade in mature)
-        first = min(trade.decided_at for trade in mature)
-        horizon_end = last + timedelta(seconds=config.horizon_seconds)
-        sold_index = SoldIndex.build(await fetch_listing_events(config.venue, "sold", first, horizon_end, names=names))
-    label_snapshot_trades(snapshot_trades, sold_index, config, as_of)
+    await label_snapshot_trades_from_sales(snapshot_trades, config, as_of)
 
     labeled = [trade for trade in trades if trade.outcome == OUTCOME_LABELED]
     features = decision_features(log, labeled)

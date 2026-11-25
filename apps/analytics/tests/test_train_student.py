@@ -589,7 +589,7 @@ def test_cli_flow_reads_the_log_and_labels_and_writes_the_report(monkeypatch, tm
     )
 
     assert status == 0
-    assert calls == [("v1", datetime(2026, 12, 31), True)]
+    assert calls == [("v2", datetime(2026, 12, 31), True)]
     report = json.loads((tmp_path / "out" / "student_model.json").read_text(encoding="utf-8"))
     assert report["exploratory"] is True
     assert (tmp_path / "out" / "student_model.md").exists()

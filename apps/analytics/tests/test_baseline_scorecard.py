@@ -41,7 +41,7 @@ from baseline_scorecard import (
     wilson_interval,
     would_trigger,
 )
-from outcome_labels import FeedSale, LabelConfig, SoldIndex
+from outcome_labels import LABEL_V1, FeedCoverage, FeedSale, LabelConfig, SoldIndex
 from shared_utils import purchase_keys
 
 START = datetime(2026, 10, 1)
@@ -265,11 +265,29 @@ def test_rest_snapshots_are_labeled_with_the_v1_rule():
     mature.market_hash_name = phase_name
     recent = trade(outcome=OUTCOME_PENDING, listing_id=None, at=AS_OF - DAY)
 
-    label_snapshot_trades([mature, recent], SoldIndex.build(sold), LabelConfig(), AS_OF)
+    label_snapshot_trades([mature, recent], SoldIndex.build(sold), LABEL_V1, AS_OF)
 
     # Resale at 1500, less the 8% fee (120), less the 1000 buy price.
     assert (mature.outcome, mature.net_margin_cents, mature.is_profitable) == (OUTCOME_LABELED, 380, True)
     assert recent.outcome == OUTCOME_PENDING
+
+
+def test_rest_snapshots_without_feed_coverage_stay_unlabeled():
+    sold = [FeedSale(f"S{i}", NAME, 1500, START + 8 * DAY + timedelta(hours=i)) for i in range(3)]
+    covered = trade(outcome=OUTCOME_PENDING, listing_id=None, price=1000)
+    # The feed was up only for the first two days after the trade: the resale window (days 7 to 14) is missing.
+    first_days = [START + timedelta(minutes=minute) for minute in range(2 * 24 * 60)]
+    uncovered = trade(outcome=OUTCOME_PENDING, listing_id=None, price=1000)
+
+    label_snapshot_trades([covered], SoldIndex.build(sold), LabelConfig(), AS_OF, always_up(START, AS_OF))
+    label_snapshot_trades([uncovered], SoldIndex.build(sold), LabelConfig(), AS_OF, FeedCoverage.build(first_days, 900))
+
+    assert (covered.outcome, covered.is_profitable) == (OUTCOME_LABELED, True)
+    assert uncovered.outcome == OUTCOME_UNLABELED
+
+
+def always_up(start, end):
+    return FeedCoverage.build([start + timedelta(minutes=m) for m in range(int((end - start).total_seconds() // 60))], 900)
 
 
 # --- Statistics ---
@@ -577,7 +595,7 @@ def _card_with(sweep):
     return card
 
 
-def _fake_database(monkeypatch, labels, profitable, sold=()):
+def _fake_database(monkeypatch, labels, profitable, sold=(), feed_minutes=None):
     async def fake_labels(listing_ids, label_version):
         return {listing_id: labels[listing_id] for listing_id in listing_ids if listing_id in labels}
 
@@ -594,7 +612,15 @@ def _fake_database(monkeypatch, labels, profitable, sold=()):
     monkeypatch.setattr(baseline_scorecard, "fetch_listing_labels", fake_labels)
     monkeypatch.setattr(baseline_scorecard, "fetch_profitable_listings", fake_profitable)
     monkeypatch.setattr(baseline_scorecard, "fetch_volumes", fake_volumes)
+
+    async def fake_feed_minutes(venue, start, end):
+        if feed_minutes is not None:
+            return list(feed_minutes)
+        first = start.replace(second=0, microsecond=0)
+        return [first + timedelta(minutes=index) for index in range(int((end - first).total_seconds() // 60) + 1)]
+
     monkeypatch.setattr(baseline_scorecard, "fetch_listing_events", fake_sold)
+    monkeypatch.setattr(baseline_scorecard, "fetch_feed_minutes", fake_feed_minutes)
     monkeypatch.setattr(baseline_scorecard, "git_commit", lambda: "abc123")
 
 
@@ -622,7 +648,7 @@ async def test_scorecard_scores_approvals_against_their_labels(monkeypatch, tmp_
         write_log(tmp_path / "log.jsonl", rows, source=f"database:skinport:2026-09-20T00:00/{END.isoformat()}")
     )
 
-    card = await build_scorecard(ScorecardInputs(log=log, label_version="v1", as_of=AS_OF))
+    card = await build_scorecard(ScorecardInputs(log=log, label_version="v2", as_of=AS_OF))
 
     overall = card["overall"]
     assert (overall["trades"], overall["labeled"]) == (41, 41)
@@ -656,7 +682,7 @@ async def test_scorecard_notes_matured_trades_without_labels(monkeypatch, tmp_pa
 
     assert card["overall"]["unlabeled"] == 1
     assert card["overall"]["precision"] is None
-    assert any("label_outcomes.py" in note for note in card["notes"])
+    assert any("label_outcomes.py" in note and "feed was down" in note for note in card["notes"])
 
 
 @pytest.mark.asyncio
@@ -665,7 +691,7 @@ async def test_scorecard_leaves_rest_snapshots_unlabeled_for_another_label_versi
     _fake_database(monkeypatch, labels={}, profitable={})
     log = read_decision_log(write_log(tmp_path / "log.jsonl", rows))
 
-    card = await build_scorecard(ScorecardInputs(log=log, label_version="v2", as_of=AS_OF))
+    card = await build_scorecard(ScorecardInputs(log=log, label_version="v1", as_of=AS_OF))
 
     assert card["overall"]["unlabeled"] == 1
     assert any("current rule" in note for note in card["notes"])

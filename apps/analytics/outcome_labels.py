@@ -9,6 +9,10 @@ For every `listed` event of a venue, asks what the market actually did afterward
 A listing is only labeled once its horizon has passed, so a label never contains information from after
 `label_available_at`. Label definition: docs/roadmap_proven_edge.md, section 4.3.
 
+The feed only shows the sales made while the listener was running. `v2` (#368) therefore labels a listing only
+when the feed was up for most of its resale window (`FeedCoverage`); `v1` labeled every listing, whatever part of
+its window the feed missed.
+
 A label version is a contract: its parameters (`LabelConfig.contract`, the venue included) are stored in
 `label_versions` the first time it is used, and the labeler refuses to write under a version whose stored
 parameters differ from its own. Labeling another venue therefore needs its own version name.
@@ -26,7 +30,9 @@ from typing import Any
 
 from shared_utils import VenueFees, fees_for, is_profitable_margin, net_resale_margin_cents
 
-LABEL_VERSION = "v1"
+# The label version written and read by default. `v1` (LABEL_V1, below) is the same rule without the feed coverage.
+LABEL_VERSION = "v2"
+LABEL_V1_VERSION = "v1"
 # The venue LABEL_VERSION labels. Another venue is labeled under a version of its own.
 LABEL_VENUE = "skinport"
 
@@ -41,7 +47,14 @@ VENUE_LABEL_PARAMETERS: dict[str, dict[str, Any]] = {
         "item_seller_fees": True,
         "sales_settle_seconds": 86_400,
         "own_sale_by_item": True,
+        # The venue's sales history covers the time the listener was off.
+        "min_feed_coverage": 0.0,
     },
+}
+
+# Parameters of an older label version of the default venue, which LabelConfig.for_venue applies by name.
+VERSION_LABEL_PARAMETERS: dict[str, dict[str, Any]] = {
+    LABEL_V1_VERSION: {"min_feed_coverage": 0.0},
 }
 
 
@@ -79,11 +92,19 @@ class LabelConfig:
     # rewritten by a later run that sees late batches. After that it is final. The daily run
     # re-labels the last 3 matured days, which is exactly this window.
     revise_seconds: int = 3 * 86_400
+    # SALES_FROM_TICKS only. A listing is labeled only when the feed was up for at least this share of its resale
+    # window: with the feed down, sales are missing, not absent. 0 labels every listing (`v1`).
+    min_feed_coverage: float = 0.9
+    # The feed counts as down across any gap longer than this between two recorded listing or sale events. It
+    # carries several events a minute; its longest quiet spell while up was about 6 minutes.
+    feed_gap_seconds: int = 900
 
     @classmethod
     def for_venue(cls, venue: str, version: str, **parameters: Any) -> "LabelConfig":
-        """A label version for another venue, with that venue's registered fees and label parameters."""
-        venue_parameters = {**VENUE_LABEL_PARAMETERS.get(venue, {}), **parameters}
+        """A label version for another venue, with that venue's registered fees and label parameters, or an older
+        version of the default venue by its name."""
+        version_parameters = VERSION_LABEL_PARAMETERS.get(version, {}) if venue == LABEL_VENUE else {}
+        venue_parameters = {**VENUE_LABEL_PARAMETERS.get(venue, {}), **version_parameters, **parameters}
         return cls(version=version, venue=venue, fees=fees_for(venue), **venue_parameters)
 
     def __post_init__(self) -> None:
@@ -103,6 +124,12 @@ class LabelConfig:
             raise ValueError("settle_seconds must not be negative")
         if self.revise_seconds < 0:
             raise ValueError("revise_seconds must not be negative")
+        if not 0.0 <= self.min_feed_coverage <= 1.0:
+            raise ValueError("min_feed_coverage must be between 0 and 1")
+        if self.min_feed_coverage > 0 and self.sales_source != SALES_FROM_TICKS:
+            raise ValueError("min_feed_coverage applies only to sales from the feed")
+        if self.feed_gap_seconds < 60:
+            raise ValueError("feed_gap_seconds must be at least 60")
 
     def contract(self) -> dict[str, Any]:
         """The parameters that define this version, as stored in `label_versions.config`."""
@@ -117,7 +144,13 @@ class LabelConfig:
             item_seller_fees=self.item_seller_fees,
             sales_settle_seconds=self.sales_settle_seconds,
             own_sale_by_item=self.own_sale_by_item,
+            min_feed_coverage=self.min_feed_coverage,
+            feed_gap_seconds=self.feed_gap_seconds,
         )
+
+    @property
+    def needs_feed_coverage(self) -> bool:
+        return self.min_feed_coverage > 0
 
     def final_before(self, as_of: datetime) -> datetime:
         """Labels with `label_available_at` at or before this time are final as of `as_of`."""
@@ -139,12 +172,14 @@ def label_contract(
     item_seller_fees: bool = False,
     sales_settle_seconds: int = 0,
     own_sale_by_item: bool = False,
+    min_feed_coverage: float = 0.0,
+    feed_gap_seconds: int = 900,
 ) -> dict[str, Any]:
     """The JSON stored in `label_versions.config`. The resale rule itself (comparable sales after the hold,
     lower median) is code: changing it also needs a new version.
 
-    The sales source and the item fees appear only when they differ from the feed's defaults, so the versions
-    stored before they existed (`v1`) keep the contract they were registered with."""
+    The sales source, the item fees and the feed coverage appear only when they differ from `v1`'s, so the
+    versions stored before they existed (`v1`, `v1-dmarket`) keep the contract they were registered with."""
     contract: dict[str, Any] = {
         "venue": venue,
         "fees": {
@@ -172,6 +207,12 @@ def label_contract(
         }
     if item_seller_fees:
         contract["item_seller_fees"] = "venue_baselines.seller_fee_bps of the build in force at listed_at"
+    if min_feed_coverage > 0:
+        contract["feed_coverage"] = {
+            "min_resale_window_share": min_feed_coverage,
+            "gap_seconds": feed_gap_seconds,
+            "events": "listed and sold, by minute",
+        }
     return contract
 
 
@@ -300,6 +341,68 @@ class SoldIndex:
 
 
 @dataclass
+class FeedCoverage:
+    """When the feed was up, from the minutes in which the listener recorded a listing or a sale (#368).
+
+    Two such minutes no more than `gap_seconds` apart belong to one up period; anything between up periods,
+    or outside the minutes it was built from, counts as down."""
+
+    starts: list[datetime] = field(default_factory=list)
+    ends: list[datetime] = field(default_factory=list)
+    # Up seconds before each period, so a window's up time takes two binary searches.
+    seconds_before: list[float] = field(default_factory=list)
+
+    @classmethod
+    def build(cls, event_minutes: Iterable[datetime], gap_seconds: int) -> "FeedCoverage":
+        coverage = cls()
+        gap = timedelta(seconds=gap_seconds)
+        total = 0.0
+        for minute in sorted(set(event_minutes)):
+            minute_end = minute + timedelta(minutes=1)
+            if coverage.ends and minute - coverage.ends[-1] <= gap:
+                total += (minute_end - coverage.ends[-1]).total_seconds()
+                coverage.ends[-1] = minute_end
+                continue
+            coverage.starts.append(minute)
+            coverage.ends.append(minute_end)
+            coverage.seconds_before.append(total)
+            total += 60.0
+        return coverage
+
+    def _up_seconds_until(self, moment: datetime) -> float:
+        index = bisect.bisect_right(self.starts, moment) - 1
+        if index < 0:
+            return 0.0
+        inside = (min(moment, self.ends[index]) - self.starts[index]).total_seconds()
+        return self.seconds_before[index] + inside
+
+    def share(self, start: datetime, end: datetime) -> float:
+        """The share of [start, end] the feed was up, from 0 to 1."""
+        length = (end - start).total_seconds()
+        if length <= 0:
+            return 0.0
+        return (self._up_seconds_until(end) - self._up_seconds_until(start)) / length
+
+
+def resale_window(listed_at: datetime, config: LabelConfig) -> tuple[datetime, datetime]:
+    """The window whose sales price a listing's resale: [listed_at + trade hold, listed_at + horizon]."""
+    return (
+        listed_at + timedelta(seconds=config.fees.hold_seconds),
+        listed_at + timedelta(seconds=config.horizon_seconds),
+    )
+
+
+def is_covered(listed_at: datetime, config: LabelConfig, feed_coverage: FeedCoverage | None) -> bool:
+    """Whether a listing seen at `listed_at` can be labeled under `config`: always, unless the version asks for
+    feed coverage, then only when the feed was up for enough of the listing's resale window."""
+    if not config.needs_feed_coverage:
+        return True
+    if feed_coverage is None:
+        raise ValueError(f"label version {config.version} needs the feed coverage; pass feed_coverage")
+    return feed_coverage.share(*resale_window(listed_at, config)) >= config.min_feed_coverage
+
+
+@dataclass
 class ItemFees:
     """Each baseline build's seller fee per item, oldest build first, to find the fee in force at a moment."""
 
@@ -338,8 +441,7 @@ def label_listing(listing: FeedSale, sold: SoldIndex, config: LabelConfig, item_
     if config.item_seller_fees and item_fees is None:
         raise ValueError(f"label version {config.version} prices resales with item fees; pass item_fees")
     listed_at = listing.seen_at
-    label_available_at = listed_at + timedelta(seconds=config.horizon_seconds)
-    resale_window_start = listed_at + timedelta(seconds=config.fees.hold_seconds)
+    resale_window_start, label_available_at = resale_window(listed_at, config)
 
     # A sale of this listing counts only inside [listed_at, label_available_at]. No sold event means
     # "not seen to sell" (the feed never reports cancellations or price changes): censored. Without sold
@@ -406,6 +508,14 @@ def latest_labelable(as_of: datetime, config: LabelConfig, sales_synced_at: date
     return min(cutoff, sales_synced_at - timedelta(seconds=config.horizon_seconds + config.sales_settle_seconds))
 
 
+@dataclass(frozen=True)
+class LabeledListings:
+    """The labels of one batch of listing sightings, and how many matured listings got none for lack of feed."""
+
+    rows: list[dict[str, Any]]
+    uncovered: int = 0
+
+
 def label_listings(
     listed_sales: Iterable[FeedSale],
     sold_sales: Iterable[FeedSale] | SoldIndex,
@@ -413,13 +523,17 @@ def label_listings(
     as_of: datetime,
     item_fees: ItemFees | None = None,
     sales_synced_at: datetime | None = None,
-) -> list[dict[str, Any]]:
-    """Labels every listing whose horizon (plus settle time) has passed by `as_of` (see `latest_labelable`)."""
+    feed_coverage: FeedCoverage | None = None,
+) -> LabeledListings:
+    """Labels every listing whose horizon (plus settle time) has passed by `as_of` (see `latest_labelable`) and,
+    for a version that asks for it, whose resale window the feed covered (`is_covered`)."""
     cutoff = latest_labelable(as_of, config, sales_synced_at)
     sold = sold_sales if isinstance(sold_sales, SoldIndex) else SoldIndex.build(sold_sales)
-    listings = first_sighting_per_listing(listed_sales)
-    rows = [label_listing(listing, sold, config, item_fees) for listing in listings.values() if listing.seen_at <= cutoff]
-    return sorted(rows, key=lambda row: (row["listed_at"], row["listing_id"]))
+    matured = [listing for listing in first_sighting_per_listing(listed_sales).values() if listing.seen_at <= cutoff]
+    covered = [listing for listing in matured if is_covered(listing.seen_at, config, feed_coverage)]
+    rows = [label_listing(listing, sold, config, item_fees) for listing in covered]
+    rows.sort(key=lambda row: (row["listed_at"], row["listing_id"]))
+    return LabeledListings(rows=rows, uncovered=len(matured) - len(covered))
 
 
 def iter_windows(start: datetime, end: datetime, window: timedelta) -> list[tuple[datetime, datetime]]:
@@ -441,3 +555,8 @@ def default_start(as_of: datetime, days_back: int, config: LabelConfig, sales_sy
     if config.sales_source == SALES_FROM_VENUE_SALES and sales_synced_at is None:
         raise ValueError(f"label version {config.version} needs the time of the newest {config.venue} sales sync")
     return latest_labelable(as_of, config, sales_synced_at) - timedelta(days=days_back)
+
+
+# `v1`: the rule of `v2` without the feed coverage. Registered on 2026-10-13; reading its labels needs no config,
+# this is for code that labels with it.
+LABEL_V1 = LabelConfig.for_venue(LABEL_VENUE, LABEL_V1_VERSION)
