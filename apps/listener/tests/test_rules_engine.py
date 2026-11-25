@@ -8,7 +8,6 @@ from rules_engine import (
     REASON_STICKERS_BELOW_BASE,
     REASON_SUPPORT_FLOOR,
     dre_approval_reason,
-    evaluate_opportunity,
     sticker_value_cents,
 )
 
@@ -20,6 +19,11 @@ class MockMarketTick:
     price_cents: int
     stickers: list[dict[str, str]]
     venue: str = "skinport"
+
+
+async def approves(tick, redis_client, baseline=None) -> bool:
+    """Whether the DRE approves the anomaly, under any rule."""
+    return await dre_approval_reason(tick, redis_client, baseline) is not None
 
 
 @pytest.mark.asyncio
@@ -80,8 +84,8 @@ class MockMarketTick:
         ),
     ],
 )
-async def test_evaluate_opportunity(mock_redis, tick, expected):
-    assert await evaluate_opportunity(tick, mock_redis) is expected
+async def test_dre_approves_or_rejects(mock_redis, tick, expected):
+    assert await approves(tick, mock_redis) is expected
 
 
 # ── Layer 3: Volatility-aware macro floor (illiquidity trap fix) ─────────────
@@ -107,7 +111,7 @@ async def test_volatility_macro_floor_approves_2sigma_drop(mock_redis_with_volat
         price_cents=1200,  # 30d avg=1600, vol=50  =>  (1600-1200)/50 = 8.0 sigma
         stickers=[],
     )
-    assert await evaluate_opportunity(tick, mock_redis_with_volatility) is True
+    assert await approves(tick, mock_redis_with_volatility) is True
 
 
 @pytest.mark.asyncio
@@ -118,7 +122,7 @@ async def test_volatility_macro_floor_rejects_small_drop(mock_redis_with_volatil
         price_cents=1550,  # (1600-1550)/50 = 1.0 sigma  (< 2.0)
         stickers=[],
     )
-    assert await evaluate_opportunity(tick, mock_redis_with_volatility) is False
+    assert await approves(tick, mock_redis_with_volatility) is False
 
 
 @pytest.mark.asyncio
@@ -129,7 +133,7 @@ async def test_volatility_macro_floor_skipped_when_fields_missing(mock_redis):
         price_cents=1200,  # below support_floor (1500) so still approved
         stickers=[],
     )
-    assert await evaluate_opportunity(tick, mock_redis) is True
+    assert await approves(tick, mock_redis) is True
 
 
 # ── Optional baseline dict param ─────────────────────────────────────────────
@@ -146,7 +150,7 @@ async def test_baseline_passed_directly_works(mock_redis):
     baseline = {"support_floor_cents": 1500, "latest_price_cents": 1600}
     # Even without the baseline in Redis, passing it directly should work
     mock_redis.data["baselines:skinport"].pop("AK-47 | Redline (Field-Tested)", None)
-    assert await evaluate_opportunity(tick, mock_redis, baseline=baseline) is True
+    assert await approves(tick, mock_redis, baseline=baseline) is True
 
 
 # ── Sticker premium edge paths ───────────────────────────────────────────────
@@ -160,7 +164,7 @@ async def test_sticker_not_in_price_map_is_skipped(mock_redis):
         price_cents=1700,
         stickers=[{"name": "Mystery Sticker"}, {"name": "Another Mystery"}],
     )
-    assert await evaluate_opportunity(tick, mock_redis) is False
+    assert await approves(tick, mock_redis) is False
 
 
 @pytest.mark.asyncio
@@ -173,7 +177,7 @@ async def test_non_numeric_sticker_price_is_ignored(mock_redis):
         price_cents=1700,
         stickers=[{"name": "Broken Sticker"}],
     )
-    assert await evaluate_opportunity(tick, mock_redis) is False
+    assert await approves(tick, mock_redis) is False
 
 
 @pytest.mark.asyncio
@@ -184,7 +188,7 @@ async def test_free_stickers_below_base_price_approved(mock_redis):
         price_cents=1501,  # above support floor (1500), below latest price (1600)
         stickers=[{"name": "Titan | Katowice 2014"}],
     )
-    assert await evaluate_opportunity(tick, mock_redis) is True
+    assert await approves(tick, mock_redis) is True
 
 
 @pytest.mark.asyncio
@@ -194,7 +198,7 @@ async def test_tick_without_stickers_attribute_is_safe(mock_redis):
         market_hash_name = "AK-47 | Redline (Field-Tested)"
         price_cents = 1700
 
-    assert await evaluate_opportunity(BareTick(), mock_redis) is False
+    assert await approves(BareTick(), mock_redis) is False
 
 
 @pytest.mark.asyncio
@@ -218,7 +222,7 @@ async def test_dre_approval_reason_names_the_approving_rule(mock_redis, price_ce
     tick = MockMarketTick(market_hash_name="AK-47 | Redline (Field-Tested)", price_cents=price_cents, stickers=stickers)
 
     assert await dre_approval_reason(tick, mock_redis, baseline) == expected
-    assert await evaluate_opportunity(tick, mock_redis, baseline) is (expected is not None)
+    assert await approves(tick, mock_redis, baseline) is (expected is not None)
 
 
 @pytest.mark.asyncio

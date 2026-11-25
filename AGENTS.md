@@ -106,7 +106,7 @@ Respect the prerequisites below. After #232, the tracks #233, #248, #259 and #18
 ## Testing quirks
 
 - `pyproject.toml` has `pythonpath` set for test discovery (`apps/*`, `shared_utils/src`)
-- Backend tests rely on the pytest `pythonpath` entry for `apps/backend` so `import main` resolves to `apps/backend/main.py` over root `main.py`
+- Backend tests load `apps/backend/main.py` by path (`importlib`), as the listener tests load theirs
 - Listener tests need `@pytest.mark.asyncio`
 - Backend tests use FastAPI `TestClient` (synchronous) with a SQLite in-memory engine — no PostgreSQL needed
 - Analytics tests mock `client` and `mlflow` globally; set the `LLM_*` env vars (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`) — see `apps/analytics/tests/conftest.py`

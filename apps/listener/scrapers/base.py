@@ -7,14 +7,10 @@ from redis.asyncio import Redis
 
 
 def edge_redis_from_env() -> Redis:
-    """A client for the edge Redis, configured from EDGE_REDIS_URL (or REDIS_HOST and REDIS_PORT)."""
-    edge_redis_url = os.getenv("EDGE_REDIS_URL")
+    """A client for the edge Redis at EDGE_REDIS_URL (the local edge Redis on port 6380 when unset)."""
+    edge_redis_url = os.getenv("EDGE_REDIS_URL") or "redis://localhost:6380"
     redis_password = os.getenv("REDIS_PASSWORD")
-    if edge_redis_url:
-        return Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
-    redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port = int(os.getenv("REDIS_PORT", 6380))
-    return Redis(host=redis_host, port=redis_port, username="default", password=redis_password, decode_responses=True)
+    return Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
 
 
 def _as_number(value: object) -> float | None:

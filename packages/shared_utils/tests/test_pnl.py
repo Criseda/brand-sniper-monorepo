@@ -10,7 +10,6 @@ from shared_utils.pnl import (
     VenueFees,
     buyer_fee_cents,
     fees_for,
-    holding_seconds,
     is_profitable_margin,
     net_resale_margin_cents,
     resale_venue_for,
@@ -189,12 +188,6 @@ def test_buyer_fee_rounds_up_so_the_margin_is_never_overstated(buy_price_cents, 
 def test_both_fees_round_against_the_trade():
     # 1001 * 2.5% = 25.025 -> 26 buyer fee; 1001 * 5% = 50.05 -> 51 seller fee.
     assert net_resale_margin_cents(1001, 1001, buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 1001 - 51 - 1001 - 26
-
-
-def test_cross_venue_hold_is_the_sell_venue_hold():
-    assert holding_seconds(buy_fees=BUY_VENUE, sell_fees=SELL_VENUE) == 3 * 86_400
-    assert holding_seconds(buy_fees=SELL_VENUE, sell_fees=BUY_VENUE) == 0
-    assert holding_seconds(SKINPORT_FEES, SKINPORT_FEES) == SKINPORT_FEES.hold_seconds
 
 
 def test_cross_venue_minimum_margin_is_the_sell_venue_one():

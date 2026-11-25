@@ -9,7 +9,7 @@ and alerts. Do not compute a profit number anywhere else.
 
 The buy venue charges the buyer fee and the sell venue charges the seller fee, so a trade bought and
 resold on the same venue passes the same `VenueFees` for both sides. A cross-venue trade is held for
-the sell venue's trade hold (`holding_seconds`), and its minimum margin is the sell venue's.
+the sell venue's trade hold (`hold_seconds`), and its minimum margin is the sell venue's.
 
 Money is integer cents throughout and fees are integer basis points, so results are exact and
 reproducible. Both fees are rounded up to the next cent, which never overstates the margin.
@@ -208,11 +208,6 @@ def net_resale_margin_cents(
     proceeds_cents = resale_price_cents - seller_fee_cents(resale_price_cents, sell_fees, sell_item_fee_bps)
     cost_cents = buy_price_cents + buyer_fee_cents(buy_price_cents, buy_fees)
     return proceeds_cents - cost_cents
-
-
-def holding_seconds(buy_fees: VenueFees, sell_fees: VenueFees) -> int:
-    """How long a bought item is held before it can be resold: the sell venue's trade hold."""
-    return sell_fees.hold_seconds
 
 
 def is_profitable_margin(net_margin_cents: int, fees: VenueFees) -> bool:

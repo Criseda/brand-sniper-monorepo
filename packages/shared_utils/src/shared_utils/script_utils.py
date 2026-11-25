@@ -51,7 +51,7 @@ def _load_env_files(project_root: Path, app_dir: Path) -> None:
 
 
 def setup_script_environment(script_path: str | Path) -> Path:
-    """Bootstraps a runnable app script: path alignment, UTF-8 streams, and .env loading.
+    """Bootstraps a runnable app script: UTF-8 streams and .env loading.
 
     Locates the repository root by walking up from the script to the uv
     workspace root (falling back to the .git entry) instead of assuming a
@@ -63,9 +63,6 @@ def setup_script_environment(script_path: str | Path) -> Path:
     script_file = Path(script_path).resolve()
     project_root = _find_repo_root(script_file)
 
-    if str(project_root) not in sys.path:
-        sys.path.append(str(project_root))
-
     _configure_utf8_streams()
     _load_env_files(project_root, script_file.parent)
 
@@ -76,9 +73,9 @@ def setup_service_environment(service_path: str | Path) -> Path:
     """Bootstraps a long-lived service entrypoint: UTF-8 streams and .env loading.
 
     Shared by service daemons (uvicorn/asyncio) so they do not duplicate the
-    dotenv and stream setup. Unlike setup_script_environment, the repository
-    root is not added to sys.path: services resolve workspace packages via
-    the installed environment and local modules via their own directory.
+    dotenv and stream setup. Neither it nor setup_script_environment touches sys.path: workspace
+    packages resolve via the installed environment and local modules via
+    their own directory.
     Returns the repository root. Raises RuntimeError when the root marker
     cannot be found.
     """

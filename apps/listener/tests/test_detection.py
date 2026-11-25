@@ -1,4 +1,3 @@
-from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
@@ -370,42 +369,6 @@ async def test_two_venues_keep_separate_price_windows():
     assert csfloat_score is not None and 490 < csfloat_score.mean_cents < 510
     assert await store.zcard(detection.price_window_key("skinport", ITEM)) == 5
     assert await store.zcard(detection.price_window_key("csfloat", ITEM)) == 5
-
-
-class _MigrationStore(InMemoryEdgeStore):
-    """The edge store plus the key commands the legacy window migration uses."""
-
-    async def scan_iter(self, match: str, count: int) -> AsyncIterator[bytes]:
-        prefix = match.removesuffix("*")
-        for key in [key for key in self._sorted_sets if key.startswith(prefix)]:
-            yield key.encode("utf-8")
-
-    async def renamenx(self, source: str, destination: str) -> bool:
-        if destination in self._sorted_sets:
-            return False
-        self._sorted_sets[destination] = self._sorted_sets.pop(source)
-        return True
-
-    async def delete(self, key: str) -> int:
-        return int(self._sorted_sets.pop(key, None) is not None)
-
-
-@pytest.mark.asyncio
-async def test_legacy_windows_move_to_skinport_keys_and_a_newer_window_wins():
-    store = _MigrationStore()
-    await store.zadd("market:ticks:AK-47 | Slate (Field-Tested)", {"1790000000:1000": 1_790_000_000})
-    await store.zadd("market:ticks:Item: With Colon", {"1790000000:700": 1_790_000_000})
-    await store.zadd("market:ticks:Newer", {"1790000000:300": 1_790_000_000})
-    await store.zadd(detection.price_window_key("skinport", "Newer"), {"1790000600:310": 1_790_000_600})
-
-    assert await detection.migrate_legacy_price_windows(cast(Redis, store)) == 3
-
-    assert await store.zrange(detection.price_window_key("skinport", ITEM), 0, -1) == ["1790000000:1000"]
-    assert await store.zrange(detection.price_window_key("skinport", "Item: With Colon"), 0, -1) == ["1790000000:700"]
-    assert await store.zrange(detection.price_window_key("skinport", "Newer"), 0, -1) == ["1790000600:310"]
-    assert await store.zcard("market:ticks:Newer") == 0
-    # A second start finds nothing left to move.
-    assert await detection.migrate_legacy_price_windows(cast(Redis, store)) == 0
 
 
 @pytest.mark.asyncio

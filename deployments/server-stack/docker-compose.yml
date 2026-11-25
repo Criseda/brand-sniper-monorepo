@@ -219,7 +219,6 @@ services:
       - ../../apps/backend/.env
     environment:
       - COMPUTE_NODE_IP=backend
-      - REDIS_URL=redis://redis:6379
     ports:
       - "8080:8080"
     networks:
@@ -232,9 +231,6 @@ services:
       resources:
         limits:
           memory: 512m
-    depends_on:
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
@@ -257,8 +253,6 @@ services:
       - LISTENER_VENUE=skinport
       - COMPUTE_NODE_IP=backend
       - EDGE_REDIS_URL=redis://redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       # Shadow mode (#236): this registered student version scores every listing next to the rules and decides
       # nothing. Unset it to turn shadow scoring off; a model that does not load leaves the rules alone too.
       - STUDENT_MODEL_VERSION=1
@@ -307,8 +301,6 @@ services:
       - LISTENER_VENUE=waxpeer
       - COMPUTE_NODE_IP=backend
       - EDGE_REDIS_URL=redis://redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
     networks:
       - application
       - data
@@ -347,8 +339,6 @@ services:
       - LISTENER_VENUE=dmarket
       - COMPUTE_NODE_IP=backend
       - EDGE_REDIS_URL=redis://redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
     networks:
       - application
       - data
@@ -457,7 +447,6 @@ services:
       - ../../apps/analytics/.env
     environment:
       - COMPUTE_NODE_URL=http://backend:8080
-      - EDGE_REDIS_URL=redis://redis:6379
       - MLFLOW_TRACKING_URI=http://mlflow-server:5000
       - PREFECT_API_URL=http://prefect-server:4200/api
     networks:
@@ -469,8 +458,6 @@ services:
         limits:
           memory: 1g
     depends_on:
-      redis:
-        condition: service_healthy
       backend:
         condition: service_healthy
       mlflow-server:
