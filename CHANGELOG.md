@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- The student shadow mode's log lines (`[STUDENT]`) reached no handler: it logged under its module name instead of `listener.` (#236).
 - The labeler without `--start`, as cron runs it, no longer fails for DMarket: it read the sales sync and ran the flow under two event loops, and the flow got a pooled database connection bound to the first, closed loop (#339).
 - Replays and the DMarket labels' seller fees took a baseline build to be in force from when its run started, but a DMarket run syncs sales for 20 to 80 minutes before it stores the build, so they used each DMarket build that much earlier than the listener could. `baseline_builds.stored_at` (migration `3683be323039`, store times of the existing DMarket builds taken from their Prefect runs) now decides which build is in force; a build's age still counts from `built_at`.
 - A listener whose baseline build was older than `BASELINE_MAX_AGE_HOURS` (48) still approved and paper traded against it, so after days with the PC off ordinary listings looked cheap against old prices (213 Waxpeer trades in 12 minutes on 2026-11-23). It now rejects every anomaly with reason `stale_baseline` until a current build loads, and the replay applies the same rule to the build in force (#360).
