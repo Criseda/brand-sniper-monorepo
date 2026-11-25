@@ -1,18 +1,18 @@
 {
-  "as_of": "2026-10-13T17:00:00",
-  "candidate": false,
+  "as_of": "2026-11-25T12:52:42.359769",
+  "candidate": true,
   "data": {
-    "decision_log_sha256": "a0c0c45f08e8ae2c5a9cdb4feb56abf0eb98411ed92783134610ecc63990a330",
-    "end": "2026-10-13T16:00:00",
+    "decision_log_sha256": "ab458a8da93a845bc5e9434f839c61f45b549002ca047bef4bfabead80a38fc5",
+    "end": "2026-10-14T17:10:00",
     "first_decision": "2026-09-26T17:31:23",
-    "last_decision": "2026-09-28T23:26:23",
-    "listings": 6642,
-    "profitable": 271,
+    "last_decision": "2026-10-14T17:04:14",
+    "listings": 28574,
+    "profitable": 1566,
     "start": "2026-09-26T17:30:00",
     "strategy": "zscore_dre_features",
     "venue": "skinport"
   },
-  "exploratory": true,
+  "exploratory": false,
   "features": {
     "names": [
       "price_to_window_mean",
@@ -25,175 +25,358 @@
       "float_value",
       "float_tier_boundary_distance",
       "sticker_value_ratio",
-      "listings_per_hour_item"
+      "listings_per_hour_item",
+      "price_to_latest"
     ],
-    "version": 2
+    "version": 3
   },
   "folds": [
     {
-      "cutoff": "2026-09-26T23:00:00",
-      "end": "2026-09-27T05:00:00",
-      "skipped": "73 listings of the rarer outcome, fewer than 100",
-      "train_profitable": 73,
-      "train_rows": 1921,
-      "validation_rows": 142
-    },
-    {
-      "cutoff": "2026-09-28T11:00:00",
+      "cutoff": "2026-09-27T17:00:00",
       "end": "2026-09-28T17:00:00",
-      "skipped": "90 listings of the rarer outcome, fewer than 100",
-      "train_profitable": 90,
-      "train_rows": 2063,
+      "skipped": "0 labeled listings, fewer than 1000",
+      "train_profitable": 0,
+      "train_rows": 0,
       "validation_rows": 54
     },
     {
+      "cutoff": "2026-09-28T17:00:00",
+      "end": "2026-09-29T17:00:00",
+      "skipped": "0 labeled listings, fewer than 1000",
+      "train_profitable": 0,
+      "train_rows": 0,
+      "validation_rows": 6014
+    },
+    {
+      "cutoff": "2026-09-29T17:00:00",
+      "end": "2026-09-30T17:00:00",
+      "skipped": "0 labeled listings, fewer than 1000",
+      "train_profitable": 0,
+      "train_rows": 0,
+      "validation_rows": 28
+    },
+    {
+      "cutoff": "2026-09-30T17:00:00",
+      "end": "2026-10-01T17:00:00",
+      "skipped": "0 labeled listings, fewer than 1000",
+      "train_profitable": 0,
+      "train_rows": 0,
+      "validation_rows": 1679
+    },
+    {
+      "cutoff": "2026-10-08T17:00:00",
+      "end": "2026-10-09T17:00:00",
+      "skipped": "0 labeled listings, fewer than 1000",
+      "train_profitable": 0,
+      "train_rows": 0,
+      "validation_rows": 3036
+    },
+    {
+      "cutoff": "2026-10-09T17:00:00",
+      "end": "2026-10-10T17:00:00",
+      "skipped": "0 labeled listings, fewer than 1000",
+      "train_profitable": 0,
+      "train_rows": 0,
+      "validation_rows": 3213
+    },
+    {
+      "cutoff": "2026-10-11T17:00:00",
+      "end": "2026-10-12T17:00:00",
+      "skipped": "90 listings of the rarer outcome, fewer than 100",
+      "train_profitable": 90,
+      "train_rows": 2063,
+      "validation_rows": 1989
+    },
+    {
       "comparison": {
-        "listings": 4158,
+        "listings": 6986,
         "model_at_rules_volume": {
-          "labeled": 81,
-          "max_drawdown_cents": 1238,
+          "labeled": 113,
+          "max_drawdown_cents": 286,
           "net_pnl_cents": {
             "interval": "bootstrap",
-            "mean": 51.839506172839506,
-            "mean_high": 99.32098765432099,
-            "mean_low": 0.5555555555555556,
-            "total": 4199
+            "mean": 128.46017699115043,
+            "mean_high": 210.7787610619469,
+            "mean_low": 61.43362831858407,
+            "total": 14516
           },
           "neutral": 0,
           "pending": 0,
           "precision": {
-            "high": 0.792081833436317,
-            "low": 0.5968782993287417,
-            "value": 0.7037037037037037
+            "high": 0.8677676439968391,
+            "low": 0.7227754502435684,
+            "value": 0.8053097345132744
+          },
+          "status": "ok",
+          "trades": 113,
+          "unlabeled": 0
+        },
+        "model_at_threshold": {
+          "labeled": 412,
+          "max_drawdown_cents": 9079,
+          "net_pnl_cents": {
+            "interval": "bootstrap",
+            "mean": -0.5339805825242718,
+            "mean_high": 39.390776699029125,
+            "mean_low": -50.849514563106794,
+            "total": -220
+          },
+          "neutral": 0,
+          "pending": 0,
+          "precision": {
+            "high": 0.6645245334737433,
+            "low": 0.5711421242151458,
+            "value": 0.6189320388349514
+          },
+          "status": "ok",
+          "trades": 412,
+          "unlabeled": 0
+        },
+        "rules": {
+          "labeled": 113,
+          "max_drawdown_cents": 1494,
+          "net_pnl_cents": {
+            "interval": "bootstrap",
+            "mean": 100.42477876106194,
+            "mean_high": 191.13274336283186,
+            "mean_low": 17.699115044247787,
+            "total": 11348
+          },
+          "neutral": 0,
+          "pending": 0,
+          "precision": {
+            "high": 0.7441675513480769,
+            "low": 0.5725004846938809,
+            "value": 0.6637168141592921
+          },
+          "status": "ok",
+          "trades": 113,
+          "unlabeled": 0
+        }
+      },
+      "cutoff": "2026-10-12T17:00:00",
+      "end": "2026-10-13T17:00:00",
+      "metrics": {
+        "base_rate": 0.05038648726023476,
+        "brier": 0.02618026177247456,
+        "calibration": [
+          {
+            "bin": 0,
+            "count": 6178,
+            "mean_predicted": 0.011619985325407218,
+            "observed": 0.010359339592101004
+          },
+          {
+            "bin": 1,
+            "count": 350,
+            "mean_predicted": 0.1378911225911962,
+            "observed": 0.08
+          },
+          {
+            "bin": 2,
+            "count": 118,
+            "mean_predicted": 0.24102386610458415,
+            "observed": 0.3135593220338983
+          },
+          {
+            "bin": 3,
+            "count": 39,
+            "mean_predicted": 0.3469922036112098,
+            "observed": 0.2564102564102564
+          },
+          {
+            "bin": 4,
+            "count": 63,
+            "mean_predicted": 0.44060228655824196,
+            "observed": 0.5873015873015873
+          },
+          {
+            "bin": 5,
+            "count": 56,
+            "mean_predicted": 0.5477312495805149,
+            "observed": 0.6607142857142857
+          },
+          {
+            "bin": 6,
+            "count": 37,
+            "mean_predicted": 0.64839789176359,
+            "observed": 0.5405405405405406
+          },
+          {
+            "bin": 7,
+            "count": 75,
+            "mean_predicted": 0.7542688565840027,
+            "observed": 0.8133333333333334
+          },
+          {
+            "bin": 8,
+            "count": 70,
+            "mean_predicted": 0.8400670314532627,
+            "observed": 0.8285714285714286
+          }
+        ],
+        "pr_auc": 0.6547971113058366,
+        "roc_auc": 0.9561282100474142
+      },
+      "threshold": 0.2322971481034381,
+      "train_profitable": 103,
+      "train_rows": 2117,
+      "validation_rows": 6986
+    },
+    {
+      "comparison": {
+        "listings": 3195,
+        "model_at_rules_volume": {
+          "labeled": 81,
+          "max_drawdown_cents": 463,
+          "net_pnl_cents": {
+            "interval": "bootstrap",
+            "mean": 94.12345679012346,
+            "mean_high": 171.30864197530863,
+            "mean_low": 35.71604938271605,
+            "total": 7624
+          },
+          "neutral": 0,
+          "pending": 0,
+          "precision": {
+            "high": 0.8745927951749901,
+            "low": 0.7029540686276727,
+            "value": 0.8024691358024691
           },
           "status": "ok",
           "trades": 81,
           "unlabeled": 0
         },
         "model_at_threshold": {
-          "labeled": 110,
-          "max_drawdown_cents": 1256,
+          "labeled": 150,
+          "max_drawdown_cents": 463,
           "net_pnl_cents": {
             "interval": "bootstrap",
-            "mean": 66.01818181818182,
-            "mean_high": 140.9090909090909,
-            "mean_low": 10.772727272727273,
-            "total": 7262
+            "mean": 61.81333333333333,
+            "mean_high": 112.5,
+            "mean_low": 22.44,
+            "total": 9272
           },
           "neutral": 0,
           "pending": 0,
           "precision": {
-            "high": 0.7285599624050894,
-            "low": 0.5525323623689828,
-            "value": 0.6454545454545455
+            "high": 0.8154193799480086,
+            "low": 0.6785952428848271,
+            "value": 0.7533333333333333
           },
           "status": "ok",
-          "trades": 110,
+          "trades": 150,
           "unlabeled": 0
         },
         "rules": {
           "labeled": 81,
-          "max_drawdown_cents": 5751,
+          "max_drawdown_cents": 917,
           "net_pnl_cents": {
             "interval": "bootstrap",
-            "mean": -62.876543209876544,
-            "mean_high": 46.382716049382715,
-            "mean_low": -203.4320987654321,
-            "total": -5093
+            "mean": 127.4074074074074,
+            "mean_high": 218.98765432098764,
+            "mean_low": 47.358024691358025,
+            "total": 10320
           },
           "neutral": 0,
           "pending": 0,
           "precision": {
-            "high": 0.6702809722940679,
-            "low": 0.4593724052942849,
-            "value": 0.5679012345679012
+            "high": 0.7597137974729501,
+            "low": 0.5585263111530069,
+            "value": 0.6666666666666666
           },
           "status": "ok",
           "trades": 81,
           "unlabeled": 0
         }
       },
-      "cutoff": "2026-09-28T17:00:00",
-      "end": "2026-09-28T23:00:00",
+      "cutoff": "2026-10-13T17:00:00",
+      "end": "2026-10-14T17:00:00",
       "metrics": {
-        "base_rate": 0.03823953823953824,
-        "brier": 0.022310091444384044,
+        "base_rate": 0.07668231611893583,
+        "brier": 0.04363143411824872,
         "calibration": [
           {
             "bin": 0,
-            "count": 3800,
-            "mean_predicted": 0.008708485644902788,
-            "observed": 0.005526315789473684
+            "count": 2696,
+            "mean_predicted": 0.011657621440390212,
+            "observed": 0.02336795252225519
           },
           {
             "bin": 1,
-            "count": 130,
-            "mean_predicted": 0.1389743810773758,
-            "observed": 0.2153846153846154
+            "count": 175,
+            "mean_predicted": 0.14047419520631832,
+            "observed": 0.13714285714285715
           },
           {
             "bin": 2,
-            "count": 52,
-            "mean_predicted": 0.2399382332752164,
-            "observed": 0.2692307692307692
+            "count": 82,
+            "mean_predicted": 0.2490923539783268,
+            "observed": 0.17073170731707318
           },
           {
             "bin": 3,
-            "count": 31,
-            "mean_predicted": 0.3515091753477143,
-            "observed": 0.45161290322580644
+            "count": 43,
+            "mean_predicted": 0.3494392537633143,
+            "observed": 0.3953488372093023
           },
           {
             "bin": 4,
-            "count": 30,
-            "mean_predicted": 0.43735406111455066,
-            "observed": 0.36666666666666664
+            "count": 39,
+            "mean_predicted": 0.4377196652572932,
+            "observed": 0.2564102564102564
           },
           {
             "bin": 5,
-            "count": 20,
-            "mean_predicted": 0.5538294975717198,
-            "observed": 0.05
+            "count": 32,
+            "mean_predicted": 0.5648468446842543,
+            "observed": 0.3125
           },
           {
             "bin": 6,
-            "count": 37,
-            "mean_predicted": 0.6453157734137681,
-            "observed": 0.7027027027027027
+            "count": 49,
+            "mean_predicted": 0.6660354621260863,
+            "observed": 0.8571428571428571
           },
           {
             "bin": 7,
-            "count": 33,
-            "mean_predicted": 0.7572196965958633,
-            "observed": 0.7272727272727273
+            "count": 30,
+            "mean_predicted": 0.7520551560949962,
+            "observed": 0.8
           },
           {
             "bin": 8,
-            "count": 25,
-            "mean_predicted": 0.8366974260140893,
-            "observed": 0.8
+            "count": 41,
+            "mean_predicted": 0.8492877518364745,
+            "observed": 0.8292682926829268
+          },
+          {
+            "bin": 9,
+            "count": 8,
+            "mean_predicted": 0.9213501899174952,
+            "observed": 0.875
           }
         ],
-        "pr_auc": 0.5836312026428581,
-        "roc_auc": 0.9747688494450657
+        "pr_auc": 0.6147591094772331,
+        "roc_auc": 0.9188820477343479
       },
-      "threshold": 0.5440232858801595,
-      "train_profitable": 103,
-      "train_rows": 2117,
-      "validation_rows": 4158
+      "threshold": 0.5589088173508753,
+      "train_profitable": 326,
+      "train_rows": 8131,
+      "validation_rows": 3195
     },
     {
       "comparison": {
-        "listings": 367,
+        "listings": 317,
         "model_at_rules_volume": {
-          "labeled": 2,
+          "labeled": 5,
           "max_drawdown_cents": null,
           "net_pnl_cents": null,
           "neutral": 0,
           "pending": 0,
           "precision": null,
           "status": "insufficient_data",
-          "trades": 2,
+          "trades": 5,
           "unlabeled": 0
         },
         "model_at_threshold": {
@@ -208,82 +391,82 @@
           "unlabeled": 0
         },
         "rules": {
-          "labeled": 2,
+          "labeled": 5,
           "max_drawdown_cents": null,
           "net_pnl_cents": null,
           "neutral": 0,
           "pending": 0,
           "precision": null,
           "status": "insufficient_data",
-          "trades": 2,
+          "trades": 5,
           "unlabeled": 0
         }
       },
-      "cutoff": "2026-09-28T23:00:00",
-      "end": "2026-09-29T05:00:00",
+      "cutoff": "2026-10-14T17:00:00",
+      "end": "2026-10-15T17:00:00",
       "metrics": {
-        "base_rate": 0.02452316076294278,
-        "brier": 0.01801504236352994,
+        "base_rate": 0.04100946372239748,
+        "brier": 0.02559866929026334,
         "calibration": [
           {
             "bin": 0,
-            "count": 343,
-            "mean_predicted": 0.009670706073932202,
-            "observed": 0.011661807580174927
+            "count": 283,
+            "mean_predicted": 0.008823790877241887,
+            "observed": 0.014134275618374558
           },
           {
             "bin": 1,
-            "count": 8,
-            "mean_predicted": 0.13432393403002527,
-            "observed": 0.0
+            "count": 12,
+            "mean_predicted": 0.1379935455661745,
+            "observed": 0.16666666666666666
           },
           {
             "bin": 2,
             "count": 7,
-            "mean_predicted": 0.24886098903926626,
-            "observed": 0.14285714285714285
-          },
-          {
-            "bin": 3,
-            "count": 1,
-            "mean_predicted": 0.33754890344614247,
+            "mean_predicted": 0.23571210184813118,
             "observed": 0.0
           },
           {
+            "bin": 3,
+            "count": 6,
+            "mean_predicted": 0.3407223214025576,
+            "observed": 0.16666666666666666
+          },
+          {
             "bin": 4,
-            "count": 4,
-            "mean_predicted": 0.4535829873991491,
-            "observed": 0.25
+            "count": 2,
+            "mean_predicted": 0.4405341161725872,
+            "observed": 0.0
           },
           {
             "bin": 5,
-            "count": 1,
-            "mean_predicted": 0.5580731455078001,
-            "observed": 1.0
+            "count": 2,
+            "mean_predicted": 0.5716993677260107,
+            "observed": 0.5
           },
           {
             "bin": 6,
             "count": 2,
-            "mean_predicted": 0.6640060398568882,
-            "observed": 0.5
+            "mean_predicted": 0.6835595444543539,
+            "observed": 1.0
           },
           {
             "bin": 7,
-            "count": 1,
-            "mean_predicted": 0.7782585275282909,
+            "count": 3,
+            "mean_predicted": 0.7388143728031675,
             "observed": 1.0
           }
         ],
-        "pr_auc": 0.5126276338995637,
-        "roc_auc": 0.9522036002482929
+        "pr_auc": 0.6178689064558629,
+        "roc_auc": 0.9471153846153847
       },
-      "threshold": 0.5551440492396783,
-      "train_profitable": 262,
-      "train_rows": 6275,
-      "validation_rows": 367
+      "threshold": 0.6820433113650268,
+      "train_profitable": 331,
+      "train_rows": 8159,
+      "validation_rows": 317
     }
   ],
-  "git_commit": "85cdea575861f94ae1ac81db7359776e65f1cad2",
+  "git_commit": "caccc68df95e0496157f285eac2f1f5d47cd960f",
   "labels": {
     "config": {
       "fees": {
@@ -308,13 +491,13 @@
       "settle_seconds": 3600,
       "venue": "skinport"
     },
-    "final_only": false,
+    "final_only": true,
     "version": "v1"
   },
   "model": {
     "calibration_blocks": 5,
-    "calibration_rows": 5314,
-    "onnx_parity_max_gap": 8.659833320178757e-07,
+    "calibration_rows": 22860,
+    "onnx_parity_max_gap": 1.7657940057564693e-06,
     "params": {
       "colsample_bytree": 0.9,
       "deterministic": true,
@@ -330,150 +513,243 @@
       "subsample_freq": 1,
       "verbose": -1
     },
-    "platt_intercept": -0.28698576195525566,
-    "platt_slope": 0.6683080754489823,
-    "threshold": 0.6768276056213173
+    "platt_intercept": -0.2872773538053469,
+    "platt_slope": 0.5652002196227779,
+    "threshold": 0.4650453429036568
   },
-  "notes": [
-    "Exploratory run: it reads labels that are not final and lets training labels overlap the validation windows. Its numbers check the pipeline; they are not an evaluation, and no model is registered."
-  ],
+  "notes": [],
   "pooled": {
     "comparison": {
-      "listings": 4525,
+      "listings": 10498,
       "model_at_rules_volume": {
-        "labeled": 83,
-        "max_drawdown_cents": 1327,
+        "labeled": 199,
+        "max_drawdown_cents": 401,
         "net_pnl_cents": {
           "interval": "bootstrap",
-          "mean": 37.36144578313253,
-          "mean_high": 89.51807228915662,
-          "mean_low": -22.048192771084338,
-          "total": 3101
+          "mean": 117.48241206030151,
+          "mean_high": 170.678391959799,
+          "mean_low": 70.67336683417085,
+          "total": 23379
         },
         "neutral": 0,
         "pending": 0,
         "precision": {
-          "high": 0.7973268825090616,
-          "low": 0.6057057654384659,
-          "value": 0.7108433734939759
+          "high": 0.8880327478927841,
+          "low": 0.7873711140369188,
+          "value": 0.8442211055276382
         },
         "status": "ok",
-        "trades": 83,
+        "trades": 199,
         "unlabeled": 0
       },
       "model_at_threshold": {
-        "labeled": 114,
-        "max_drawdown_cents": 1513,
+        "labeled": 566,
+        "max_drawdown_cents": 9079,
         "net_pnl_cents": {
-          "interval": "bootstrap",
-          "mean": 53.771929824561404,
-          "mean_high": 130.35087719298247,
-          "mean_low": -4.56140350877193,
-          "total": 6130
+          "interval": "normal",
+          "mean": 17.236749116607776,
+          "mean_high": 51.193215092717764,
+          "mean_low": -16.719716859502213,
+          "total": 9756
         },
         "neutral": 0,
         "pending": 0,
         "precision": {
-          "high": 0.7305668185814715,
-          "low": 0.557956079953511,
-          "value": 0.6491228070175439
+          "high": 0.6951685718772461,
+          "low": 0.6171989351633068,
+          "value": 0.657243816254417
         },
         "status": "ok",
-        "trades": 114,
+        "trades": 566,
         "unlabeled": 0
       },
       "rules": {
-        "labeled": 83,
-        "max_drawdown_cents": 5751,
+        "labeled": 199,
+        "max_drawdown_cents": 1494,
         "net_pnl_cents": {
           "interval": "bootstrap",
-          "mean": -62.204819277108435,
-          "mean_high": 42.98795180722892,
-          "mean_low": -192.79518072289156,
-          "total": -5163
+          "mean": 112.68341708542714,
+          "mean_high": 177.73869346733667,
+          "mean_low": 55.2713567839196,
+          "total": 22424
         },
         "neutral": 0,
         "pending": 0,
         "precision": {
-          "high": 0.6563887239594516,
-          "low": 0.4472482426556269,
-          "value": 0.5542168674698795
+          "high": 0.7300240241562982,
+          "low": 0.6002829740137025,
+          "value": 0.6683417085427136
         },
         "status": "ok",
-        "trades": 83,
+        "trades": 199,
         "unlabeled": 0
       }
     },
+    "dre_approvals": {
+      "approvals": 238,
+      "dre": {
+        "labeled": 238,
+        "max_drawdown_cents": 5346,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 36.529411764705884,
+          "mean_high": 97.17226890756302,
+          "mean_low": -25.252100840336134,
+          "total": 8694
+        },
+        "neutral": 0,
+        "pending": 0,
+        "precision": {
+          "high": 0.6448341224979548,
+          "low": 0.520563393892939,
+          "value": 0.5840336134453782
+        },
+        "status": "ok",
+        "trades": 238,
+        "unlabeled": 0
+      },
+      "fee_floor": {
+        "labeled": 199,
+        "max_drawdown_cents": 1494,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 112.68341708542714,
+          "mean_high": 177.73869346733667,
+          "mean_low": 55.2713567839196,
+          "total": 22424
+        },
+        "neutral": 0,
+        "pending": 0,
+        "precision": {
+          "high": 0.7300240241562982,
+          "low": 0.6002829740137025,
+          "value": 0.6683417085427136
+        },
+        "status": "ok",
+        "trades": 199,
+        "unlabeled": 0
+      },
+      "model_at_fee_floor_volume": {
+        "labeled": 199,
+        "max_drawdown_cents": 4136,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 90.15577889447236,
+          "mean_high": 157.0251256281407,
+          "mean_low": 29.417085427135678,
+          "total": 17941
+        },
+        "neutral": 0,
+        "pending": 0,
+        "precision": {
+          "high": 0.725332309017483,
+          "low": 0.5951147787593833,
+          "value": 0.6633165829145728
+        },
+        "status": "ok",
+        "trades": 199,
+        "unlabeled": 0
+      },
+      "model_roc_auc": 0.8146210304483685,
+      "ratio_at_fee_floor_volume": {
+        "labeled": 199,
+        "max_drawdown_cents": 1494,
+        "net_pnl_cents": {
+          "interval": "bootstrap",
+          "mean": 114.24120603015075,
+          "mean_high": 178.4070351758794,
+          "mean_low": 57.085427135678394,
+          "total": 22734
+        },
+        "neutral": 0,
+        "pending": 0,
+        "precision": {
+          "high": 0.734707601297173,
+          "low": 0.6054593072659621,
+          "value": 0.6733668341708543
+        },
+        "status": "ok",
+        "trades": 199,
+        "unlabeled": 0
+      },
+      "ratio_roc_auc": 0.7633166194317274
+    },
     "metrics": {
-      "base_rate": 0.03712707182320442,
-      "brier": 0.02196174160732913,
+      "base_rate": 0.05810630596304058,
+      "brier": 0.03147385396411939,
       "calibration": [
         {
           "bin": 0,
-          "count": 4143,
-          "mean_predicted": 0.008788148113441792,
-          "observed": 0.006034274680183442
+          "count": 9157,
+          "mean_predicted": 0.011544648854637683,
+          "observed": 0.014305995413344982
         },
         {
           "bin": 1,
-          "count": 138,
-          "mean_predicted": 0.13870478994419605,
-          "observed": 0.2028985507246377
+          "count": 537,
+          "mean_predicted": 0.13873519481344224,
+          "observed": 0.1005586592178771
         },
         {
           "bin": 2,
-          "count": 59,
-          "mean_predicted": 0.24099686531501893,
-          "observed": 0.2542372881355932
+          "count": 207,
+          "mean_predicted": 0.24404045381401274,
+          "observed": 0.2463768115942029
         },
         {
           "bin": 3,
-          "count": 32,
-          "mean_predicted": 0.3510729168507901,
-          "observed": 0.4375
+          "count": 88,
+          "mean_predicted": 0.3477604293303982,
+          "observed": 0.3181818181818182
         },
         {
           "bin": 4,
-          "count": 34,
-          "mean_predicted": 0.43926334655979765,
-          "observed": 0.35294117647058826
+          "count": 104,
+          "mean_predicted": 0.43951999260143115,
+          "observed": 0.4519230769230769
         },
         {
           "bin": 5,
-          "count": 21,
-          "mean_predicted": 0.5540315760448665,
-          "observed": 0.09523809523809523
+          "count": 90,
+          "mean_predicted": 0.5543494193539665,
+          "observed": 0.5333333333333333
         },
         {
           "bin": 6,
-          "count": 39,
-          "mean_predicted": 0.6462742486159794,
-          "observed": 0.6923076923076923
+          "count": 88,
+          "mean_predicted": 0.65901794009477,
+          "observed": 0.7272727272727273
         },
         {
           "bin": 7,
-          "count": 34,
-          "mean_predicted": 0.7578384857409347,
-          "observed": 0.7352941176470589
+          "count": 108,
+          "mean_predicted": 0.7532246485653665,
+          "observed": 0.8148148148148148
         },
         {
           "bin": 8,
-          "count": 25,
-          "mean_predicted": 0.8366974260140893,
-          "observed": 0.8
+          "count": 111,
+          "mean_predicted": 0.8434728831263409,
+          "observed": 0.8288288288288288
+        },
+        {
+          "bin": 9,
+          "count": 8,
+          "mean_predicted": 0.9213501899174952,
+          "observed": 0.875
         }
       ],
-      "pr_auc": 0.5751463540036867,
-      "roc_auc": 0.9736070581549121
+      "pr_auc": 0.6344083732896448,
+      "roc_auc": 0.9426799830229721
     }
   },
-  "registrable": false,
-  "report_version": 2,
+  "registrable": true,
+  "report_version": 3,
   "rules": {
-    "fold_hours": 6,
+    "fold_hours": 24,
     "min_minority_class": 100,
     "min_sample": 30,
     "min_train_rows": 1000
   },
-  "verdict": "exploratory run: labels overlap the validation windows and include revisable ones"
+  "verdict": "beats the rules out of sample: precision 84.4% against 66.8% at the rules' volume"
 }
