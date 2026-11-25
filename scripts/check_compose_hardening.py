@@ -44,12 +44,10 @@ SERVER_NETWORKS = {
 SERVER_DEPENDENCIES = {
     "grafana": {"prometheus": "service_healthy"},
     "redis-exporter": {"redis": "service_healthy"},
-    "backend": {"redis": "service_healthy"},
     "listener-skinport": {"redis": "service_healthy", "backend": "service_healthy"},
     "listener-waxpeer": {"redis": "service_healthy", "backend": "service_healthy"},
     "listener-dmarket": {"redis": "service_healthy", "backend": "service_healthy"},
     "analytics": {
-        "redis": "service_healthy",
         "backend": "service_healthy",
         "mlflow-server": "service_healthy",
         "prefect-server": "service_healthy",
@@ -219,7 +217,7 @@ def main() -> int:
     server_override_dependencies = {
         **SERVER_DEPENDENCIES,
         "mlflow-server": {"postgres": "service_healthy"},
-        "backend": {"redis": "service_healthy", "postgres": "service_healthy"},
+        "backend": {"postgres": "service_healthy"},
         "analytics": {
             **SERVER_DEPENDENCIES["analytics"],
             "postgres": "service_healthy",

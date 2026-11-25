@@ -49,8 +49,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     # Uncomment for live-editing backend code from the host.
     # volumes:
     #   - ../../apps/backend:/app/apps/backend
