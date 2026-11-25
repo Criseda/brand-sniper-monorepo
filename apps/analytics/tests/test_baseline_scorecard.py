@@ -286,6 +286,25 @@ def test_rest_snapshots_without_feed_coverage_stay_unlabeled():
     assert uncovered.outcome == OUTCOME_UNLABELED
 
 
+@pytest.mark.asyncio
+async def test_v1_snapshot_labels_read_the_sales_but_not_the_feed(monkeypatch):
+    sold = [FeedSale(f"S{i}", NAME, 1500, START + 8 * DAY + timedelta(hours=i)) for i in range(3)]
+
+    async def fake_sold(venue, event_type, start, end, names=None):
+        return sold
+
+    async def no_feed(venue, start, end):
+        raise AssertionError("v1 labels every listing, so it never reads the feed minutes")
+
+    monkeypatch.setattr(baseline_scorecard, "fetch_listing_events", fake_sold)
+    monkeypatch.setattr(baseline_scorecard, "fetch_feed_minutes", no_feed)
+    mature = trade(outcome=OUTCOME_PENDING, listing_id=None, price=1000)
+
+    await baseline_scorecard.label_snapshot_trades_from_sales([mature], LABEL_V1, AS_OF)
+
+    assert (mature.outcome, mature.is_profitable) == (OUTCOME_LABELED, True)
+
+
 def always_up(start, end):
     return FeedCoverage.build([start + timedelta(minutes=m) for m in range(int((end - start).total_seconds() // 60))], 900)
 
