@@ -435,6 +435,28 @@ async def test_cli_run_reads_the_sales_sync_and_labels_in_one_event_loop(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_cli_run_for_skinport_starts_from_the_matured_days_without_a_sales_sync(monkeypatch):
+    async def unexpected_sync(venue):
+        raise AssertionError("Skinport sales come from the feed, not from a sales sync")
+
+    flow_calls = []
+
+    async def fake_flow(**kwargs):
+        flow_calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(label_outcomes, "latest_sales_sync", unexpected_sync)
+    monkeypatch.setattr(label_outcomes, "label_listing_outcomes", fake_flow)
+    monkeypatch.setattr(label_outcomes, "utc_now_naive", lambda: AS_OF)
+    config = LabelConfig()
+
+    await label_outcomes.run_labeler(start=None, end=None, days_back=3, window_hours=24, config=config)
+
+    (call,) = flow_calls
+    assert call["start"] == default_start(AS_OF, 3, config)
+
+
+@pytest.mark.asyncio
 async def test_cli_run_stops_before_the_first_sales_sync(monkeypatch):
     async def no_sync(venue):
         return None
