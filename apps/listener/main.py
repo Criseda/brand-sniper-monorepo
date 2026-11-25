@@ -27,6 +27,7 @@ from detection import (
 )
 from executor import ExecutionService, PaperExecutor
 from executor import close_http_session as close_executor_http_session
+from http_sessions import LazySession
 from listener_telemetry import (
     batch_buffer_size,
     feed_events_received_total,
@@ -88,27 +89,19 @@ FEED_RECONNECT_FIRST_DELAY_SECONDS = _positive_float_env("LISTENER_FEED_RECONNEC
 FEED_RECONNECT_MAX_DELAY_SECONDS = _positive_float_env("LISTENER_FEED_RECONNECT_MAX_DELAY_SECONDS", 30)
 LISTENER_HEALTH_PORT = _positive_int_env("LISTENER_HEALTH_PORT", 9101)
 
-# Shared aiohttp session (initialized at startup, closed at shutdown)
-_http_session: aiohttp.ClientSession | None = None
+# The backend session for batch delivery and baselines, closed at shutdown.
+_backend_session = LazySession(aiohttp.ClientTimeout(total=10, connect=3), headers=backend_api_headers)
 # Everything a producer can hand to the consumer; None is the shutdown sentinel.
 type StreamItem = MarketTick | FeedEvent
 
 
 async def get_http_session() -> aiohttp.ClientSession:
-    """Returns the shared aiohttp session, creating it lazily if needed."""
-    global _http_session
-    if _http_session is None or _http_session.closed:
-        timeout = aiohttp.ClientTimeout(total=10, connect=3)
-        _http_session = aiohttp.ClientSession(headers=backend_api_headers(), timeout=timeout)
-    return _http_session
+    """The backend session, created on first use."""
+    return await _backend_session.get()
 
 
 async def close_http_session() -> None:
-    """Closes the shared aiohttp session cleanly."""
-    global _http_session
-    if _http_session and not _http_session.closed:
-        await _http_session.close()
-        _http_session = None
+    await _backend_session.close()
 
 
 def create_listener_health_app(baseline_state: BaselineState | None = None) -> web.Application:
@@ -397,7 +390,7 @@ async def process_live_telemetry_stream(venue: str) -> None:
     baseline_state = BaselineState(resale_venue)
     baseline_cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
     # Shadow mode (#236): None unless STUDENT_MODEL_VERSION names a model that loads; the rules decide either way.
-    student_scorer = await load_student_scorer(get_http_session)
+    student_scorer = await load_student_scorer()
 
     # Register graceful shutdown on SIGINT/SIGTERM
     shutdown_event = asyncio.Event()

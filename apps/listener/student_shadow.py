@@ -17,7 +17,6 @@ brand-sniper-student) and `MLFLOW_TRACKING_URI`.
 
 import os
 import time
-from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Any
 
@@ -38,8 +37,6 @@ DEFAULT_MODEL_NAME = "brand-sniper-student"
 DEFAULT_TRACKING_URI = "http://localhost:5000"
 # Scores waiting for a worker. A listing takes well under a millisecond, so this only fills if Redis stalls.
 SHADOW_QUEUE_SIZE = 1000
-
-SessionFactory = Callable[[], Awaitable[aiohttp.ClientSession]]
 
 
 class StudentShadow:
@@ -107,10 +104,11 @@ class StudentShadow:
         return scores
 
 
-async def load_student_scorer(session_factory: SessionFactory) -> StudentScorer | None:
+async def load_student_scorer() -> StudentScorer | None:
     """The model named by the environment, or None: shadow mode off, or the model cannot be used.
 
-    A model that fails to load never stops the listener; it runs on the rules alone, as without one."""
+    A model that fails to load never stops the listener; it runs on the rules alone, as without one. MLflow gets
+    a session of its own: the backend session would send it the backend's API key."""
     version = os.getenv("STUDENT_MODEL_VERSION", "").strip()
     if not version:
         logger.info("[STUDENT] No STUDENT_MODEL_VERSION: shadow scoring is off.")
@@ -119,7 +117,8 @@ async def load_student_scorer(session_factory: SessionFactory) -> StudentScorer 
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", DEFAULT_TRACKING_URI)
     model_version = f"{name}/{version}"
     try:
-        model_bytes = await fetch_registered_model(await session_factory(), tracking_uri, name, version)
+        async with aiohttp.ClientSession() as session:
+            model_bytes = await fetch_registered_model(session, tracking_uri, name, version)
         scorer = StudentScorer.from_bytes(model_bytes, model_version)
     except StudentModelError as error:
         logger.error("[STUDENT] Shadow scoring is off, the rules decide alone: %s", error)

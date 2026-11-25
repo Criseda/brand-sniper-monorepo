@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README speed chart (#175): decision latency of the Python ingress from the benchmark next to a blink, a human reaction and how fast Skinport listings sell, on a log scale, with its sources; drawn by `scripts/ingress_speed_chart.py` in light and dark.
 
 #### Changed
+- The listener's two backend sessions (batch delivery and the paper trade executor) share one `LazySession` helper instead of two hand-written globals, each keeping its own timeout (#78).
 - The student's candidate gate judges on money (#236): more net P&L than the rules out of sample (at its threshold or at the rules' volume) and more than the latest price ratio on the DRE's deals; precision at equal volume alone no longer makes a candidate, so the strict run of 2026-11-25 is not one.
 - Baseline scorecard rerun over 2026-09-26 to 2026-10-28 with the stale baseline rule (#360): 3,894 trades instead of 4,878, precision 60.3% instead of 56.0%, $0.43 a trade ($0.04 to $0.82) instead of $0.01, so most of the earlier losses were trades approved on baselines days old (#249).
 - Retired the Kaggle Steam history: migration `a7d4e2c9f1b3` drops `historical_prices` (about 10 GiB), the market context no longer falls back on its Steam average (`historical_steam_avg_cents` and `regime_shift_detected` are gone), and the seed, validation and `long_term_macro.py` scripts and the unused `get_sticker_price_cents` are removed. `item_macro_baselines` stays as frozen CFO context; `docs/data_sources.md` explains how to restore the history.
@@ -74,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bump pandas 3.0.5 to 3.0.6, prefect 3.8.5 to 3.8.6, mlflow 3.16.0 to 3.16.1, ruff 0.16.7 to 0.16.8, coverage 7.16.0 to 7.16.1, prefect docker image to 3.8.7.dev4-python3.12 (restores #241-#246).
 
 #### Fixed
+- The listener's shadow model fetch sent the backend API key to MLflow, because it borrowed the backend session; it now uses a session of its own (#236).
 - The student shadow mode's log lines (`[STUDENT]`) reached no handler: it logged under its module name instead of `listener.` (#236).
 - The labeler without `--start`, as cron runs it, no longer fails for DMarket: it read the sales sync and ran the flow under two event loops, and the flow got a pooled database connection bound to the first, closed loop (#339).
 - Replays and the DMarket labels' seller fees took a baseline build to be in force from when its run started, but a DMarket run syncs sales for 20 to 80 minutes before it stores the build, so they used each DMarket build that much earlier than the listener could. `baseline_builds.stored_at` (migration `3683be323039`, store times of the existing DMarket builds taken from their Prefect runs) now decides which build is in force; a build's age still counts from `built_at`.

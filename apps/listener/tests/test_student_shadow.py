@@ -193,10 +193,11 @@ async def test_detection_hands_every_listing_to_the_shadow_even_without_a_scored
 @pytest.mark.asyncio
 async def test_no_model_version_means_no_shadow(monkeypatch):
     monkeypatch.delenv("STUDENT_MODEL_VERSION", raising=False)
-    session_factory = AsyncMock()
+    fetch = AsyncMock()
+    monkeypatch.setattr(student_shadow, "fetch_registered_model", fetch)
 
-    assert await load_student_scorer(session_factory) is None
-    session_factory.assert_not_awaited()
+    assert await load_student_scorer() is None
+    fetch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -204,7 +205,7 @@ async def test_a_model_that_cannot_be_loaded_leaves_the_rules_alone(monkeypatch)
     monkeypatch.setenv("STUDENT_MODEL_VERSION", "9")
     monkeypatch.setattr(student_shadow, "fetch_registered_model", AsyncMock(side_effect=StudentModelError("gone")))
 
-    assert await load_student_scorer(AsyncMock()) is None
+    assert await load_student_scorer() is None
 
 
 @pytest.mark.asyncio
@@ -217,10 +218,11 @@ async def test_the_named_version_is_fetched_from_mlflow_and_loaded(monkeypatch):
     from_bytes = MagicMock(return_value=loaded)
     monkeypatch.setattr(student_shadow, "fetch_registered_model", fetch)
     monkeypatch.setattr(student_shadow.StudentScorer, "from_bytes", from_bytes)
-    session = object()
-
-    assert await load_student_scorer(AsyncMock(return_value=session)) is loaded
-    fetch.assert_awaited_once_with(session, "http://mlflow-server:5000", "other-student", "4")
+    assert await load_student_scorer() is loaded
+    session, *rest = fetch.await_args.args
+    assert rest == ["http://mlflow-server:5000", "other-student", "4"]
+    # MLflow gets a plain session, never the backend's: that one carries the backend API key.
+    assert "X-API-Key" not in session.headers and not any("key" in name.lower() for name in session.headers)
     from_bytes.assert_called_once_with(b"graph", "other-student/4")
 
 
