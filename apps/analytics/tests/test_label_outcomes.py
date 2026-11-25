@@ -400,6 +400,99 @@ def test_default_start_covers_the_last_matured_days():
     assert start == now - timedelta(seconds=config.horizon_seconds + config.settle_seconds) - 3 * DAY
 
 
+@pytest.mark.asyncio
+async def test_cli_run_reads_the_sales_sync_and_labels_in_one_event_loop(monkeypatch):
+    # Regression: the sync lookup and the flow ran under two asyncio.run calls, so the flow got a pooled
+    # connection bound to the first, closed loop and every DMarket run without --start failed.
+    import asyncio
+
+    config = LabelConfig.for_venue("dmarket", "v1-dmarket")
+    synced_at = T0 + 30 * DAY
+    loops = []
+    flow_calls = []
+
+    async def fake_latest_sales_sync(venue):
+        assert venue == "dmarket"
+        loops.append(asyncio.get_running_loop())
+        return synced_at
+
+    async def fake_flow(**kwargs):
+        loops.append(asyncio.get_running_loop())
+        flow_calls.append(kwargs)
+        return 7
+
+    monkeypatch.setattr(label_outcomes, "latest_sales_sync", fake_latest_sales_sync)
+    monkeypatch.setattr(label_outcomes, "label_listing_outcomes", fake_flow)
+    monkeypatch.setattr(label_outcomes, "utc_now_naive", lambda: AS_OF)
+
+    written = await label_outcomes.run_labeler(start=None, end=None, days_back=3, window_hours=24, config=config)
+
+    assert written == 7
+    assert loops[0] is loops[1]
+    (call,) = flow_calls
+    assert call["start"] == default_start(AS_OF, 3, config, synced_at)
+    assert (call["end"], call["as_of"], call["config"]) == (AS_OF, AS_OF, config)
+
+
+@pytest.mark.asyncio
+async def test_cli_run_for_skinport_starts_from_the_matured_days_without_a_sales_sync(monkeypatch):
+    async def unexpected_sync(venue):
+        raise AssertionError("Skinport sales come from the feed, not from a sales sync")
+
+    flow_calls = []
+
+    async def fake_flow(**kwargs):
+        flow_calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(label_outcomes, "latest_sales_sync", unexpected_sync)
+    monkeypatch.setattr(label_outcomes, "label_listing_outcomes", fake_flow)
+    monkeypatch.setattr(label_outcomes, "utc_now_naive", lambda: AS_OF)
+    config = LabelConfig()
+
+    await label_outcomes.run_labeler(start=None, end=None, days_back=3, window_hours=24, config=config)
+
+    (call,) = flow_calls
+    assert call["start"] == default_start(AS_OF, 3, config)
+
+
+@pytest.mark.asyncio
+async def test_cli_run_stops_before_the_first_sales_sync(monkeypatch):
+    async def no_sync(venue):
+        return None
+
+    async def unexpected_flow(**kwargs):
+        raise AssertionError("the flow must not run without a sales sync")
+
+    monkeypatch.setattr(label_outcomes, "latest_sales_sync", no_sync)
+    monkeypatch.setattr(label_outcomes, "label_listing_outcomes", unexpected_flow)
+    config = LabelConfig.for_venue("dmarket", "v1-dmarket")
+
+    with pytest.raises(SystemExit, match="No dmarket sales sync yet"):
+        await label_outcomes.run_labeler(start=None, end=None, days_back=3, window_hours=24, config=config)
+
+
+@pytest.mark.asyncio
+async def test_cli_run_with_a_start_labels_that_range_without_reading_the_sync(monkeypatch):
+    async def unexpected_sync(venue):
+        raise AssertionError("an explicit start needs no sales sync lookup")
+
+    flow_calls = []
+
+    async def fake_flow(**kwargs):
+        flow_calls.append(kwargs)
+        return 0
+
+    monkeypatch.setattr(label_outcomes, "latest_sales_sync", unexpected_sync)
+    monkeypatch.setattr(label_outcomes, "label_listing_outcomes", fake_flow)
+    config = LabelConfig.for_venue("dmarket", "v1-dmarket")
+
+    await label_outcomes.run_labeler(start=T0, end=T0 + DAY, days_back=3, window_hours=6, config=config)
+
+    (call,) = flow_calls
+    assert (call["start"], call["end"], call["window_hours"]) == (T0, T0 + DAY, 6)
+
+
 # --- Label version contract ---
 
 MIGRATION = Path(__file__).resolve().parents[3] / "deployments" / "migrations" / "versions" / "7c4e2a9f1b38_label_versions.py"

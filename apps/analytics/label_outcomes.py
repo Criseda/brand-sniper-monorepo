@@ -131,6 +131,29 @@ async def label_listing_outcomes(
     return total
 
 
+async def run_labeler(
+    start: datetime | None,
+    end: datetime | None,
+    days_back: int,
+    window_hours: int,
+    config: LabelConfig,
+) -> int:
+    """The CLI's run: picks the default start when none is given, then runs the flow.
+
+    Both steps share one event loop. The database engine pools its connections, and a connection opened under
+    one `asyncio.run` cannot be used under the next, so a second `asyncio.run` broke every DMarket run without
+    `--start`, the one cron makes."""
+    now = utc_now_naive()
+    if start is None:
+        synced_at = None
+        if config.sales_source == SALES_FROM_VENUE_SALES:
+            synced_at = await latest_sales_sync(config.venue)
+            if synced_at is None:
+                raise SystemExit(f"No {config.venue} sales sync yet: run the baseline builder first.")
+        start = default_start(now, days_back, config, synced_at)
+    return await label_listing_outcomes(start=start, end=end or now, as_of=now, window_hours=window_hours, config=config)
+
+
 if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via unit tests
     import argparse
 
@@ -154,15 +177,12 @@ if __name__ == "__main__":  # pragma: no cover - entrypoint glue, covered via un
 
     validate_required_env(["DATABASE_URL"])
     label_config = LabelConfig.for_venue(args.venue, args.label_version)
-    now = utc_now_naive()
-    start = args.start
-    if start is None:
-        synced_at = None
-        if label_config.sales_source == SALES_FROM_VENUE_SALES:
-            synced_at = asyncio.run(latest_sales_sync(label_config.venue))
-            if synced_at is None:
-                raise SystemExit(f"No {label_config.venue} sales sync yet: run the baseline builder first.")
-        start = default_start(now, args.days_back, label_config, synced_at)
     asyncio.run(
-        label_listing_outcomes(start=start, end=args.end or now, as_of=now, window_hours=args.window_hours, config=label_config)
+        run_labeler(
+            start=args.start,
+            end=args.end,
+            days_back=args.days_back,
+            window_hours=args.window_hours,
+            config=label_config,
+        )
     )
