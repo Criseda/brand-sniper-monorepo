@@ -569,13 +569,42 @@ async def test_rejection_is_counted_by_source_and_tick_kind(monkeypatch):
     ],
 )
 def test_fee_floor_rejects_price_rules_that_net_nothing(rule, estimate, expected):
-    assert detection.below_fee_floor(rule, estimate) is expected
+    assert detection.below_fee_floor(rule, estimate, 1000) is expected
 
 
 def test_fee_floor_can_be_switched_off(monkeypatch):
     monkeypatch.setattr(detection, "FEE_FLOOR", False)
+    monkeypatch.setattr(detection, "MIN_NET_MARGIN_SHARE", 0.2)
 
-    assert detection.below_fee_floor("support_floor", -100) is False
+    assert detection.below_fee_floor("support_floor", -100, 1000) is False
+
+
+@pytest.mark.parametrize(
+    ("estimate", "expected"),
+    [
+        (150, True),  # Clears the fee, but by less than 20% of the $10 price
+        (200, True),  # Exactly the cushion is not more than it
+        (201, False),
+        (None, False),  # No baseline price, no estimate: the floor does not judge it
+    ],
+)
+def test_the_hold_margin_asks_for_more_than_a_share_of_the_price(monkeypatch, estimate, expected):
+    monkeypatch.setattr(detection, "MIN_NET_MARGIN_SHARE", 0.2)
+
+    assert detection.below_fee_floor("support_floor", estimate, 1000) is expected
+    # The sticker rules are never judged on the estimate, cushion or not.
+    assert detection.below_fee_floor("sticker_premium", 0, 1000) is False
+
+
+@pytest.mark.parametrize("raw", ["-0.1", "1", "1.5"])
+def test_a_hold_margin_outside_zero_to_one_is_refused(raw):
+    with pytest.raises(ValueError, match="DRE_MIN_NET_MARGIN"):
+        detection._min_net_margin_share(raw)
+
+
+def test_the_hold_margin_is_off_by_default():
+    assert detection._min_net_margin_share("0") == 0.0
+    assert detection.MIN_NET_MARGIN_SHARE == 0.0
 
 
 @pytest.mark.asyncio

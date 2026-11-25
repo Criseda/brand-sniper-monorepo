@@ -589,22 +589,27 @@ def _replay_run(decided) -> tuple[list[tuple], list[tuple]]:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("stream", "macro_triggers", "fee_floor", "expected_trades"),
+    ("stream", "macro_triggers", "fee_floor", "expected_trades", "min_net_margin"),
     [
         # Cold, the recorded fixture's approvals are all macro Z scores: none without them, 18 with them, and one
         # of those 18 nets nothing after the seller fee.
-        ("recorded_fixture", False, True, 0),
-        ("recorded_fixture", True, True, 17),
-        ("recorded_fixture", True, False, 18),
-        ("synthetic", False, True, 3),
-        ("repeated_snapshots", False, True, 3),
-        ("cold_start", False, True, 1),
-        ("cold_start", True, True, 3),
+        ("recorded_fixture", False, True, 0, 0.0),
+        ("recorded_fixture", True, True, 17, 0.0),
+        ("recorded_fixture", True, False, 18, 0.0),
+        ("synthetic", False, True, 3, 0.0),
+        ("repeated_snapshots", False, True, 3, 0.0),
+        ("cold_start", False, True, 1, 0.0),
+        ("cold_start", True, True, 3, 0.0),
+        # A 20% hold margin (#332) keeps 15 of those 17: the ones that net more than a fifth of their price.
+        ("recorded_fixture", True, True, 15, 0.2),
     ],
 )
-async def test_replay_decisions_match_the_live_consumer(monkeypatch, stream, macro_triggers, fee_floor, expected_trades):
+async def test_replay_decisions_match_the_live_consumer(
+    monkeypatch, stream, macro_triggers, fee_floor, expected_trades, min_net_margin
+):
     monkeypatch.setattr(zscore, "MACRO_ZSCORE_TRIGGERS", macro_triggers)
     monkeypatch.setattr(detection, "FEE_FLOOR", fee_floor)
+    monkeypatch.setattr(detection, "MIN_NET_MARGIN_SHARE", min_net_margin)
     if stream == "recorded_fixture":
         events = load_fixture(FIXTURE_DIR / "events.jsonl")
         baselines = BaselineSnapshot.load(FIXTURE_DIR / "baselines.json")
