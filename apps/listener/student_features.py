@@ -3,7 +3,7 @@ Student model features (#234) of one listing, gathered from the edge store at de
 
 The definitions live in `shared_utils.features`; this module only collects their inputs from the same
 places the rules read them (the scored price window, the resale venue's baseline and sticker prices), so
-the replay harness and, later, the live listener (#236) build identical rows.
+the replay harness and the live listener's shadow mode (#236) build identical rows.
 """
 
 import json
@@ -21,15 +21,18 @@ async def _baseline(tick: MarketTick, cache: Redis) -> dict[str, Any] | None:
     return json.loads(raw) if raw else None
 
 
-async def listing_features(
-    tick: MarketTick, window_score: WindowScore | None, cache: Redis, rates: ListingRateTracker
-) -> dict[str, float | int | None]:
-    """
-    The features of a listing that has just entered its price window.
+def record_listing(tick: MarketTick, rates: ListingRateTracker) -> int:
+    """Records a listing in `rates` and returns its item's listings over the last hour, this one included.
 
-    Call it once per scored listing, in decision order: it also records the listing in `rates`.
-    """
-    listings_last_hour = rates.record(tick.venue, tick.market_hash_name, tick.timestamp)
+    Call it once per scored listing, in decision order: the live shadow mode (#236) calls it on the tick
+    consumer before handing the rest of the work to a background task, so the count matches the replay."""
+    return rates.record(tick.venue, tick.market_hash_name, tick.timestamp)
+
+
+async def features_with_rate(
+    tick: MarketTick, window_score: WindowScore | None, cache: Redis, listings_last_hour: int
+) -> dict[str, float | int | None]:
+    """The features of a listing whose rate `record_listing` has already counted."""
     baseline = window_score.baseline if window_score is not None else await _baseline(tick, cache)
     return compute_features(
         FeatureInputs(
@@ -43,3 +46,14 @@ async def listing_features(
             listings_last_hour=listings_last_hour,
         )
     )
+
+
+async def listing_features(
+    tick: MarketTick, window_score: WindowScore | None, cache: Redis, rates: ListingRateTracker
+) -> dict[str, float | int | None]:
+    """
+    The features of a listing that has just entered its price window.
+
+    Call it once per scored listing, in decision order: it also records the listing in `rates`.
+    """
+    return await features_with_rate(tick, window_score, cache, record_listing(tick, rates))

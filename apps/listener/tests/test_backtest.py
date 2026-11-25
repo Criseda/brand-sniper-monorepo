@@ -528,7 +528,7 @@ async def _live_run(monkeypatch, events, baselines) -> tuple[list[tuple], list[t
     store.load_baselines(baselines.baselines, baselines.sticker_prices)
     monkeypatch.setattr(listener_main.Redis, "from_url", lambda *_args, **_kwargs: store)
 
-    async def discard_flush(source, buffer, *, batch_id, store, batch_pool, feed_event_buffer=None):
+    async def discard_flush(source, buffer, *, batch_id, store, batch_pool, feed_event_buffer=None, student_scores=None):
         buffer.clear()
         if feed_event_buffer is not None:
             feed_event_buffer.clear()

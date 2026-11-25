@@ -258,3 +258,21 @@ def export_feed_metrics(registry: CollectorRegistry = REGISTRY) -> None:
 def export_dmarket_metrics(registry: CollectorRegistry = REGISTRY) -> None:
     """Adds the DMarket polling metrics to what `registry` exports. Safe to call more than once."""
     _export(dmarket_registry, registry)
+
+
+# Student model shadow mode (#236): the model scores listings in parallel with the rules and decides nothing.
+student_shadow_scores_total = Counter(
+    "listener_student_shadow_scores_total",
+    "Listings handed to the student model in shadow mode, by outcome (scored, would_approve, failed, dropped)",
+    ["outcome"],
+)
+student_shadow_scoring_seconds = Histogram(
+    "listener_student_shadow_scoring_seconds",
+    "Time to gather one listing's student features and run the model, off the tick consumer",
+    buckets=(0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1),
+)
+student_model_loaded = Gauge(
+    "listener_student_model_loaded",
+    "1 while a student model version is loaded for shadow scoring",
+    ["model_version"],
+)

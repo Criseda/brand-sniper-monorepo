@@ -327,6 +327,31 @@ class ListingOutcome(SQLModel, table=True):
     __table_args__ = (Index("ix_listing_outcomes_version_available", "label_version", "label_available_at"),)
 
 
+class StudentScore(SQLModel, table=True):
+    """
+    The student model's shadow score of one feed listing (#236): what the model would have decided while the
+    rules keep deciding. The listener scores every listing that reaches detection, in parallel with the rules,
+    and ships the scores through its batch path, so batch-level idempotency applies.
+
+    One row per listing and model version: a listing scored again after a restart keeps its first score.
+    Joined to `listing_outcomes` on (`venue`, `listing_id`), it shows whether the model's picks were worth buying.
+    """
+
+    __tablename__: str = "student_scores"
+
+    venue: str = Field(primary_key=True, max_length=32)
+    listing_id: str = Field(primary_key=True, max_length=64)
+    model_version: str = Field(primary_key=True, max_length=96)  # Registered name and version, e.g. brand-sniper-student/1
+    feature_version: int = Field(nullable=False)
+    probability: float = Field(nullable=False)  # Calibrated probability that the listing is profitable
+    threshold: float = Field(nullable=False)  # The model's own threshold, from its ONNX metadata
+    would_approve: bool = Field(nullable=False)  # probability >= threshold
+    # Edge receive time of the listing, the same clock as live_market_ticks.observed_at.
+    observed_at: NaiveDatetime = Field(nullable=False, index=True)
+    # Time to gather the features and run the model, after the listing reached detection.
+    scoring_ms: float = Field(nullable=False)
+
+
 class TradeAlertRecord(SQLModel, table=True):
     """
     One attempt to alert a person about an approved listing on one channel (#18), sent or not.

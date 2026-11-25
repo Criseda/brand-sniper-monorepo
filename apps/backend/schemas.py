@@ -73,6 +73,19 @@ class BulkFeedEvent(BaseModel):
     payload: dict[str, Any] = Field(..., description="Untouched venue payload")
 
 
+class BulkStudentScore(BaseModel):
+    """The student model's shadow score of one feed listing (#236), persisted to student_scores."""
+
+    listing_id: NonEmptyText = Field(..., max_length=64, description="Venue identifier of the scored listing")
+    model_version: NonEmptyText = Field(..., max_length=96, description="Registered model name and version")
+    feature_version: int = Field(..., ge=1, description="shared_utils.features version the model was trained on")
+    probability: float = Field(..., ge=0, le=1, description="Calibrated probability that the listing is profitable")
+    threshold: float = Field(..., ge=0, le=1, description="The model's own threshold")
+    would_approve: bool = Field(..., description="Whether the probability reaches the threshold")
+    observed_at_ms: int = Field(..., gt=0, description="Edge receive time of the listing, Unix epoch milliseconds")
+    scoring_ms: float = Field(..., ge=0, description="Time to gather the features and run the model")
+
+
 class SearchTrendsPayload(BaseModel):
     """Schema for the macro trend search query."""
 
@@ -96,3 +109,6 @@ class BulkIngestionPayload(BaseModel):
     )
     ticks: list[BulkPriceTick] = Field(..., description="Array of collected market snapshot blocks")
     feed_events: list[BulkFeedEvent] = Field(default_factory=list, description="Raw feed events captured at the edge")
+    student_scores: list[BulkStudentScore] = Field(
+        default_factory=list, description="Shadow scores of the student model (#236)"
+    )

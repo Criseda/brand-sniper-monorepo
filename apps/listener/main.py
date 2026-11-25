@@ -41,6 +41,7 @@ from prometheus_client import start_http_server
 from redis.asyncio import Redis
 from scrapers.factory import ScraperFactory
 from shared_utils import backend_api_headers, fees_for, get_backend_api_key, get_logger, resale_venue_for, utc_now_naive
+from student_shadow import SHADOW_QUEUE_SIZE, StudentShadow, load_student_scorer
 from task_supervisor import BoundedTaskPool
 
 logger = get_logger("listener.main")
@@ -167,11 +168,12 @@ async def flush_batch_buffer(
     store: RedisBatchStore,
     batch_pool: BoundedTaskPool,
     feed_event_buffer: list[dict] | None = None,
+    student_scores: list[dict] | None = None,
 ) -> None:
     """Persist a stable batch, transfer buffer ownership, then schedule delivery."""
     snapshot = buffer.copy()
     feed_event_snapshot = feed_event_buffer.copy() if feed_event_buffer else []
-    batch = await store.add(venue, snapshot, batch_id=batch_id, feed_events=feed_event_snapshot)
+    batch = await store.add(venue, snapshot, batch_id=batch_id, feed_events=feed_event_snapshot, student_scores=student_scores)
     buffer.clear()
     if feed_event_buffer is not None:
         feed_event_buffer.clear()
@@ -251,11 +253,14 @@ async def tick_consumer(
     executor: ExecutionService,
     alerts: AlertDispatcher | None = None,
     baseline_state: BaselineState | None = None,
+    shadow: StudentShadow | None = None,
 ) -> None:
     """
     Processes stream items: records every tick and raw feed event, and scores live offers for anomalies.
 
-    With `baseline_state`, anomalies are not approved while its baselines are missing or stale (#360).
+    With `baseline_state`, anomalies are not approved while its baselines are missing or stale (#360). With
+    `shadow`, the student model also scores every listing that reaches detection, and its scores ship in the
+    batches (#236).
     """
     edge_redis_url = os.getenv("EDGE_REDIS_URL", "redis://localhost:6380")
     redis_password = os.getenv("REDIS_PASSWORD")
@@ -279,6 +284,7 @@ async def tick_consumer(
             store=batch_store,
             batch_pool=batch_pool,
             feed_event_buffer=feed_event_buffer,
+            student_scores=shadow.drain() if shadow is not None else None,
         )
         batch_buffer_id = None
         oldest_buffered_at = None
@@ -335,7 +341,7 @@ async def tick_consumer(
                                 snapshots_unchanged_windowed_total.inc()
                                 await push_to_window(item, cache)
                         else:
-                            await update_window_and_detect(item, cache, anomaly_pool, executor, alerts, baseline_state)
+                            await update_window_and_detect(item, cache, anomaly_pool, executor, alerts, baseline_state, shadow)
                     batch_buffer_size.set(len(batch_buffer))
                 # Broad on purpose: one bad tick must not kill the consumer loop.
                 except Exception as item_err:
@@ -390,6 +396,8 @@ async def process_live_telemetry_stream(venue: str) -> None:
     redis_password = os.getenv("REDIS_PASSWORD")
     baseline_state = BaselineState(resale_venue)
     baseline_cache = Redis.from_url(edge_redis_url, username="default", password=redis_password, decode_responses=True)
+    # Shadow mode (#236): None unless STUDENT_MODEL_VERSION names a model that loads; the rules decide either way.
+    student_scorer = await load_student_scorer(get_http_session)
 
     # Register graceful shutdown on SIGINT/SIGTERM
     shutdown_event = asyncio.Event()
@@ -421,7 +429,14 @@ async def process_live_telemetry_stream(venue: str) -> None:
                 queue_size=BATCH_QUEUE_SIZE,
                 shutdown_timeout=SHUTDOWN_GRACE_SECONDS,
             ) as batch_pool,
+            BoundedTaskPool(
+                "student_shadow",
+                workers=1,
+                queue_size=SHADOW_QUEUE_SIZE,
+                shutdown_timeout=SHUTDOWN_GRACE_SECONDS,
+            ) as shadow_pool,
         ):
+            shadow = StudentShadow(student_scorer, shadow_pool, baseline_cache) if student_scorer is not None else None
             if scraper.venue == LEGACY_STREAM_VENUE:
                 # Before recovery, so batches still pending under the pre-#261 stream names are delivered too.
                 await batch_store.adopt_legacy_streams()
@@ -433,7 +448,15 @@ async def process_live_telemetry_stream(venue: str) -> None:
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
                     tick_consumer(
-                        queue, scraper.venue, anomaly_pool, batch_pool, batch_store, executor, alerts, baseline_state
+                        queue,
+                        scraper.venue,
+                        anomaly_pool,
+                        batch_pool,
+                        batch_store,
+                        executor,
+                        alerts,
+                        baseline_state,
+                        shadow,
                     ),
                     name="tick-consumer",
                 )
