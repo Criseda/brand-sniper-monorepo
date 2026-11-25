@@ -100,15 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A listing is paper traded once across listener restarts and for any executor: unique indexes on `simulated_trades` (one buy per venue and listing, one REST snapshot buy per venue, item and price per UTC day), the trade endpoint answers a repeat `200 ALREADY_RECORDED`, the in memory check moved into `ExecutionService`, and migration `d064786e47a8` removes repeated buys, keeping the first (#271).
 
 #### In Progress / Planned
-- `[PE-05]` Ingress-to-decision latency benchmark and Rust decision gate (#175).
-- `[PE-06]` Shared feature module & walk-forward student model with ONNX export (#234).
-- `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate (#236).
-- `[PE-08]` CFO calibration experiment against realized outcomes (#250).
+- `[PE-07]` Shadow-mode in-process ONNX scoring with promotion gate (#236): shadow scoring is built; the shadow-period report waits for `v2` labels (from about 2026-12-09).
+- `[PE-24]` DRE hold margin (#332): the setting is built; its value is chosen walk forward on `v2` labels.
+- `[PE-26]` CFO on top of the fee aware DRE (#334): waits for `v2` labels.
 - `[PE-09]` Realized-performance & feature drift monitoring (#235).
-- `[PE-10]` Discord/Telegram alerts with direct listing links (#18).
-- `[PE-11]` CSFloat venue (#33); Steam dropped as a venue (reference price only).
-- `[PE-13]` P&L for buying and selling on different venues (#260).
-- `[PE-14]` Waxpeer venue (#261).
 
 ---
 
