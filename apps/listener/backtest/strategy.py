@@ -109,6 +109,7 @@ class ZScoreDreStrategy:
             "macro_prior_weight": zscore.MACRO_PRIOR_WEIGHT,
             "macro_zscore_triggers": zscore.MACRO_ZSCORE_TRIGGERS,
             "fee_floor": detection.FEE_FLOOR,
+            "min_net_margin_share": detection.MIN_NET_MARGIN_SHARE,
             "stale_baseline_max_age_hours": BASELINE_MAX_AGE_HOURS,
         }
 
@@ -143,7 +144,7 @@ class ZScoreDreStrategy:
                 features["dre_reason"] = dre_reason
                 if dre_reason is not None:
                     estimate = detection.estimate_net_profit_cents(tick, window_score.baseline or {})
-                    features["below_fee_floor"] = detection.below_fee_floor(dre_reason, estimate)
+                    features["below_fee_floor"] = detection.below_fee_floor(dre_reason, estimate, tick.price_cents)
             return Decision(approve=False, reason=REASON_BELOW_THRESHOLD, score=window_score.z_score, features=features)
 
         approval_reason = await dre_approval_reason(tick, context.cache, window_score.baseline)
@@ -153,7 +154,7 @@ class ZScoreDreStrategy:
         # Same estimate the live executor records with the paper trade.
         estimate = detection.estimate_net_profit_cents(tick, window_score.baseline or {})
         features["estimated_net_profit_cents"] = estimate
-        if detection.below_fee_floor(approval_reason, estimate):
+        if detection.below_fee_floor(approval_reason, estimate, tick.price_cents):
             features["dre_rule"] = approval_reason
             return Decision(approve=False, reason=REASON_BELOW_FEE_FLOOR, score=window_score.z_score, features=features)
         return Decision(approve=True, reason=approval_reason, score=window_score.z_score, features=features)

@@ -60,6 +60,19 @@ DEDUP_CACHE_MAX_SIZE = int(os.getenv("DEDUP_CACHE_MAX_SIZE", "100000"))
 # baseline price (#331). False brings back the DRE without the floor.
 FEE_FLOOR = os.getenv("DRE_FEE_FLOOR", "true").lower() in ("true", "1", "yes")
 FEE_FLOOR_RULES = (REASON_SUPPORT_FLOOR, REASON_MACRO_SIGMA)
+
+
+def _min_net_margin_share(raw: str) -> float:
+    share = float(raw)
+    if not 0.0 <= share < 1.0:
+        raise ValueError(f"DRE_MIN_NET_MARGIN must be a share of the price from 0 up to 1, not {raw}")
+    return share
+
+
+# A cushion on top of the fee floor for the trade hold (#332): the fee-aware estimate must exceed this share of the
+# price, because a deal that only just clears the fee can turn into a loss in the 7 days before it can be resold.
+# 0 (the default) is the plain fee floor. Its value is chosen walk forward on labeled weeks before it is set.
+MIN_NET_MARGIN_SHARE = _min_net_margin_share(os.getenv("DRE_MIN_NET_MARGIN", "0"))
 # A REST snapshot at the same price as the item's previous tick within this many seconds is a duplicate.
 # Feed listings are not held to it: each one is a separate offer (see `is_duplicate`).
 DEDUP_WINDOW_SECONDS = 300
@@ -347,17 +360,18 @@ def estimate_net_profit_cents(tick: MarketTick, baseline: dict[str, Any]) -> int
     )
 
 
-def below_fee_floor(approval_reason: str, estimated_profit_cents: int | None) -> bool:
+def below_fee_floor(approval_reason: str, estimated_profit_cents: int | None, price_cents: int) -> bool:
     """
     The fee floor (#331): a deal whose fee-aware estimate is zero or less loses money even if it resells at the
     baseline price, so it is not traded. Without a baseline price there is no estimate, and the floor does not apply.
+    With a hold margin (`MIN_NET_MARGIN_SHARE`, #332) the estimate must also exceed that share of the price.
 
     The estimate values the item at its baseline price and ignores stickers, so it only judges the rules that buy on
     price (`FEE_FLOOR_RULES`). The sticker rules pay up to or above the baseline price for the stickers on top.
     """
     if not FEE_FLOOR or approval_reason not in FEE_FLOOR_RULES:
         return False
-    return estimated_profit_cents is not None and estimated_profit_cents <= 0
+    return estimated_profit_cents is not None and estimated_profit_cents <= MIN_NET_MARGIN_SHARE * price_cents
 
 
 async def evaluate_and_execute(
@@ -407,7 +421,7 @@ async def evaluate_and_execute(
         baseline_raw = await cache.hget(edge_baselines_key(resale_venue_for(tick.venue)), tick.market_hash_name)
         baseline = json.loads(baseline_raw) if baseline_raw else {}
     estimated_profit_cents = estimate_net_profit_cents(tick, baseline)
-    if below_fee_floor(approval_reason, estimated_profit_cents):
+    if below_fee_floor(approval_reason, estimated_profit_cents, tick.price_cents):
         anomalies_rejected_total.labels(source=source, tick_kind=tick_kind, reason=REJECTED_BELOW_FEE_FLOOR).inc()
         logger.info(
             "[ANOMALY] Below the fee floor (%s, %s, rule %s): %s at $%.2f would net $%.2f after fees.",

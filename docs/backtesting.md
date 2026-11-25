@@ -189,6 +189,13 @@ keeps the floor at every threshold. The header's `fee_floor` says whether a run 
 by default); a log without it is from before #331. What it changed is in
 [benchmarks/fee_floor.md](benchmarks/fee_floor.md).
 
+**A margin for the trade hold can sit on top of the floor.** `DRE_MIN_NET_MARGIN` (#332) asks the same
+approvals to net more than that share of their price, because a deal that only just clears the fee can turn
+into a loss during the 7 days before it can be resold. It is 0 by default, which is the plain floor, and the
+header records it as `min_net_margin_share`. Live and replay share the rule (`detection.below_fee_floor`), and
+the parity test runs the recorded fixture with a 20% margin. I set a value only after choosing it walk forward
+on `v2` labels, which exist from about 2026-12-09.
+
 **Nothing is approved on a stale build.** Since #360 the live listener approves nothing while its baseline
 build is older than `BASELINE_MAX_AGE_HOURS` (48), as after a few days with the PC off. The replay does the
 same with the build in force at each event: a scored tick is logged with reason `stale_baseline` and keeps its
