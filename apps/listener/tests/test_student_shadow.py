@@ -99,6 +99,21 @@ async def test_a_listing_is_scored_off_the_consumer_and_shipped_with_the_next_ba
 
 
 @pytest.mark.asyncio
+async def test_a_listing_below_the_threshold_is_recorded_as_a_shadow_rejection():
+    pool = QueuePool()
+    shadow = StudentShadow(RecordingScorer(probability=0.2), pool, redis_with_baseline())
+    approvals_before, scored_before = counter("would_approve"), counter("scored")
+
+    shadow.observe(tick(), window())
+    await pool.run_all()
+
+    (score,) = shadow.drain()
+    assert (score["probability"], score["would_approve"]) == (0.2, False)
+    assert counter("scored") == scored_before + 1
+    assert counter("would_approve") == approvals_before
+
+
+@pytest.mark.asyncio
 async def test_rest_snapshots_name_no_listing_and_are_not_scored():
     pool = QueuePool()
     StudentShadow(RecordingScorer(), pool, redis_with_baseline()).observe(tick(listing_id=None), window())
