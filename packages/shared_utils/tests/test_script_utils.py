@@ -58,7 +58,8 @@ def test_setup_script_environment_loads_env_with_app_override(script_env, monkey
     assert os.getenv("ROOT_ONLY") == "1"
     assert os.getenv("APP_ONLY") == "1"
     assert os.getenv("SHARED_VAR") == "app"
-    assert str(root) in sys.path
+    # Scripts import their siblings from their own directory; nothing imports from the repository root (#355).
+    assert str(root) not in sys.path
 
 
 def test_setup_script_environment_finds_root_from_nested_subdir(tmp_path, monkeypatch):
@@ -69,7 +70,7 @@ def test_setup_script_environment_finds_root_from_nested_subdir(tmp_path, monkey
     monkeypatch.setattr(sys, "path", [p for p in sys.path])
 
     assert setup_script_environment(nested / "script.py") == root
-    assert str(root) in sys.path
+    assert str(root) not in sys.path
 
 
 def test_setup_script_environment_skips_nested_app_manifest(tmp_path, monkeypatch):
@@ -113,13 +114,14 @@ def test_setup_script_environment_tolerates_unreadable_nested_manifest(tmp_path,
     assert setup_script_environment(app_dir / "script.py") == root
 
 
-def test_setup_script_environment_does_not_duplicate_sys_path(script_env, monkeypatch):
-    script_path, root = script_env
+def test_setup_script_environment_does_not_touch_sys_path(script_env, monkeypatch):
+    script_path, _root = script_env
+    before = list(sys.path)
 
     setup_script_environment(script_path)
     setup_script_environment(script_path)
 
-    assert sys.path.count(str(root)) == 1
+    assert sys.path == before
 
 
 def test_setup_service_environment_loads_env_with_app_override(script_env, monkeypatch):

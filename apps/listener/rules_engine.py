@@ -88,8 +88,3 @@ async def dre_approval_reason(tick: MarketTick, redis_client: Redis, baseline: d
             return REASON_STICKER_PREMIUM
 
     return None
-
-
-async def evaluate_opportunity(tick: MarketTick, redis_client: Redis, baseline: dict | None = None) -> bool:
-    """True when the DRE approves the anomaly (see dre_approval_reason for the rules)."""
-    return await dre_approval_reason(tick, redis_client, baseline) is not None

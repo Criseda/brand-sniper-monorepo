@@ -81,9 +81,6 @@ DEDUP_WINDOW_SECONDS = 300
 # so their prices never share a window (#270). Written to the replay log header.
 STATE_KEY = "venue_and_item"
 PRICE_WINDOW_KEY_PREFIX = "price_window:"
-# Before #270 a window was keyed by item name only, and every window held Skinport prices.
-LEGACY_PRICE_WINDOW_KEY_PREFIX = "market:ticks:"
-LEGACY_PRICE_WINDOW_VENUE = "skinport"
 
 # `tick_kind` label on the anomaly counters: a REST lowest ask or a live feed listing.
 TICK_KIND_REST_SNAPSHOT = "rest_snapshot"
@@ -199,24 +196,6 @@ def initialise_anomaly_counters() -> None:
 def price_window_key(venue: str, market_hash_name: str) -> str:
     """Edge Redis key of one item's price window on one venue."""
     return f"{PRICE_WINDOW_KEY_PREFIX}{venue}:{market_hash_name}"
-
-
-async def migrate_legacy_price_windows(cache: Redis) -> int:
-    """
-    Moves the price windows written before #270 (`market:ticks:<item>`) to their venue keyed names.
-
-    Every legacy window holds Skinport prices, so it becomes `price_window:skinport:<item>` and the listener
-    keeps its history across the deploy. When a window already exists under the new name, it is newer, so it
-    is kept and the legacy one is dropped. Returns how many legacy windows were found.
-    """
-    found = 0
-    async for key in cache.scan_iter(match=f"{LEGACY_PRICE_WINDOW_KEY_PREFIX}*", count=1000):
-        key_text = _decode_zset_element(key)
-        market_hash_name = key_text.removeprefix(LEGACY_PRICE_WINDOW_KEY_PREFIX)
-        if not await cache.renamenx(key_text, price_window_key(LEGACY_PRICE_WINDOW_VENUE, market_hash_name)):
-            await cache.delete(key_text)
-        found += 1
-    return found
 
 
 def is_duplicate(tick: MarketTick, dedup_cache: DedupCache) -> bool:

@@ -19,7 +19,6 @@ from detection import (
     initialise_anomaly_counters,
     is_duplicate,
     is_unchanged_snapshot,
-    migrate_legacy_price_windows,
     push_to_window,
     unchanged_snapshot_enters_price_window,
     update_dedup_cache,
@@ -434,10 +433,6 @@ async def process_live_telemetry_stream(venue: str) -> None:
                 # Before recovery, so batches still pending under the pre-#261 stream names are delivered too.
                 await batch_store.adopt_legacy_streams()
             await recover_pending_batches(batch_store, batch_pool)
-            # Before any tick is windowed, so no window is written under both key schemes.
-            migrated_windows = await migrate_legacy_price_windows(baseline_cache)
-            if migrated_windows:
-                logger.info("[WINDOWS] Moved %d price windows to venue keyed names (#270).", migrated_windows)
             async with asyncio.TaskGroup() as task_group:
                 consumer_task = task_group.create_task(
                     tick_consumer(

@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README speed chart (#175): decision latency of the Python ingress from the benchmark next to a blink, a human reaction and how fast Skinport listings sell, on a log scale, with its sources; drawn by `scripts/ingress_speed_chart.py` in light and dark.
 
 #### Changed
+- Removed dead code and settings found by the #355 audit: the root `main.py` stub, the unused `gitpython` and analytics `redis` dependencies, the backend's and analytics' unused Redis settings, the #270 price-window key migration, `evaluate_opportunity`, `holding_seconds`, the `REDIS_HOST`/`REDIS_PORT` fallback, `OTEL_SERVICE_NAME`, an orphaned benchmark profile, and the repository root on scripts' `sys.path`.
 - The listener's two backend sessions (batch delivery and the paper trade executor) share one `LazySession` helper instead of two hand-written globals, each keeping its own timeout (#78).
 - The student's candidate gate judges on money (#236): more net P&L than the rules out of sample (at its threshold or at the rules' volume) and more than the latest price ratio on the DRE's deals; precision at equal volume alone no longer makes a candidate, so the strict run of 2026-11-25 is not one.
 - Baseline scorecard rerun over 2026-09-26 to 2026-10-28 with the stale baseline rule (#360): 3,894 trades instead of 4,878, precision 60.3% instead of 56.0%, $0.43 a trade ($0.04 to $0.82) instead of $0.01, so most of the earlier losses were trades approved on baselines days old (#249).
