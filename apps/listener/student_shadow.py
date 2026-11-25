@@ -15,7 +15,6 @@ Configuration: `STUDENT_MODEL_VERSION` (unset: no shadow mode), `STUDENT_MODEL_N
 brand-sniper-student) and `MLFLOW_TRACKING_URI`.
 """
 
-import logging
 import os
 import time
 from collections.abc import Awaitable, Callable
@@ -27,12 +26,13 @@ from detection import WindowScore
 from listener_telemetry import student_model_loaded, student_shadow_scores_total, student_shadow_scoring_seconds
 from models import MarketTick
 from redis.asyncio import Redis
-from shared_utils import ListingRateTracker
+from shared_utils import ListingRateTracker, get_logger
 from student_features import features_with_rate, record_listing
 from student_scorer import StudentModelError, StudentScorer, fetch_registered_model
 from task_supervisor import BoundedTaskPool
 
-logger = logging.getLogger(__name__)
+# Under "listener." like every listener module, so its lines reach the configured handler.
+logger = get_logger("listener.student_shadow")
 
 DEFAULT_MODEL_NAME = "brand-sniper-student"
 DEFAULT_TRACKING_URI = "http://localhost:5000"

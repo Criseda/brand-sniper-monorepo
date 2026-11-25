@@ -222,3 +222,8 @@ async def test_the_named_version_is_fetched_from_mlflow_and_loaded(monkeypatch):
     assert await load_student_scorer(AsyncMock(return_value=session)) is loaded
     fetch.assert_awaited_once_with(session, "http://mlflow-server:5000", "other-student", "4")
     from_bytes.assert_called_once_with(b"graph", "other-student/4")
+
+
+def test_shadow_logs_under_the_listener_logger():
+    # A logger outside "listener." has no handler in the container, so its lines never reach the logs.
+    assert student_shadow.logger.name == "listener.student_shadow"
