@@ -436,7 +436,7 @@ leaves the column empty for them.
 | Table | Policy | Status |
 |---|---|---|
 | `feed_events` (raw Skinport feed payloads, #232, and grouped Waxpeer payloads, #261) | Keep 90 days in PostgreSQL. Export older rows month by month to compressed JSONL/Parquet in object storage, verify the export, and only then delete them (batched, on the `received_at` index) | **Manual. No job exists yet.** Capture started 2026-09-24, so the first export is due by **2026-12-23** |
-| `live_market_ticks` | No expiry during Milestone 5 (training and label corpus) | - |
+| `live_market_ticks` | No expiry during Milestone 5 (training and label corpus). Since #272 the listener stores a REST snapshot only when it used it: a changed price, or an unchanged one that entered the price window. Rows already stored are kept | - |
 
 `feed_events` grows by about 20 to 125 MB per day from Skinport, plus an estimated 50 to 120 MB from Waxpeer
 ([`waxpeer_feed.md`](waxpeer_feed.md#volume)). Check it with

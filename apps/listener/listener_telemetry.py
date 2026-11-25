@@ -26,6 +26,12 @@ snapshots_unchanged_windowed_total = Counter(
     "Unchanged REST snapshots that entered the price window (while it is short, or once an hour per item)",
 )
 
+snapshots_not_stored_total = Counter(
+    "listener_snapshots_not_stored_total",
+    "REST snapshots the listener did not use and so did not store (#272), by reason (duplicate, unchanged)",
+    ["reason"],
+)
+
 # Labels on the anomaly counters: `source` is the Z-score source (local, hybrid, macro), `tick_kind`
 # tells a REST lowest ask (rest_snapshot) from a live feed listing (listing), and `reason` is the DRE
 # rule that approved the anomaly.

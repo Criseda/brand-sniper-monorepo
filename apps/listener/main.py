@@ -30,6 +30,7 @@ from http_sessions import LazySession
 from listener_telemetry import (
     batch_buffer_size,
     feed_events_received_total,
+    snapshots_not_stored_total,
     snapshots_unchanged_total,
     snapshots_unchanged_windowed_total,
     tick_queue_size,
@@ -309,30 +310,36 @@ async def tick_consumer(
                         batch_buffer.append(item.to_batch_record())
                     elif is_duplicate(item, dedup_cache):
                         ticks_deduplicated_total.inc()
-                        if item.listing_id is not None or item.is_rest_snapshot:
-                            # A listing seen again, and every REST snapshot, is still recorded (so replay
-                            # sees every tick live saw); it just does not re-enter the price window, so
-                            # decisions are unchanged.
+                        if item.listing_id is not None:
+                            # A listing seen again is still recorded; it just does not re-enter the price
+                            # window, so decisions are unchanged.
                             batch_buffer.append(item.to_batch_record())
+                        else:
+                            # A duplicate REST snapshot changes nothing here, so it is not stored either (#272).
+                            snapshots_not_stored_total.labels(reason="duplicate").inc()
                     else:
                         unchanged_snapshot = is_unchanged_snapshot(item, dedup_cache)
                         enters_window = not unchanged_snapshot or await unchanged_snapshot_enters_price_window(
                             item, dedup_cache, cache
                         )
-                        update_dedup_cache(item, dedup_cache, enters_window=enters_window)
                         ticks_processed_total.inc()
-
-                        # Accumulate records for long-term database tracking
-                        batch_buffer.append(item.to_batch_record())
                         if unchanged_snapshot:
-                            # The lowest ask has not changed since the last poll: do not score (or paper
-                            # trade) the same reading again, and window it only while the window is short
-                            # or once an hour (#269).
                             snapshots_unchanged_total.inc()
-                            if enters_window:
-                                snapshots_unchanged_windowed_total.inc()
-                                await push_to_window(item, cache)
+                        if unchanged_snapshot and not enters_window:
+                            # The lowest ask has not changed and the window does not need it (#269): the listener
+                            # does nothing with it, so it changes no state and is not stored (#272). A replay of
+                            # the stored rows then makes the same decisions as the live listener did.
+                            snapshots_not_stored_total.labels(reason="unchanged").inc()
+                        elif unchanged_snapshot:
+                            # Unchanged, but windowed while the window is short or once an hour: recorded and
+                            # windowed, never scored (or paper traded) again.
+                            update_dedup_cache(item, dedup_cache, enters_window=True)
+                            batch_buffer.append(item.to_batch_record())
+                            snapshots_unchanged_windowed_total.inc()
+                            await push_to_window(item, cache)
                         else:
+                            update_dedup_cache(item, dedup_cache)
+                            batch_buffer.append(item.to_batch_record())
                             await update_window_and_detect(item, cache, anomaly_pool, executor, alerts, baseline_state, shadow)
                     batch_buffer_size.set(len(batch_buffer))
                 # Broad on purpose: one bad tick must not kill the consumer loop.

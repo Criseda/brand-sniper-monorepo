@@ -133,7 +133,7 @@ async def test_listed_and_snapshot_ticks_still_drive_detection(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_duplicates_are_recorded_without_reentering_the_window(monkeypatch):
+async def test_duplicate_listings_are_recorded_and_duplicate_snapshots_are_not(monkeypatch):
     first = _tick(3.97, event_type="listed", listing_id="1")
     second_listing = _tick(3.97, event_type="listed", listing_id="2")
     first_again = _tick(3.97, event_type="listed", listing_id="1")
@@ -142,18 +142,18 @@ async def test_duplicates_are_recorded_without_reentering_the_window(monkeypatch
     detect, flushed = await _run_consumer(monkeypatch, [first, second_listing, first_again, repeated_snapshot])
 
     # Another listing at the same price is a separate offer, so it is scored; the first one seen again and
-    # the snapshot repeating its price are duplicates.
+    # the snapshot repeating its price are duplicates. The listing seen again is still recorded; the duplicate
+    # snapshot changed nothing, so it is not (#272).
     assert [call.args[0] for call in detect.await_args_list] == [first, second_listing]
     assert flushed[0]["ticks"] == [
         first.to_batch_record(),
         second_listing.to_batch_record(),
         first_again.to_batch_record(),
-        repeated_snapshot.to_batch_record(),
     ]
 
 
 @pytest.mark.asyncio
-async def test_unchanged_rest_snapshot_is_recorded_scored_once_and_windowed_once_an_hour(monkeypatch):
+async def test_unchanged_rest_snapshot_is_scored_once_and_stored_and_windowed_once_an_hour(monkeypatch):
     window_only = AsyncMock()
     monkeypatch.setattr(listener_main, "push_to_window", window_only)
     # The windows are full, so only the hourly rule applies. Poll 12 is 3,660 seconds after the first,
@@ -165,7 +165,8 @@ async def test_unchanged_rest_snapshot_is_recorded_scored_once_and_windowed_once
 
     assert [call.args[0] for call in detect.await_args_list] == [polls[0], changed]
     assert [call.args[0] for call in window_only.await_args_list] == [polls[12]]
-    assert flushed[0]["ticks"] == [tick.to_batch_record() for tick in [*polls, changed]]
+    # Only what the listener used is stored: the scored polls and the hourly windowed one (#272).
+    assert flushed[0]["ticks"] == [tick.to_batch_record() for tick in [polls[0], polls[12], changed]]
 
 
 @pytest.mark.asyncio
