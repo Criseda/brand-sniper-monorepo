@@ -405,7 +405,12 @@ def test_ingest_bulk_replay_is_idempotent(client):
     replay = client.post("/api/v1/ingest/bulk", json=payload)
 
     assert first.status_code == 201
-    assert first.json() == {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0}
+    assert first.json() == {
+        "status": "SUCCESS",
+        "records_processed": 1,
+        "feed_events_processed": 0,
+        "student_scores_processed": 0,
+    }
     assert replay.status_code == 201
     assert replay.json() == {"status": "DUPLICATE", "records_processed": 0}
 
@@ -468,7 +473,12 @@ def test_ingest_bulk_persists_listing_fields_and_raw_feed_events(client):
     response = client.post("/api/v1/ingest/bulk", json=_listing_payload(batch_id))
 
     assert response.status_code == 201
-    assert response.json() == {"status": "SUCCESS", "records_processed": 2, "feed_events_processed": 1}
+    assert response.json() == {
+        "status": "SUCCESS",
+        "records_processed": 2,
+        "feed_events_processed": 1,
+        "student_scores_processed": 0,
+    }
 
     ticks = asyncio.run(_fetch_all(select(LiveMarketTick).where(LiveMarketTick.price_cents.in_([397, 450]))))
     sold = next(tick for tick in ticks if tick.price_cents == 397)
@@ -506,7 +516,64 @@ def test_ingest_bulk_accepts_feed_event_only_batch(client):
     response = client.post("/api/v1/ingest/bulk", json=payload)
 
     assert response.status_code == 201
-    assert response.json() == {"status": "SUCCESS", "records_processed": 0, "feed_events_processed": 1}
+    assert response.json() == {
+        "status": "SUCCESS",
+        "records_processed": 0,
+        "feed_events_processed": 1,
+        "student_scores_processed": 0,
+    }
+
+
+def _student_score(listing_id="P1", probability=0.8):
+    return {
+        "listing_id": listing_id,
+        "model_version": "brand-sniper-student/1",
+        "feature_version": 3,
+        "probability": probability,
+        "threshold": 0.6,
+        "would_approve": probability >= 0.6,
+        "observed_at_ms": 1790000000123,
+        "scoring_ms": 0.42,
+    }
+
+
+def test_ingest_bulk_stores_student_scores_once_per_listing_and_model(client):
+    from shared_utils.models import StudentScore
+    from sqlmodel import select
+
+    first = {"batch_id": str(uuid4()), "venue": "shadow", "ticks": [], "student_scores": [_student_score()]}
+    # The same listing scored again after a restart, in another batch: the first score stays.
+    again = {"batch_id": str(uuid4()), "venue": "shadow", "ticks": [], "student_scores": [_student_score(probability=0.1)]}
+
+    response = client.post("/api/v1/ingest/bulk", json=first)
+    client.post("/api/v1/ingest/bulk", json=again)
+
+    assert response.status_code == 201
+    assert response.json() == {
+        "status": "SUCCESS",
+        "records_processed": 0,
+        "feed_events_processed": 0,
+        "student_scores_processed": 1,
+    }
+    (score,) = asyncio.run(_fetch_all(select(StudentScore).where(StudentScore.venue == "shadow")))
+    assert (score.listing_id, score.model_version, score.probability, score.would_approve) == (
+        "P1",
+        "brand-sniper-student/1",
+        0.8,
+        True,
+    )
+    assert score.observed_at.isoformat() == "2026-09-21T14:13:20.123000"
+
+
+def test_student_scores_change_the_digest_only_when_present():
+    BulkIngestionPayload = backend_main.BulkIngestionPayload
+    without = BulkIngestionPayload(venue="skinport", ticks=[])
+    with_scores = BulkIngestionPayload(venue="skinport", ticks=[], student_scores=[_student_score()])
+
+    assert backend_main._bulk_payload_digest(without) == backend_main._bulk_payload_digest(
+        BulkIngestionPayload(venue="skinport", ticks=[], student_scores=[])
+    )
+    assert backend_main._bulk_payload_digest(with_scores) != backend_main._bulk_payload_digest(without)
 
 
 @pytest.mark.parametrize(
@@ -595,8 +662,8 @@ async def test_concurrent_bulk_requests_keep_new_item_ids_local_until_commit(mon
         allow_commits.set()
         responses = await asyncio.gather(*requests)
         assert responses == [
-            {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0},
-            {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0},
+            {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0, "student_scores_processed": 0},
+            {"status": "SUCCESS", "records_processed": 1, "feed_events_processed": 0, "student_scores_processed": 0},
         ]
         assert backend_main.item_cache[market_hash_name] == 424242
     finally:

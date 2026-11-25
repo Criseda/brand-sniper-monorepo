@@ -258,13 +258,25 @@ model), never a zero.
 - A model becomes a **candidate** only if it beats the #249 baseline out of sample.
 - In `train_student.py` a fold with cutoff t trains on listings decided before t with `label_available_at <= t`
   and validates on the next window. A fold, and the registered model, need 1000 labeled listings and 100 of the
-  rarer outcome. Pooled over the folds, the model is a candidate when it makes more net P&L than the rules at
-  its threshold, or is more precise than the rules at the rules' volume, with at least 30 labeled trades on each
-  side. An exploratory run (labels not final, or overlapping the validation window) is never a candidate.
+  rarer outcome. Pooled over the folds, the model is a candidate when it makes more net P&L than the rules, at
+  its threshold or at the rules' volume, and also more than the latest price ratio on the DRE's deals at the fee
+  floor's volume, with at least 30 labeled trades on each side (#236). Precision alone does not count: the strict
+  run of 2026-11-25 was more precise at the rules' volume and earned no more. An exploratory run (labels not
+  final, or overlapping the validation window) is never a candidate.
 - The report also scores the model on the DRE's own deals (#333), the listings it approved before the fee
   floor: ROC-AUC among them, and net P&L when the model keeps as many of them as the fee floor (#331) does,
   next to the fee floor and the ratio of the latest baseline price to the price at that same number.
 - A candidate is **promoted** from shadow to deciding only after a documented shadow period in which it beats the rules on live, realized outcomes. The Z-score path remains the fallback.
+- **Shadow mode** (#236): with `STUDENT_MODEL_VERSION` set, the listener fetches that registered version's ONNX
+  graph from MLflow at startup, refuses it unless its metadata names this code's feature version and order, and
+  scores every listing that reaches detection, the same listings the `zscore_dre_features` replay gives
+  features to. The tick consumer only counts the listing's rate; a worker of its own pool gathers the features
+  and runs the model, so the rules never wait for it, and a full queue or a failure only drops that score. The
+  scores go out with the next batch to `student_scores`, one row per listing and model version, and join
+  `listing_outcomes` on (`venue`, `listing_id`). Prometheus counts them (`listener_student_shadow_scores_total`)
+  and times them (`listener_student_shadow_scoring_seconds`). Since 2026-11-25 the Skinport listener scores
+  with `brand-sniper-student` version 1, which the gate does not call a candidate; the point of the shadow
+  period is the live evidence, on `v2` labels, that a candidate would need.
 
 ### 4.7 Monitoring (#235)
 - Primary: rolling realized precision, net P&L, and calibration as labels arrive.

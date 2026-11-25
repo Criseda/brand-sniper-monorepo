@@ -33,7 +33,15 @@ from shared_utils import (
     utc_fromtimestamp_naive,
     utc_now_naive,
 )
-from shared_utils.models import FeedEvent, IngestionBatch, LiveMarketTick, MarketItem, SimulatedTrade, TradeAlertRecord
+from shared_utils.models import (
+    FeedEvent,
+    IngestionBatch,
+    LiveMarketTick,
+    MarketItem,
+    SimulatedTrade,
+    StudentScore,
+    TradeAlertRecord,
+)
 from telemetry import paper_trades_executed_total, paper_trading_estimated_profit_total
 
 logger = get_logger("backend.main")
@@ -232,6 +240,9 @@ def _bulk_payload_digest(payload: BulkIngestionPayload) -> str:
     }
     if payload.feed_events:
         canonical_payload["feed_events"] = [event.model_dump(mode="json") for event in payload.feed_events]
+    # Hashed only when present, like the feed events, so batches from before #236 keep their digest.
+    if payload.student_scores:
+        canonical_payload["student_scores"] = [score.model_dump(mode="json") for score in payload.student_scores]
     encoded = json.dumps(canonical_payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -246,7 +257,7 @@ async def _register_ingestion_batch(session: AsyncSession, payload: BulkIngestio
     values = {
         "batch_id": batch_id,
         "venue": payload.venue,
-        "record_count": len(payload.ticks) + len(payload.feed_events),
+        "record_count": len(payload.ticks) + len(payload.feed_events) + len(payload.student_scores),
         "payload_sha256": digest,
         "received_at": utc_now_naive(),
     }
@@ -406,6 +417,7 @@ async def ingest_trade_alert(payload: TradeAlertPayload):
 async def process_bulk_ingestion(payload: BulkIngestionPayload):
     total_ticks = len(payload.ticks)
     total_feed_events = len(payload.feed_events)
+    total_student_scores = len(payload.student_scores)
     logger.info(
         "Bulk Ingestion Intercepted: %d elements and %d feed events from '%s'",
         total_ticks,
@@ -413,7 +425,7 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
         payload.venue,
     )
 
-    if total_ticks == 0 and total_feed_events == 0:
+    if total_ticks == 0 and total_feed_events == 0 and total_student_scores == 0:
         if payload.batch_id is None:
             return {"status": "SKIPPED", "records_processed": 0}
         async with session_scope() as session:
@@ -463,14 +475,39 @@ async def process_bulk_ingestion(payload: BulkIngestionPayload):
         if feed_event_rows:
             await session.exec(insert(FeedEvent), params=feed_event_rows)
 
+        student_score_rows = [
+            {
+                "venue": payload.venue,
+                "listing_id": score.listing_id,
+                "model_version": score.model_version,
+                "feature_version": score.feature_version,
+                "probability": score.probability,
+                "threshold": score.threshold,
+                "would_approve": score.would_approve,
+                "observed_at": utc_fromtimestamp_naive(score.observed_at_ms / 1000),
+                "scoring_ms": score.scoring_ms,
+            }
+            for score in payload.student_scores
+        ]
+        if student_score_rows:
+            # A listing scored again after a restart keeps its first score.
+            await session.exec(insert(StudentScore).values(student_score_rows).on_conflict_do_nothing())
+
     item_cache.update(pending_items)
 
     logger.info(
-        "Bulk write complete. Committed %d ticks to 'live_market_ticks' and %d events to 'feed_events'.",
+        "Bulk write complete. Committed %d ticks to 'live_market_ticks', %d events to 'feed_events' and %d scores "
+        "to 'student_scores'.",
         total_ticks,
         total_feed_events,
+        total_student_scores,
     )
-    return {"status": "SUCCESS", "records_processed": total_ticks, "feed_events_processed": total_feed_events}
+    return {
+        "status": "SUCCESS",
+        "records_processed": total_ticks,
+        "feed_events_processed": total_feed_events,
+        "student_scores_processed": total_student_scores,
+    }
 
 
 if __name__ == "__main__":

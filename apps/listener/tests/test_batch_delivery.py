@@ -368,6 +368,32 @@ async def test_redis_store_round_trips_listing_ticks_and_feed_events():
     assert recovered.payload["feed_events"] == feed_events
 
 
+@pytest.mark.asyncio
+async def test_redis_store_round_trips_student_scores():
+    redis = FakeRedis()
+    store = RedisBatchStore(redis, pending_key="pending", dead_letter_key="dead-letter")
+    scores = [{"listing_id": "58903454", "model_version": "brand-sniper-student/1", "probability": 0.7}]
+
+    stored = await store.add("skinport", [], student_scores=scores)
+    (recovered,) = [batch async for batch in store.iter_pending()]
+
+    assert recovered == stored
+    assert recovered.student_scores == scores
+    assert recovered.payload["student_scores"] == scores
+
+
+def test_batches_without_student_scores_keep_their_wire_format(stored_batch):
+    assert "student_scores" not in stored_batch.payload
+    legacy = json.dumps({"batch_id": stored_batch.batch_id, "venue": "skinport", "ticks": stored_batch.ticks})
+
+    assert StoredBatch.deserialize("1-0", legacy).student_scores == []
+    with pytest.raises(ValueError, match="student_scores"):
+        StoredBatch.deserialize(
+            "1-0",
+            json.dumps({"batch_id": stored_batch.batch_id, "venue": "skinport", "ticks": [], "student_scores": [1]}),
+        )
+
+
 def test_pre_feed_event_batches_keep_their_wire_format(stored_batch):
     legacy = json.dumps({"batch_id": stored_batch.batch_id, "source": "skinport", "ticks": stored_batch.ticks})
 
@@ -449,6 +475,7 @@ async def test_buffer_ownership_transfers_before_scheduling_can_be_cancelled(mon
         stored_batch.ticks,
         batch_id=stored_batch.batch_id,
         feed_events=feed_events,
+        student_scores=None,
     )
 
     flush_task.cancel()

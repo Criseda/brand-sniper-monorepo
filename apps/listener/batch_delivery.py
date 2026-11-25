@@ -38,13 +38,18 @@ class StoredBatch:
     venue: str
     ticks: list[dict[str, Any]]
     feed_events: list[dict[str, Any]] = field(default_factory=list)
+    # The student model's shadow scores (#236).
+    student_scores: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"batch_id": self.batch_id, "venue": self.venue, "ticks": self.ticks}
-        # Omitted when empty so batches without raw events keep their pre-#232 wire format.
+        # Omitted when empty so batches without raw events keep their pre-#232 wire format, and batches without
+        # scores their pre-#236 one.
         if self.feed_events:
             payload["feed_events"] = self.feed_events
+        if self.student_scores:
+            payload["student_scores"] = self.student_scores
         return payload
 
     def serialize(self) -> str:
@@ -64,6 +69,8 @@ class StoredBatch:
         ticks = data["ticks"]
         # Batches persisted before #232 carry no feed_events key.
         feed_events = data.get("feed_events", [])
+        # Batches persisted before #236 carry no student_scores key.
+        student_scores = data.get("student_scores", [])
         if not isinstance(batch_id, str) or not batch_id:
             raise ValueError("Stored batch_id must be a non-empty string")
         UUID(batch_id)
@@ -73,6 +80,8 @@ class StoredBatch:
             raise ValueError("Stored batch ticks must be a list of objects")
         if not isinstance(feed_events, list) or not all(isinstance(event, dict) for event in feed_events):
             raise ValueError("Stored batch feed_events must be a list of objects")
+        if not isinstance(student_scores, list) or not all(isinstance(score, dict) for score in student_scores):
+            raise ValueError("Stored batch student_scores must be a list of objects")
 
         return cls(
             record_id=decoded_id,
@@ -80,6 +89,7 @@ class StoredBatch:
             venue=venue,
             ticks=ticks,
             feed_events=feed_events,
+            student_scores=student_scores,
         )
 
 
@@ -196,6 +206,7 @@ class RedisBatchStore:
         *,
         batch_id: str | None = None,
         feed_events: list[dict[str, Any]] | None = None,
+        student_scores: list[dict[str, Any]] | None = None,
     ) -> StoredBatch:
         batch = StoredBatch(
             record_id="",
@@ -203,6 +214,7 @@ class RedisBatchStore:
             venue=venue,
             ticks=ticks,
             feed_events=feed_events or [],
+            student_scores=student_scores or [],
         )
         record_id = await self.redis.xadd(self.pending_key, {"payload": batch.serialize()})
         await self._refresh_pending_metric()
@@ -213,6 +225,7 @@ class RedisBatchStore:
             venue=venue,
             ticks=ticks,
             feed_events=batch.feed_events,
+            student_scores=batch.student_scores,
         )
 
     async def iter_pending(self, *, page_size: int = 100) -> AsyncIterator[StoredBatch]:

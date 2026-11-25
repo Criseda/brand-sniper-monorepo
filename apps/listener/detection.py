@@ -12,7 +12,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import partial
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alerts import AlertDispatcher, TradeAlert
 from baseline_loader import BaselineState
@@ -43,6 +43,9 @@ from shared_utils import (
 from shared_utils.pnl import BASIS_POINTS
 from task_supervisor import BoundedTaskPool
 from zscore import MIN_HISTORY_POINTS, ZSCORE_SOURCES, calculate_z_score, should_trigger_anomaly
+
+if TYPE_CHECKING:
+    from student_shadow import StudentShadow
 
 logger = get_logger("listener.main")
 
@@ -462,10 +465,16 @@ async def update_window_and_detect(
     executor: ExecutionService,
     alerts: AlertDispatcher | None = None,
     baseline_state: BaselineState | None = None,
+    shadow: "StudentShadow | None" = None,
 ) -> None:
-    """Pushes a tick into the sliding price window and hands Z-score outliers to the Edge DRE."""
+    """Pushes a tick into the sliding price window and hands Z-score outliers to the Edge DRE.
+
+    With `shadow`, every listing that gets this far is also scored by the student model (#236), off the tick
+    consumer and without touching the decision."""
     await push_to_window(tick, cache)
     score = await score_window(tick, cache)
+    if shadow is not None:
+        shadow.observe(tick, score)
     if score is None:
         return
     if not should_trigger_anomaly(score.z_score, score.mean_cents, tick, score.source):

@@ -57,8 +57,11 @@ def _patch_consumer(monkeypatch) -> tuple[AsyncMock, list[dict], asyncio.Queue]:
     flushed: list[dict] = []
     flush_signals: asyncio.Queue = asyncio.Queue()
 
-    async def record_flush(source, buffer, *, batch_id, store, batch_pool, feed_event_buffer=None):
-        flushed.append({"ticks": buffer.copy(), "feed_events": list(feed_event_buffer or [])})
+    async def record_flush(source, buffer, *, batch_id, store, batch_pool, feed_event_buffer=None, student_scores=None):
+        batch = {"ticks": buffer.copy(), "feed_events": list(feed_event_buffer or [])}
+        if student_scores is not None:
+            batch["student_scores"] = student_scores
+        flushed.append(batch)
         buffer.clear()
         if feed_event_buffer is not None:
             feed_event_buffer.clear()
@@ -83,6 +86,28 @@ async def _run_consumer(monkeypatch, items: list) -> tuple[AsyncMock, list[dict]
         queue.put_nowait(item)
     await _start_consumer(queue)
     return detect, flushed
+
+
+@pytest.mark.asyncio
+async def test_shadow_scores_ship_with_the_next_batch_and_detection_gets_the_shadow(monkeypatch):
+    detect, flushed, _flush_signals = _patch_consumer(monkeypatch)
+    shadow = MagicMock()
+    shadow.drain.return_value = [{"listing_id": "58903454", "probability": 0.7}]
+    listed = _tick(3.97, event_type="listed", listing_id="58903454")
+    queue: asyncio.Queue = asyncio.Queue()
+    for item in (listed, None):
+        queue.put_nowait(item)
+
+    await listener_main.tick_consumer(queue, "skinport", AsyncMock(), AsyncMock(), AsyncMock(), AsyncMock(), None, None, shadow)
+
+    assert detect.await_args.args[-1] is shadow
+    assert flushed == [
+        {
+            "ticks": [listed.to_batch_record()],
+            "feed_events": [],
+            "student_scores": [{"listing_id": "58903454", "probability": 0.7}],
+        }
+    ]
 
 
 @pytest.mark.asyncio

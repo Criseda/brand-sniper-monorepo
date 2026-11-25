@@ -285,6 +285,9 @@ edge `.env` files together and recreating their containers.
 | `LISTENER_BATCH_RETRY_BASE_SECONDS` | Initial exponential-backoff delay for batch retries. | `0.5` |
 | `LISTENER_BATCH_RETRY_MAX_SECONDS` | Maximum exponential-backoff delay for batch retries. | `8` |
 | `LISTENER_HEALTH_PORT` | Container-internal event-loop health endpoint port. | `9101` |
+| `STUDENT_MODEL_VERSION` | Registered student model version the listener scores listings with in shadow mode (#236); unset turns shadow scoring off. The rules decide either way. | unset (`1` for `listener-skinport` in the server stack) |
+| `STUDENT_MODEL_NAME` | Registered model name to fetch. | `brand-sniper-student` |
+| `MLFLOW_TRACKING_URI` | Where the listener fetches the shadow model from. | `http://localhost:5000` (`http://mlflow-server:5000` in the server stack) |
 
 ### Bulk-ingestion recovery
 

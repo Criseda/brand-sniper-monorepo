@@ -259,6 +259,10 @@ services:
       - EDGE_REDIS_URL=redis://redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # Shadow mode (#236): this registered student version scores every listing next to the rules and decides
+      # nothing. Unset it to turn shadow scoring off; a model that does not load leaves the rules alone too.
+      - STUDENT_MODEL_VERSION=1
+      - MLFLOW_TRACKING_URI=http://mlflow-server:5000
     networks:
       - application
       - data
@@ -278,6 +282,10 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+      # Only for the shadow model, which it fetches once at startup; the listener runs without it.
+      mlflow-server:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9101/health', timeout=3)"]
       interval: 30s
