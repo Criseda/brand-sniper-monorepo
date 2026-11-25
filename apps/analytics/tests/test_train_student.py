@@ -306,22 +306,43 @@ def _cell(status="ok", precision=0.5, total=0, labeled=40):
     }
 
 
+def _deals(model_total=200, ratio_total=100, status="ok"):
+    return {
+        "model_at_fee_floor_volume": _cell(status=status, total=model_total),
+        "ratio_at_fee_floor_volume": _cell(total=ratio_total),
+    }
+
+
 @pytest.mark.parametrize(
-    ("rules", "at_threshold", "at_volume", "exploratory", "expected"),
+    ("rules", "at_threshold", "at_volume", "deals", "exploratory", "expected"),
     [
-        (_cell(total=-100), _cell(total=50), _cell(precision=0.4), False, True),
-        (_cell(precision=0.5), _cell(total=-500), _cell(precision=0.6), False, True),
-        (_cell(total=100, precision=0.5), _cell(total=50), _cell(precision=0.5), False, False),
-        (_cell(status="insufficient_data", labeled=5), _cell(total=50), _cell(precision=0.9), False, False),
-        (_cell(total=-100), _cell(status="insufficient_data", labeled=5), _cell(precision=0.4), False, False),
-        (_cell(total=-100), _cell(total=50), _cell(precision=0.9), True, False),
+        (_cell(total=-100), _cell(total=50), _cell(total=-200), _deals(), False, True),
+        (_cell(total=100), _cell(total=-500), _cell(total=150), _deals(), False, True),
+        # The strict run of 2026-11-25: more precise at equal volume, but no more money than the ratio.
+        (_cell(total=22424), _cell(total=9756), _cell(total=23379), _deals(17941, 22734), False, False),
+        (_cell(total=100, precision=0.5), _cell(total=50), _cell(total=90, precision=0.9), _deals(), False, False),
+        (_cell(total=-100), _cell(total=50), _cell(total=-200), _deals(status="insufficient_data"), False, False),
+        (_cell(status="insufficient_data", labeled=5), _cell(total=50), _cell(total=90), _deals(), False, False),
+        (_cell(total=-100), _cell(status="insufficient_data", labeled=5), _cell(total=-200), _deals(), False, False),
+        (_cell(total=-100), _cell(total=50), _cell(total=-200), _deals(), True, False),
     ],
-    ids=["more_pnl", "more_precise_at_equal_volume", "no_better", "rules_too_few", "model_too_few", "exploratory"],
+    ids=[
+        "more_pnl_at_threshold",
+        "more_pnl_at_equal_volume",
+        "no_better_than_the_ratio",
+        "only_more_precise",
+        "too_few_deals",
+        "rules_too_few",
+        "model_too_few",
+        "exploratory",
+    ],
 )
-def test_candidate_only_when_the_model_beats_the_rules_out_of_sample(rules, at_threshold, at_volume, exploratory, expected):
+def test_candidate_only_when_the_model_makes_more_money_than_the_rules_and_the_ratio(
+    rules, at_threshold, at_volume, deals, exploratory, expected
+):
     comparison = {"rules": rules, "model_at_threshold": at_threshold, "model_at_rules_volume": at_volume}
 
-    candidate, reason = candidate_verdict(comparison, exploratory)
+    candidate, reason = candidate_verdict(comparison, deals, exploratory)
 
     assert candidate is expected
     assert reason
